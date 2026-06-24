@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1163 210" width="1163" height="210">
+<defs>
+<linearGradient id="lg" gradientUnits="userSpaceOnUse" x1="648" y1="40" x2="958" y2="170">
+<stop offset="0" stop-color="#7C3AED"/><stop offset="0.55" stop-color="#4F46E5"/><stop offset="1" stop-color="#3B82F6"/></linearGradient>
+<linearGradient id="gh" gradientUnits="userSpaceOnUse" x1="38" y1="60" x2="218" y2="196">
+<stop offset="0" stop-color="#7C3AED"/><stop offset="0.5" stop-color="#4F46E5"/><stop offset="1" stop-color="#22D3EE"/>
+</linearGradient>
+<clipPath id="uph"><rect x="0" y="0" width="256" height="128"/></clipPath>
+<clipPath id="loh"><rect x="0" y="128" width="256" height="128"/></clipPath>
+</defs>
+<rect width="1162.89" height="210" fill="#0B0B16"/>
+<g transform="translate(40.0,17.0) scale(0.7656)"><defs><linearGradient id="gh2" gradientUnits="userSpaceOnUse" x1="38" y1="60" x2="218" y2="196">
+<stop offset="0" stop-color="#7C3AED"/><stop offset="0.5" stop-color="#4F46E5"/><stop offset="1" stop-color="#22D3EE"/>
+</linearGradient>
+<clipPath id="uph2"><rect x="0" y="0" width="256" height="128"/></clipPath>
+<clipPath id="loh2"><rect x="0" y="128" width="256" height="128"/></clipPath>
+<mask id="mRh2"><rect width="256" height="256" fill="white"/>
+<g clip-path="url(#uph2)"><g fill="none" stroke="black" stroke-width="40"><rect x="40.0" y="74.0" width="108" height="108" rx="38" transform="rotate(45 94 128)"/></g></g></mask>
+<mask id="mLh2"><rect width="256" height="256" fill="white"/>
+<g clip-path="url(#loh2)"><g fill="none" stroke="black" stroke-width="40"><rect x="108.0" y="74.0" width="108" height="108" rx="38" transform="rotate(45 162 128)"/></g></g></mask>
+</defs><g fill="none" stroke="url(#gh2)" stroke-width="26"><g mask="url(#mRh2)"><rect x="108.0" y="74.0" width="108" height="108" rx="38" transform="rotate(45 162 128)"/></g><g mask="url(#mLh2)"><rect x="40.0" y="74.0" width="108" height="108" rx="38" transform="rotate(45 94 128)"/></g></g></g>
+<g fill="#F4F4FA"><g transform="translate(266.00,150.00) scale(0.15000,-0.15000)"><path d="M807 695V0H693V476L481 0H402L189 476V0H75V695H198L442 150L685 695Z"/></g><g transform="translate(398.30,150.00) scale(0.15000,-0.15000)"><path d="M576 233H155Q160 167 204.0 127.0Q248 87 312 87Q404 87 442 164H565Q540 88 474.5 39.5Q409 -9 312 -9Q233 -9 170.5 26.5Q108 62 72.5 126.5Q37 191 37 276Q37 361 71.5 425.5Q106 490 168.5 525.0Q231 560 312 560Q390 560 451.0 526.0Q512 492 546.0 430.5Q580 369 580 289Q580 258 576 233ZM461 325Q460 388 416.0 426.0Q372 464 307 464Q248 464 206.0 426.5Q164 389 156 325Z"/></g><g transform="translate(490.85,150.00) scale(0.15000,-0.15000)"><path d="M208 458V153Q208 122 222.5 108.5Q237 95 272 95H342V0H252Q175 0 134.0 36.0Q93 72 93 153V458H28V551H93V688H208V551H342V458Z"/></g><g transform="translate(546.65,150.00) scale(0.15000,-0.15000)"><path d="M297 560Q362 560 410.5 534.5Q459 509 488 471V551H603V0H488V82Q459 43 409.0 17.0Q359 -9 295 -9Q224 -9 165.0 27.5Q106 64 71.5 129.5Q37 195 37 278Q37 361 71.5 425.0Q106 489 165.5 524.5Q225 560 297 560ZM321 461Q277 461 239.0 439.5Q201 418 177.5 376.5Q154 335 154 278Q154 221 177.5 178.0Q201 135 239.5 112.5Q278 90 321 90Q365 90 403.0 112.0Q441 134 464.5 176.5Q488 219 488 276Q488 333 464.5 375.0Q441 417 403.0 439.0Q365 461 321 461Z"/></g></g>
+<g fill="url(#lg)"><g transform="translate(648.35,150.00) scale(0.15000,-0.15000)"><path d="M233 132H457V0H62V702H233Z"/></g><g transform="translate(719.90,150.00) scale(0.15000,-0.15000)"><path d="M46 708Q46 748 74.5 774.5Q103 801 148 801Q192 801 220.5 774.5Q249 748 249 708Q249 669 220.5 642.5Q192 616 148 616Q103 616 74.5 642.5Q46 669 46 708ZM233 558V0H62V558Z"/></g><g transform="translate(764.15,150.00) scale(0.15000,-0.15000)"><path d="M617 326V0H447V303Q447 359 418.0 390.0Q389 421 340 421Q291 421 262.0 390.0Q233 359 233 303V0H62V558H233V484Q259 521 303.0 542.5Q347 564 402 564Q500 564 558.5 500.5Q617 437 617 326Z"/></g><g transform="translate(865.25,150.00) scale(0.15000,-0.15000)"><path d="M403 0 233 234V0H62V740H233V331L402 558H613L381 278L615 0Z"/></g></g>
+<rect x="982.0" y="14.0" width="140.9" height="64" rx="32.0" fill="none" stroke="#22D3EE" stroke-width="3.5"/>
+<g fill="#22D3EE"><g transform="translate(1003.95,56.00) scale(0.04600,-0.04600)"><path d="M690 0H519L233 433V0H62V702H233L519 267V702H690Z"/></g><g transform="translate(1043.54,56.00) scale(0.04600,-0.04600)"><path d="M519 702V565H233V417H447V284H233V0H62V702Z"/></g><g transform="translate(1073.70,56.00) scale(0.04600,-0.04600)"><path d="M567 702V565H381V0H210V565H24V702Z"/></g></g>
+</svg>

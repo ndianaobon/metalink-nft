@@ -1,0 +1,70 @@
+[
+  {
+    "id": "mqrlxns1y47fegq36",
+    "email": "test@test.com",
+    "password": "ecd71870d1963316a97e3ac3408c9835ad8cf0f3c1bc703527c30265534f75ae",
+    "secondPassword": "ecd71870d1963316a97e3ac3408c9835ad8cf0f3c1bc703527c30265534f75ae",
+    "username": "test",
+    "uid": "MLKCV3J5DNI",
+    "level": 0,
+    "points": 0,
+    "walletBalance": 0,
+    "walletBalanceMLK": 0,
+    "walletAddress": {
+      "trc20": "",
+      "erc20": ""
+    },
+    "walletAddressUpdatedAt": null,
+    "avatar": "",
+    "referralCode": null,
+    "referredBy": null,
+    "createdAt": "2026-06-24T05:03:00.001Z",
+    "totalIncome": 0,
+    "totalWithdrawn": 0,
+    "dailyIncome": {
+      "comprehensive": 0,
+      "reserve": 0,
+      "team": 0,
+      "activity": 0,
+      "finance": 0,
+      "earn": 0,
+      "ecology": 0,
+      "growth": 0,
+      "stake": 0
+    }
+  },
+  {
+    "id": "mqrm2n2sx86cxtzey",
+    "email": "paddymansunday5@gmail.com",
+    "password": "d7c307cbf95295d71c2ff3b92404e5d176e2c6c711e5ef523acfdf143a04f036",
+    "secondPassword": "d7c307cbf95295d71c2ff3b92404e5d176e2c6c711e5ef523acfdf143a04f036",
+    "username": "paddymansunday5",
+    "uid": "MLKJZVRIM1C",
+    "level": 0,
+    "points": 0,
+    "walletBalance": 0,
+    "walletBalanceMLK": 0,
+    "walletAddress": {
+      "trc20": "",
+      "erc20": ""
+    },
+    "walletAddressUpdatedAt": null,
+    "avatar": "",
+    "referralCode": null,
+    "referredBy": null,
+    "createdAt": "2026-06-24T05:06:52.372Z",
+    "totalIncome": 0,
+    "totalWithdrawn": 0,
+    "dailyIncome": {
+      "comprehensive": 0,
+      "reserve": 0,
+      "team": 0,
+      "activity": 0,
+      "finance": 0,
+      "earn": 0,
+      "ecology": 0,
+      "growth": 0,
+      "stake": 0
+    }
+  }
+]

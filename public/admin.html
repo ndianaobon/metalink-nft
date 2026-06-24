@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MetaLinkNFT Admin</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/images/MetaLink-NFT-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <style>
+    body { background: #f5f7fa; color: #333; }
+    .admin-login { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #1a1a2e, #16213e); }
+    .admin-login-card { background: #fff; border-radius: 16px; padding: 40px; width: 90%; max-width: 380px; text-align: center; }
+    .admin-login-card h2 { font-size: 1.3rem; margin-bottom: 8px; color: #1a1a2e; }
+    .admin-login-card p { font-size: 0.85rem; color: #888; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <div id="adminApp"></div>
+  <script>
+    const Admin = {
+      token: localStorage.getItem('mlk_admin_token'),
+      currentPage: 'dashboard',
+
+      async api(endpoint, options = {}) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (this.token) headers['Authorization'] = 'Bearer ' + this.token;
+        const res = await fetch('/api' + endpoint, { ...options, headers });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error');
+        return data;
+      },
+
+      toast(msg, type = 'error') {
+        const el = document.createElement('div');
+        el.className = `toast toast-${type}`;
+        el.textContent = msg;
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 3000);
+      },
+
+      init() {
+        if (!this.token) this.renderLogin();
+        else this.renderDashboard();
+      },
+
+      renderLogin() {
+        document.getElementById('adminApp').innerHTML = `
+          <div class="admin-login">
+            <div class="admin-login-card">
+              <h2>Admin Panel</h2>
+              <p>MetaLinkNFT Management</p>
+              <form id="adminLoginForm">
+                <div class="admin-form-group">
+                  <input type="text" class="admin-form-input" id="adminUser" placeholder="Username" value="admin" required>
+                </div>
+                <div class="admin-form-group">
+                  <input type="password" class="admin-form-input" id="adminPass" placeholder="Password" required>
+                </div>
+                <button type="submit" class="admin-btn admin-btn-primary" style="width:100%;padding:14px;font-size:1rem;margin-top:8px;">Sign In</button>
+              </form>
+            </div>
+          </div>`;
+        document.getElementById('adminLoginForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          try {
+            const data = await this.api('/admin/login', {
+              method: 'POST',
+              body: JSON.stringify({ username: document.getElementById('adminUser').value, password: document.getElementById('adminPass').value })
+            });
+            this.token = data.token;
+            localStorage.setItem('mlk_admin_token', data.token);
+            this.renderDashboard();
+          } catch (e) { this.toast(e.message); }
+        });
+      },
+
+      async renderDashboard() {
+        const app = document.getElementById('adminApp');
+        app.innerHTML = `
+          <div class="admin-layout">
+            <aside class="admin-sidebar">
+              <div class="admin-sidebar-logo">
+                <h2>MetaLinkNFT</h2>
+                <span>Admin Dashboard</span>
+              </div>
+              <button class="admin-nav-item active" data-page="dashboard">&#128202; Dashboard</button>
+              <button class="admin-nav-item" data-page="users">&#128101; Users</button>
+              <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
+              <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
+              <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
+              <button class="admin-nav-item" style="margin-top:auto;" onclick="Admin.logout()">&#128682; Logout</button>
+            </aside>
+            <div class="admin-main">
+              <header class="admin-header">
+                <h2 id="adminPageTitle">Dashboard</h2>
+                <div class="admin-header-actions">
+                  <span style="font-size:0.85rem;color:#888;">Admin</span>
+                </div>
+              </header>
+              <div class="admin-content" id="adminContent"></div>
+            </div>
+          </div>`;
+
+        document.querySelectorAll('[data-page]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            document.querySelectorAll('[data-page]').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            this.currentPage = btn.dataset.page;
+            document.getElementById('adminPageTitle').textContent = btn.textContent.trim();
+            this.loadPage();
+          });
+        });
+
+        this.loadPage();
+      },
+
+      async loadPage() {
+        const c = document.getElementById('adminContent');
+        c.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:#7c3aed;"></div></div>';
+
+        if (this.currentPage === 'dashboard') await this.loadDashboard(c);
+        else if (this.currentPage === 'users') await this.loadUsers(c);
+        else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
+        else if (this.currentPage === 'deposits') await this.loadDeposits(c);
+        else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
+      },
+
+      async loadDashboard(c) {
+        try {
+          const stats = await this.api('/admin/stats');
+          c.innerHTML = `
+            <div class="admin-stats">
+              <div class="admin-stat-card"><div class="label">Total Users</div><div class="value">${stats.totalUsers}</div></div>
+              <div class="admin-stat-card"><div class="label">Total Deposits</div><div class="value">$${stats.totalDeposits.toFixed(2)}</div></div>
+              <div class="admin-stat-card"><div class="label">Total Withdrawals</div><div class="value">$${stats.totalWithdrawals.toFixed(2)}</div></div>
+              <div class="admin-stat-card"><div class="label">Pending Withdrawals</div><div class="value" style="color:${stats.pendingWithdrawals > 0 ? '#ef4444' : '#22c55e'}">${stats.pendingWithdrawals}</div></div>
+              <div class="admin-stat-card"><div class="label">Active Stakes</div><div class="value">${stats.activeStakes}</div></div>
+              <div class="admin-stat-card"><div class="label">Total Stake Value</div><div class="value">$${stats.totalStakeValue.toFixed(2)}</div></div>
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load dashboard</p>'; }
+      },
+
+      async loadUsers(c) {
+        try {
+          const users = await this.api('/admin/users');
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header">
+                <h3>All Users (${users.length})</h3>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Wallet TRC20</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    ${users.map(u => `
+                      <tr>
+                        <td><strong>${u.uid}</strong></td>
+                        <td>${u.username}</td>
+                        <td>${u.email}</td>
+                        <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
+                        <td>${u.level}</td>
+                        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;">${u.walletAddress?.trc20 || '-'}</td>
+                        <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td style="white-space:nowrap;">
+                          <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${u.id}')">Edit</button>
+                          <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${u.id}','${u.username}')">+ Balance</button>
+                        </td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+      },
+
+      async editUser(id) {
+        try {
+          const users = await this.api('/admin/users');
+          const user = users.find(u => u.id === id);
+          if (!user) return;
+
+          const modal = document.createElement('div');
+          modal.className = 'admin-modal-overlay';
+          modal.innerHTML = `
+            <div class="admin-modal">
+              <h3>Edit User: ${user.username}</h3>
+              <div class="admin-form-group"><label class="admin-form-label">Username</label><input class="admin-form-input" id="editUsername" value="${user.username}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">Balance (USDT)</label><input class="admin-form-input" id="editBalance" type="number" value="${user.walletBalance}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">Level</label><input class="admin-form-input" id="editLevel" type="number" value="${user.level}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">Points</label><input class="admin-form-input" id="editPoints" type="number" value="${user.points}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">TRC20 Wallet</label><input class="admin-form-input" id="editTrc20" value="${user.walletAddress?.trc20 || ''}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">ERC20 Wallet</label><input class="admin-form-input" id="editErc20" value="${user.walletAddress?.erc20 || ''}"></div>
+              <div style="display:flex;gap:10px;">
+                <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+                <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveUser('${id}')">Save</button>
+              </div>
+            </div>`;
+          document.body.appendChild(modal);
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async saveUser(id) {
+        try {
+          const data = {
+            username: document.getElementById('editUsername').value,
+            walletBalance: parseFloat(document.getElementById('editBalance').value),
+            level: parseInt(document.getElementById('editLevel').value),
+            points: parseFloat(document.getElementById('editPoints').value),
+          };
+          await this.api(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+
+          const trc20 = document.getElementById('editTrc20').value;
+          const erc20 = document.getElementById('editErc20').value;
+          await this.api(`/admin/users/${id}/wallet`, { method: 'PUT', body: JSON.stringify({ trc20, erc20 }) });
+
+          document.querySelector('.admin-modal-overlay')?.remove();
+          this.toast('User updated!', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      addBalance(id, username) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3>Add Balance: ${username}</h3>
+            <div class="admin-form-group"><label class="admin-form-label">Amount (USDT)</label><input class="admin-form-input" id="addBalanceAmount" type="number" placeholder="Enter amount"></div>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Action</label>
+              <select class="admin-form-input" id="addBalanceAction">
+                <option value="add">Add to balance</option>
+                <option value="subtract">Subtract from balance</option>
+                <option value="set">Set balance to</option>
+              </select>
+            </div>
+            <div style="display:flex;gap:10px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+              <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.confirmAddBalance('${id}')">Confirm</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      },
+
+      async confirmAddBalance(id) {
+        const amount = document.getElementById('addBalanceAmount').value;
+        const action = document.getElementById('addBalanceAction').value;
+        if (!amount) { this.toast('Enter an amount'); return; }
+        try {
+          await this.api(`/admin/users/${id}/balance`, { method: 'PUT', body: JSON.stringify({ amount, action }) });
+          document.querySelector('.admin-modal-overlay')?.remove();
+          this.toast('Balance updated!', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async loadWithdrawals(c) {
+        try {
+          const withdrawals = await this.api('/admin/withdrawals');
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header">
+                <h3>Withdrawals (${withdrawals.length})</h3>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>Date</th><th>User</th><th>Email</th><th>UID</th><th>Amount</th><th>Fee</th><th>Net</th><th>Wallet Type</th><th>Wallet Address</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    ${withdrawals.map(w => `
+                      <tr>
+                        <td>${new Date(w.createdAt).toLocaleString()}</td>
+                        <td>${w.username}</td>
+                        <td>${w.email}</td>
+                        <td>${w.uid}</td>
+                        <td><strong>${w.amount}</strong></td>
+                        <td>${w.fee}</td>
+                        <td>${w.netAmount}</td>
+                        <td>${w.walletType?.toUpperCase()}</td>
+                        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;" title="${w.walletAddress}">${w.walletAddress}</td>
+                        <td><span class="admin-badge admin-badge-${w.status.toLowerCase()}">${w.status}</span></td>
+                        <td style="white-space:nowrap;">
+                          ${w.status === 'Pending' ? `
+                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateWithdrawal('${w.id}','Approved')">Approve</button>
+                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateWithdrawal('${w.id}','Rejected')">Reject</button>
+                          ` : `<span style="color:#888;">Processed</span>`}
+                        </td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${withdrawals.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No withdrawals yet</p>' : ''}
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      async updateWithdrawal(id, status) {
+        if (!confirm(`${status === 'Approved' ? 'Approve' : 'Reject'} this withdrawal?`)) return;
+        try {
+          await this.api(`/admin/withdrawals/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+          this.toast(`Withdrawal ${status.toLowerCase()}!`, 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async loadDeposits(c) {
+        try {
+          const deposits = await this.api('/admin/deposits');
+          const users = await this.api('/admin/users');
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header"><h3>Deposits (${deposits.length})</h3></div>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    ${deposits.map(d => {
+                      const user = users.find(u => u.id === d.userId);
+                      return `<tr>
+                        <td>${new Date(d.createdAt).toLocaleString()}</td>
+                        <td>${user?.username || 'Unknown'} (${user?.email || ''})</td>
+                        <td><strong>${d.amount} USDT</strong></td>
+                        <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${d.status}</span></td>
+                        <td>
+                          ${d.status === 'Pending' ? `
+                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${d.id}','Approved')">Approve</button>
+                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${d.id}','Rejected')">Reject</button>
+                          ` : '<span style="color:#888;">Processed</span>'}
+                        </td>
+                      </tr>`;
+                    }).join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${deposits.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No deposits yet</p>' : ''}
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      async updateDeposit(id, status) {
+        if (!confirm(`${status === 'Approved' ? 'Approve' : 'Reject'} this deposit?`)) return;
+        try {
+          await this.api(`/admin/deposits/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
+          this.toast(`Deposit ${status.toLowerCase()}!`, 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async loadAnnouncements(c) {
+        try {
+          const announcements = await this.api('/admin/announcements');
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header">
+                <h3>Announcements (${announcements.length})</h3>
+                <button class="admin-btn admin-btn-primary" onclick="Admin.showAnnouncementForm()">+ New Announcement</button>
+              </div>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>Date</th><th>Title</th><th>Category</th><th>Image</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    ${announcements.map(a => `
+                      <tr>
+                        <td>${a.date}</td>
+                        <td style="max-width:250px;">${a.title}</td>
+                        <td><span class="admin-badge admin-badge-pending">${a.category}</span></td>
+                        <td>${a.image ? '<span style="color:#22c55e;">Yes</span>' : '-'}</td>
+                        <td style="white-space:nowrap;">
+                          <button class="admin-btn admin-btn-edit" onclick="Admin.editAnnouncement('${a.id}')">Edit</button>
+                          <button class="admin-btn admin-btn-delete" onclick="Admin.deleteAnnouncement('${a.id}')">Delete</button>
+                        </td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${announcements.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No announcements yet. Create one!</p>' : ''}
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      showAnnouncementForm(existing = null) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3>${existing ? 'Edit' : 'New'} Announcement</h3>
+            <div class="admin-form-group"><label class="admin-form-label">Title / Subject</label><input class="admin-form-input" id="annTitle" value="${existing?.title || ''}" placeholder="Announcement title"></div>
+            <div class="admin-form-group"><label class="admin-form-label">Date</label><input class="admin-form-input" id="annDate" type="date" value="${existing?.date || new Date().toISOString().split('T')[0]}"></div>
+            <div class="admin-form-group"><label class="admin-form-label">Category</label><input class="admin-form-input" id="annCategory" value="${existing?.category || 'Announcement'}" placeholder="e.g. Announcement, Event, Update"></div>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Image / Flyer</label>
+              <input type="file" id="annImageFile" accept="image/*" class="admin-form-input" onchange="Admin.previewImage(event)">
+              ${existing?.image ? `<img src="${existing.image}" style="max-width:100%;margin-top:8px;border-radius:8px;" id="annImagePreview">` : '<img id="annImagePreview" style="max-width:100%;margin-top:8px;border-radius:8px;display:none;">'}
+              <input type="hidden" id="annImageUrl" value="${existing?.image || ''}">
+            </div>
+            <div class="admin-form-group"><label class="admin-form-label">Content / Text</label><textarea class="admin-form-input admin-form-textarea" id="annContent" placeholder="Announcement body text...">${existing?.content || ''}</textarea></div>
+            <div style="display:flex;gap:10px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+              <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveAnnouncement('${existing?.id || ''}')">${existing ? 'Update' : 'Create'}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      },
+
+      previewImage(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const preview = document.getElementById('annImagePreview');
+          preview.src = e.target.result;
+          preview.style.display = 'block';
+          try {
+            const res = await this.api('/admin/upload', {
+              method: 'POST',
+              body: JSON.stringify({ image: e.target.result, filename: file.name.split('.')[0] })
+            });
+            document.getElementById('annImageUrl').value = res.url;
+          } catch (err) { this.toast('Failed to upload image'); }
+        };
+        reader.readAsDataURL(file);
+      },
+
+      async saveAnnouncement(id) {
+        const data = {
+          title: document.getElementById('annTitle').value,
+          date: document.getElementById('annDate').value,
+          category: document.getElementById('annCategory').value,
+          content: document.getElementById('annContent').value,
+          image: document.getElementById('annImageUrl').value,
+        };
+        if (!data.title || !data.content) { this.toast('Title and content are required'); return; }
+        try {
+          if (id) {
+            await this.api(`/admin/announcements/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+          } else {
+            await this.api('/admin/announcements', { method: 'POST', body: JSON.stringify(data) });
+          }
+          document.querySelector('.admin-modal-overlay')?.remove();
+          this.toast(`Announcement ${id ? 'updated' : 'created'}!`, 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async editAnnouncement(id) {
+        try {
+          const announcements = await this.api('/admin/announcements');
+          const ann = announcements.find(a => a.id === id);
+          if (ann) this.showAnnouncementForm(ann);
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async deleteAnnouncement(id) {
+        if (!confirm('Delete this announcement?')) return;
+        try {
+          await this.api(`/admin/announcements/${id}`, { method: 'DELETE' });
+          this.toast('Deleted!', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      logout() {
+        this.token = null;
+        localStorage.removeItem('mlk_admin_token');
+        this.renderLogin();
+      }
+    };
+
+    Admin.init();
+  </script>
+</body>
+</html>
