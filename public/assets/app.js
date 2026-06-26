@@ -38,9 +38,11 @@ const modalClose = document.getElementById('modalClose');
 function openModal() { walletModal.classList.add('active'); }
 function closeModal() { walletModal.classList.remove('active'); }
 
-document.getElementById('connectWalletBtn').addEventListener('click', openModal);
-document.getElementById('heroConnectBtn').addEventListener('click', openModal);
-modalClose.addEventListener('click', closeModal);
+const connectWalletBtn = document.getElementById('connectWalletBtn');
+if (connectWalletBtn) connectWalletBtn.addEventListener('click', openModal);
+const heroConnectBtn = document.getElementById('heroConnectBtn');
+if (heroConnectBtn) heroConnectBtn.addEventListener('click', openModal);
+if (modalClose) modalClose.addEventListener('click', closeModal);
 walletModal.addEventListener('click', (e) => { if (e.target === walletModal) closeModal(); });
 
 document.querySelectorAll('.wallet-option').forEach(btn => {

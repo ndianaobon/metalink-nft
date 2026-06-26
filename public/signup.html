@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Up — MetaLinkNFT</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/images/MetaLink-NFT-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/auth.css">
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-container">
+      <a href="/" class="auth-back">&larr; Back to Home</a>
+      <div class="auth-card">
+        <div class="auth-header">
+          <a href="/">
+            <img src="/assets/images/MetaLink-NFT-icon.png" alt="MetaLinkNFT" class="auth-logo">
+          </a>
+          <h1>Create Account</h1>
+          <p>Join MetaLinkNFT and start trading NFTs</p>
+        </div>
+        <form id="signupForm" class="auth-form">
+          <div class="auth-field">
+            <label for="signupEmail">Email <span class="required">*</span></label>
+            <input type="email" id="signupEmail" placeholder="Enter your email" required>
+          </div>
+          <div class="auth-field">
+            <label for="signupReferral">Referral Code <span class="optional">(optional)</span></label>
+            <input type="text" id="signupReferral" placeholder="Enter referral code">
+          </div>
+          <div class="auth-field">
+            <label for="signupPassword">Password <span class="required">*</span></label>
+            <div class="auth-password-wrap">
+              <input type="password" id="signupPassword" placeholder="Min 6 characters" required>
+              <button type="button" class="auth-eye" onclick="togglePassword('signupPassword', this)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="auth-field">
+            <label for="signupConfirm">Confirm Password <span class="required">*</span></label>
+            <div class="auth-password-wrap">
+              <input type="password" id="signupConfirm" placeholder="Re-enter password" required>
+              <button type="button" class="auth-eye" onclick="togglePassword('signupConfirm', this)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div id="authError" class="auth-error" style="display:none;"></div>
+          <button type="submit" class="btn btn-primary btn-block btn-lg auth-submit">Create Account</button>
+        </form>
+        <div class="auth-footer">
+          Already have an account? <a href="/signup.html#login">Sign In</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Theme
+    const saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+
+    function togglePassword(id, btn) {
+      const input = document.getElementById(id);
+      input.type = input.type === 'password' ? 'text' : 'password';
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('authError');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 4000);
+    }
+
+    function showMode() {
+      const isLogin = window.location.hash === '#login';
+      const form = document.getElementById('signupForm');
+      const header = document.querySelector('.auth-header h1');
+      const subtitle = document.querySelector('.auth-header p');
+      const submitBtn = document.querySelector('.auth-submit');
+      const footer = document.querySelector('.auth-footer');
+      const referralField = document.getElementById('signupReferral').closest('.auth-field');
+      const confirmField = document.getElementById('signupConfirm').closest('.auth-field');
+
+      if (isLogin) {
+        header.textContent = 'Welcome Back';
+        subtitle.textContent = 'Sign in to your MetaLinkNFT account';
+        submitBtn.textContent = 'Sign In';
+        footer.innerHTML = 'Don\'t have an account? <a href="/signup.html">Sign Up</a>';
+        referralField.style.display = 'none';
+        confirmField.style.display = 'none';
+        document.title = 'Sign In — MetaLinkNFT';
+      } else {
+        header.textContent = 'Create Account';
+        subtitle.textContent = 'Join MetaLinkNFT and start trading NFTs';
+        submitBtn.textContent = 'Create Account';
+        footer.innerHTML = 'Already have an account? <a href="/signup.html#login">Sign In</a>';
+        referralField.style.display = 'block';
+        confirmField.style.display = 'block';
+        document.title = 'Sign Up — MetaLinkNFT';
+      }
+    }
+
+    window.addEventListener('hashchange', showMode);
+    showMode();
+
+    document.getElementById('signupForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const isLogin = window.location.hash === '#login';
+      const email = document.getElementById('signupEmail').value;
+      const password = document.getElementById('signupPassword').value;
+      const submitBtn = document.querySelector('.auth-submit');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = isLogin ? 'Signing in...' : 'Creating account...';
+
+      try {
+        if (isLogin) {
+          const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          localStorage.setItem('mlk_token', data.token);
+          localStorage.setItem('mlk_user', JSON.stringify(data.user));
+          window.location.href = '/app.html';
+        } else {
+          const confirmPassword = document.getElementById('signupConfirm').value;
+          const referralCode = document.getElementById('signupReferral').value;
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, confirmPassword, referralCode })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          localStorage.setItem('mlk_token', data.token);
+          localStorage.setItem('mlk_user', JSON.stringify(data.user));
+          window.location.href = '/app.html';
+        }
+      } catch (err) {
+        showError(err.message);
+        submitBtn.disabled = false;
+        submitBtn.textContent = isLogin ? 'Sign In' : 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

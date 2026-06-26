@@ -30,13 +30,15 @@
         <li><a href="#auctions">Auctions</a></li>
         <li><a href="#stake">Stake</a></li>
         <li><a href="#community">Community</a></li>
+        <li class="nav-mobile-auth"><a href="/signup.html">Sign Up</a></li>
       </ul>
       <div class="nav-actions">
         <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
           <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
-        <button class="btn btn-primary" id="connectWalletBtn">Connect Wallet</button>
+        <a href="/signup.html#login" class="btn btn-outline btn-sm">Sign In</a>
+        <a href="/signup.html" class="btn btn-primary btn-sm">Sign Up</a>
         <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
           <span></span><span></span><span></span>
         </button>
@@ -55,7 +57,7 @@
       <p class="hero-desc reveal">A next-generation NFT ecosystem connecting creators, collectors, and communities through transparent digital ownership.</p>
       <div class="hero-actions reveal">
         <a href="#auctions" class="btn btn-primary btn-lg">Explore Marketplace</a>
-        <button class="btn btn-outline btn-lg" id="heroConnectBtn">Connect Wallet</button>
+        <a href="/signup.html" class="btn btn-outline btn-lg">Sign Up Free</a>
       </div>
       <div class="trust-bar reveal">
         <div class="trust-item"><span class="trust-number">50K+</span><span class="trust-label">NFTs Created</span></div>
@@ -157,10 +159,8 @@
       <h2 class="section-title reveal">Live Auctions & Featured Drops</h2>
       <div class="nft-grid">
         <div class="card nft-card reveal">
-          <div class="nft-image" style="background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 50%, #22D3EE 100%);">
-            <div class="nft-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-            </div>
+          <div class="nft-image">
+            <img src="/assets/images/nfts/nft1.jpg" alt="Ethereal Genesis #001" loading="lazy">
           </div>
           <div class="nft-info">
             <h4>Ethereal Genesis #001</h4>
@@ -173,10 +173,8 @@
           </div>
         </div>
         <div class="card nft-card reveal">
-          <div class="nft-image" style="background: linear-gradient(135deg, #4F46E5 0%, #14B8A6 100%);">
-            <div class="nft-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-            </div>
+          <div class="nft-image">
+            <img src="/assets/images/nfts/purple-hat-ape.jpg" alt="Digital Horizon #042" loading="lazy">
           </div>
           <div class="nft-info">
             <h4>Digital Horizon #042</h4>
@@ -189,10 +187,8 @@
           </div>
         </div>
         <div class="card nft-card reveal">
-          <div class="nft-image" style="background: linear-gradient(135deg, #14B8A6 0%, #7C3AED 100%);">
-            <div class="nft-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-            </div>
+          <div class="nft-image">
+            <img src="/assets/images/nfts/blue-cap-ape.jpg" alt="Abstract Realms #107" loading="lazy">
           </div>
           <div class="nft-info">
             <h4>Abstract Realms #107</h4>
@@ -205,10 +201,8 @@
           </div>
         </div>
         <div class="card nft-card reveal">
-          <div class="nft-image" style="background: linear-gradient(135deg, #3B82F6 0%, #7C3AED 50%, #14B8A6 100%);">
-            <div class="nft-placeholder">
-              <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" stroke-width="1"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-            </div>
+          <div class="nft-image">
+            <img src="/assets/images/nfts/cartoon-ape.jpg" alt="MetaVerse Portal #023" loading="lazy">
           </div>
           <div class="nft-info">
             <h4>MetaVerse Portal #023</h4>
@@ -238,7 +232,7 @@
         <div class="card collection-row reveal">
           <span class="col-rank">1</span>
           <div class="col-name">
-            <div class="collection-avatar" style="background: linear-gradient(135deg, #7C3AED, #4F46E5);"></div>
+            <img class="collection-avatar" src="/assets/images/nfts/col1.jpg" alt="CryptoVault Genesis">
             <span>CryptoVault Genesis</span>
           </div>
           <span class="col-volume">1,245 ETH</span>
@@ -247,7 +241,7 @@
         <div class="card collection-row reveal">
           <span class="col-rank">2</span>
           <div class="col-name">
-            <div class="collection-avatar" style="background: linear-gradient(135deg, #4F46E5, #14B8A6);"></div>
+            <img class="collection-avatar" src="/assets/images/nfts/col2.jpg" alt="Digital Dreamscapes">
             <span>Digital Dreamscapes</span>
           </div>
           <span class="col-volume">892 ETH</span>
@@ -256,7 +250,7 @@
         <div class="card collection-row reveal">
           <span class="col-rank">3</span>
           <div class="col-name">
-            <div class="collection-avatar" style="background: linear-gradient(135deg, #14B8A6, #7C3AED);"></div>
+            <img class="collection-avatar" src="/assets/images/nfts/col3.jpg" alt="Pixel Pioneers">
             <span>Pixel Pioneers</span>
           </div>
           <span class="col-volume">654 ETH</span>
@@ -265,7 +259,7 @@
         <div class="card collection-row reveal">
           <span class="col-rank">4</span>
           <div class="col-name">
-            <div class="collection-avatar" style="background: linear-gradient(135deg, #3B82F6, #7C3AED);"></div>
+            <img class="collection-avatar" src="/assets/images/nfts/col4.jpg" alt="Neon Abstracts">
             <span>Neon Abstracts</span>
           </div>
           <span class="col-volume">421 ETH</span>
@@ -274,7 +268,7 @@
         <div class="card collection-row reveal">
           <span class="col-rank">5</span>
           <div class="col-name">
-            <div class="collection-avatar" style="background: linear-gradient(135deg, #7C3AED, #22D3EE);"></div>
+            <img class="collection-avatar" src="/assets/images/nfts/col5.jpg" alt="Chain Art Collective">
             <span>Chain Art Collective</span>
           </div>
           <span class="col-volume">318 ETH</span>
@@ -372,8 +366,8 @@
       <h2 class="section-title reveal">Ready to Own the Future?</h2>
       <p class="section-desc reveal">Join thousands of creators and collectors on MetaLinkNFT.</p>
       <div class="cta-actions reveal">
-        <a href="#auctions" class="btn btn-primary btn-lg">Start Trading Now</a>
-        <a href="#" class="btn btn-outline btn-lg">Launch Your Collection</a>
+        <a href="/signup.html" class="btn btn-primary btn-lg">Get Started</a>
+        <a href="#auctions" class="btn btn-outline btn-lg">Explore Marketplace</a>
       </div>
     </div>
   </section>
