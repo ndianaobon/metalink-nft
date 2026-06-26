@@ -95,6 +95,7 @@
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
               <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
+              <button class="admin-nav-item" data-page="settings">&#9881; Settings</button>
               <button class="admin-nav-item" style="margin-top:auto;" onclick="Admin.logout()">&#128682; Logout</button>
             </aside>
             <div class="admin-main">
@@ -130,6 +131,7 @@
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
         else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
+        else if (this.currentPage === 'settings') await this.loadSettings(c);
       },
 
       async loadDashboard(c) {
@@ -462,6 +464,41 @@
           await this.api(`/admin/announcements/${id}`, { method: 'DELETE' });
           this.toast('Deleted!', 'success');
           this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async loadSettings(c) {
+        try {
+          const config = await this.api('/admin/platform-config');
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header"><h3>Platform Deposit Addresses</h3></div>
+              <div style="padding:24px;">
+                <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">These wallet addresses will be shown to users when they click Deposit. Users will send USDT to these addresses.</p>
+                <div class="admin-form-group">
+                  <label class="admin-form-label">USDT Deposit Address (TRC-20)</label>
+                  <input class="admin-form-input" id="cfgTrc20" value="${config.depositAddressTrc20 || ''}" placeholder="Enter TRC-20 USDT address">
+                </div>
+                <div class="admin-form-group">
+                  <label class="admin-form-label">USDT Deposit Address (BEP-20)</label>
+                  <input class="admin-form-input" id="cfgBep20" value="${config.depositAddressBep20 || ''}" placeholder="Enter BEP-20 USDT address">
+                </div>
+                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;" onclick="Admin.saveSettings()">Save Addresses</button>
+              </div>
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load settings</p>'; }
+      },
+
+      async saveSettings() {
+        try {
+          await this.api('/admin/platform-config', {
+            method: 'PUT',
+            body: JSON.stringify({
+              depositAddressTrc20: document.getElementById('cfgTrc20').value,
+              depositAddressBep20: document.getElementById('cfgBep20').value
+            })
+          });
+          this.toast('Deposit addresses saved!', 'success');
         } catch (e) { this.toast(e.message); }
       },
 

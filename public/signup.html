@@ -99,6 +99,8 @@
       document.getElementById('authError').style.display = 'none';
       document.getElementById('authSuccess').style.display = 'none';
 
+      const confirmInput = document.getElementById('signupConfirm');
+
       if (isForgot) {
         header.textContent = 'Reset Password';
         subtitle.textContent = 'Enter your email and a new password';
@@ -108,10 +110,11 @@
         confirmField.style.display = 'block';
         passwordField.style.display = 'block';
         forgotLink.style.display = 'none';
+        confirmInput.required = true;
         passwordLabel.innerHTML = 'New Password <span class="required">*</span>';
         confirmLabel.innerHTML = 'Confirm New Password <span class="required">*</span>';
         document.getElementById('signupPassword').placeholder = 'Enter new password';
-        document.getElementById('signupConfirm').placeholder = 'Re-enter new password';
+        confirmInput.placeholder = 'Re-enter new password';
         document.title = 'Reset Password — MetaLinkNFT';
       } else if (isLogin) {
         header.textContent = 'Welcome Back';
@@ -122,6 +125,7 @@
         confirmField.style.display = 'none';
         passwordField.style.display = 'block';
         forgotLink.style.display = 'block';
+        confirmInput.required = false;
         passwordLabel.innerHTML = 'Password <span class="required">*</span>';
         document.getElementById('signupPassword').placeholder = 'Min 6 characters';
         document.title = 'Sign In — MetaLinkNFT';
@@ -134,10 +138,11 @@
         confirmField.style.display = 'block';
         passwordField.style.display = 'block';
         forgotLink.style.display = 'none';
+        confirmInput.required = true;
         passwordLabel.innerHTML = 'Password <span class="required">*</span>';
         confirmLabel.innerHTML = 'Confirm Password <span class="required">*</span>';
         document.getElementById('signupPassword').placeholder = 'Min 6 characters';
-        document.getElementById('signupConfirm').placeholder = 'Re-enter password';
+        confirmInput.placeholder = 'Re-enter password';
         document.title = 'Sign Up — MetaLinkNFT';
       }
     }

@@ -241,7 +241,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 .nav-mobile-auth { display: none; }
 
-/* Reveal animation */
+/* Reveal animation — noscript fallback ensures content shows if JS fails */
 .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.7s ease, transform 0.7s ease; }
 .reveal.visible { opacity: 1; transform: translateY(0); }
 

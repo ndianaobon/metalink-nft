@@ -1,0 +1,1345 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>MetaLinkNFT</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/images/MetaLink-NFT-icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --transition: 0.3s ease;
+      --bottom-nav: 72px;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0A0A12;
+      --bg-alt: #0F0F1C;
+      --surface: #161626;
+      --surface-hover: #1C1C32;
+      --border: rgba(255,255,255,0.06);
+      --text: #F4F4FA;
+      --text-secondary: #9B9BB4;
+      --text-muted: #6B6B80;
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --gradient: linear-gradient(135deg, #7C3AED, #4F46E5, #14B8A6);
+      --gradient-subtle: linear-gradient(135deg, rgba(124,58,237,0.15), rgba(79,70,229,0.15), rgba(20,184,166,0.15));
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+      --positive: #14B8A6;
+      --negative: #EF4444;
+      --warning: #F59E0B;
+    }
+
+    [data-theme="light"] {
+      --bg: #F8F9FC;
+      --bg-alt: #FFFFFF;
+      --surface: #FFFFFF;
+      --surface-hover: #F0F1F5;
+      --border: rgba(0,0,0,0.08);
+      --text: #0F0F1C;
+      --text-secondary: #555570;
+      --text-muted: #8888A0;
+      --primary: #4F46E5;
+      --primary-hover: #4338CA;
+      --gradient: linear-gradient(135deg, #7C3AED, #4F46E5, #14B8A6);
+      --gradient-subtle: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(79,70,229,0.08), rgba(20,184,166,0.08));
+      --shadow: 0 4px 24px rgba(0,0,0,0.06);
+      --positive: #059669;
+      --negative: #DC2626;
+      --warning: #D97706;
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ---- Layout ---- */
+    .app-header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px; height: 56px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .app-header-logo { height: 26px; }
+    .app-header-right { display: flex; align-items: center; gap: 12px; }
+    .app-header-balance {
+      font-size: 0.82rem; font-weight: 600; color: var(--positive);
+      background: rgba(20,184,166,0.1); padding: 4px 12px; border-radius: 20px;
+    }
+
+    .app-body {
+      padding: 56px 0 var(--bottom-nav);
+      min-height: 100vh;
+    }
+
+    .tab-page {
+      display: none;
+      padding: 20px 16px 24px;
+      animation: fadeUp 0.3s ease;
+    }
+    .tab-page.active { display: block; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ---- Bottom Nav ---- */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+      display: flex; align-items: stretch; justify-content: space-around;
+      height: var(--bottom-nav);
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .nav-tab {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 4px; background: none; border: none; color: var(--text-muted);
+      font-size: 0.7rem; font-weight: 500; font-family: var(--font); cursor: pointer;
+      transition: color var(--transition);
+    }
+    .nav-tab svg { width: 24px; height: 24px; }
+    .nav-tab.active { color: var(--primary); }
+
+    /* ---- Shared ---- */
+    .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    }
+    .card-title { font-size: 0.8rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .gradient-text { background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--font); font-weight: 600; font-size: 0.9rem;
+      padding: 12px 24px; border-radius: 12px; border: none; cursor: pointer;
+      transition: all var(--transition); text-decoration: none; width: 100%;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-outline { background: transparent; color: var(--text); border: 1.5px solid var(--border); }
+    .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+    .btn-sm { padding: 8px 16px; font-size: 0.8rem; border-radius: 10px; width: auto; }
+
+    .form-field { margin-bottom: 16px; }
+    .form-field label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
+    .form-field input, .form-field select {
+      width: 100%; padding: 12px 14px; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 12px; color: var(--text); font-size: 0.95rem; font-family: var(--font); outline: none;
+      transition: border-color var(--transition);
+    }
+    .form-field input:focus, .form-field select:focus { border-color: var(--primary); }
+    .form-field input::placeholder { color: var(--text-muted); }
+
+    .stat-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
+    .stat-row:last-child { border-bottom: none; }
+    .stat-label { font-size: 0.85rem; color: var(--text-secondary); }
+    .stat-value { font-size: 0.85rem; font-weight: 600; }
+
+    .toast {
+      position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+      padding: 12px 24px; border-radius: 12px; font-size: 0.85rem; font-weight: 500;
+      color: #fff; z-index: 999; animation: fadeUp 0.3s ease;
+      max-width: 90%;
+    }
+    .toast-success { background: var(--positive); }
+    .toast-error { background: var(--negative); }
+
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--text-muted);
+    }
+    .empty-state svg { margin-bottom: 12px; opacity: 0.4; }
+    .empty-state p { font-size: 0.9rem; }
+
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 0.72rem; font-weight: 600;
+    }
+    .badge-active { background: rgba(20,184,166,0.15); color: var(--positive); }
+    .badge-completed { background: rgba(79,70,229,0.15); color: var(--primary); }
+    .badge-won { background: rgba(20,184,166,0.15); color: var(--positive); }
+    .badge-lost { background: rgba(239,68,68,0.1); color: var(--negative); }
+    .badge-pending { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .badge-deposited { background: rgba(20,184,166,0.15); color: var(--positive); }
+    .badge-rejected { background: rgba(239,68,68,0.1); color: var(--negative); }
+
+    /* ---- Stake Page ---- */
+    .stake-subtabs {
+      display: flex; background: var(--surface); border-radius: 12px; padding: 4px;
+      border: 1px solid var(--border); margin-bottom: 20px;
+    }
+    .stake-subtab {
+      flex: 1; padding: 10px; border: none; border-radius: 10px;
+      background: transparent; color: var(--text-muted); font-family: var(--font);
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all var(--transition);
+    }
+    .stake-subtab.active {
+      background: var(--primary); color: #fff;
+    }
+    .stake-sub-page { display: none; }
+    .stake-sub-page.active { display: block; }
+
+    .nft-catalog { display: flex; flex-direction: column; gap: 20px; }
+    .nft-stake-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      overflow: hidden; transition: all var(--transition);
+    }
+    .nft-stake-card:hover { box-shadow: var(--shadow); }
+    .nft-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px 8px;
+    }
+    .nft-card-header h4 { font-size: 0.95rem; font-weight: 700; }
+    .nft-card-level {
+      font-size: 0.72rem; font-weight: 700; color: var(--primary);
+      background: rgba(79,70,229,0.1); padding: 3px 8px; border-radius: 6px;
+    }
+    .nft-card-banner {
+      width: 100%; height: 140px; object-fit: cover; display: block;
+    }
+    .nft-card-banner-placeholder {
+      width: 100%; height: 140px; display: flex; align-items: center; justify-content: center;
+      font-size: 3rem; font-weight: 900; color: #fff;
+    }
+    .nft-card-details { padding: 0 16px; }
+    .nft-card-row {
+      display: flex; justify-content: space-between; padding: 10px 0;
+      border-bottom: 1px solid var(--border); font-size: 0.85rem;
+    }
+    .nft-card-row:last-child { border-bottom: none; }
+    .nft-card-row .label { color: var(--text-muted); }
+    .nft-card-row .val { font-weight: 600; }
+    .nft-card-row .val.income { color: var(--positive); }
+    .nft-card-status {
+      display: inline-block; padding: 2px 10px; border-radius: 6px;
+      font-size: 0.72rem; font-weight: 600; background: rgba(20,184,166,0.15); color: var(--positive);
+    }
+    .nft-card-go {
+      display: block; width: calc(100% - 32px); margin: 12px 16px 16px;
+      padding: 12px; border: none; border-radius: 12px; font-family: var(--font);
+      font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer;
+      background: linear-gradient(135deg, var(--primary), #14B8A6);
+      transition: all var(--transition);
+    }
+    .nft-card-go:hover { opacity: 0.9; transform: translateY(-1px); }
+
+    /* My stakes */
+    .my-stakes-list { padding: 0 4px; }
+    .my-stakes-list .stake-item {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .stake-item-top {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+    }
+    .stake-item .stake-icon {
+      width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; font-weight: 800; color: #fff; flex-shrink: 0;
+    }
+    .stake-item .stake-info { flex: 1; min-width: 0; }
+    .stake-item .stake-name { font-size: 0.95rem; font-weight: 600; }
+    .stake-item .stake-detail { font-size: 0.75rem; color: var(--text-muted); }
+    .stake-item-stats {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;
+      background: var(--bg); border-radius: 10px; padding: 10px; margin-bottom: 12px;
+    }
+    .stake-item-stat { text-align: center; }
+    .stake-item-stat .label { font-size: 0.68rem; color: var(--text-muted); text-transform: uppercase; }
+    .stake-item-stat .val { font-size: 0.85rem; font-weight: 700; }
+    .stake-item .stake-claim-btn {
+      width: 100%; padding: 10px; border: none; border-radius: 10px;
+      background: var(--primary); color: #fff; font-family: var(--font);
+      font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all var(--transition);
+    }
+    .stake-item .stake-claim-btn:hover { background: var(--primary-hover); }
+
+    /* ---- Earn Page ---- */
+    .earn-total {
+      text-align: center; padding: 32px 20px;
+      background: var(--gradient-subtle); border-radius: var(--radius); margin-bottom: 20px;
+    }
+    .earn-total .label { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; }
+    .earn-total .amount { font-size: 2.2rem; font-weight: 800; }
+    .income-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .income-item {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 14px 10px; text-align: center;
+    }
+    .income-item .label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .income-item .val { font-size: 0.95rem; font-weight: 700; }
+
+    /* ---- Reserve Page ---- */
+    .reserve-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+    .reserve-stat {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
+      padding: 16px; text-align: center;
+    }
+    .reserve-stat .label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .reserve-stat .val { font-size: 1.2rem; font-weight: 700; }
+
+    .order-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .order-item:last-child { border-bottom: none; }
+    .order-item .order-left { min-width: 0; }
+    .order-item .order-id { font-size: 0.82rem; font-weight: 600; }
+    .order-item .order-date { font-size: 0.72rem; color: var(--text-muted); }
+    .order-item .order-right { text-align: right; flex-shrink: 0; }
+    .order-item .order-amount { font-size: 0.85rem; font-weight: 600; }
+
+    /* ---- Assets Page ---- */
+    .balance-card {
+      text-align: center; padding: 32px 20px;
+      background: var(--gradient-subtle); border-radius: var(--radius); margin-bottom: 20px;
+    }
+    .balance-card .label { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; }
+    .balance-card .amount { font-size: 2.4rem; font-weight: 800; }
+    .balance-card .unit { font-size: 1rem; font-weight: 500; color: var(--text-secondary); margin-left: 4px; }
+    .balance-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
+
+    .history-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .history-item:last-child { border-bottom: none; }
+    .history-item .h-type { font-size: 0.85rem; font-weight: 600; }
+    .history-item .h-date { font-size: 0.72rem; color: var(--text-muted); }
+    .history-item .h-amount { font-size: 0.9rem; font-weight: 700; }
+    .history-item .h-amount.positive { color: var(--positive); }
+    .history-item .h-amount.negative { color: var(--negative); }
+
+    /* ---- Assets Page Redesign ---- */
+    .assets-summary {
+      display: flex; justify-content: center; gap: 28px; margin-top: 16px; flex-wrap: wrap;
+    }
+    .assets-summary-item {
+      display: flex; align-items: center; gap: 8px; text-align: left;
+    }
+    .assets-summary-item .val { font-size: 0.95rem; font-weight: 700; }
+    .assets-summary-item .label { font-size: 0.7rem; color: var(--text-muted); }
+
+    .assets-actions-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px;
+    }
+    .assets-action-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 10px; cursor: pointer; font-family: var(--font);
+      font-size: 0.82rem; font-weight: 500; color: var(--text);
+      transition: all var(--transition);
+    }
+    .assets-action-btn:hover { background: var(--surface-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
+
+    /* QR Code in deposit modal */
+    .deposit-qr-wrap {
+      display: flex; flex-direction: column; align-items: center; margin-bottom: 20px;
+    }
+    .deposit-qr {
+      background: #fff; padding: 12px; border-radius: 12px;
+      display: inline-block; margin-bottom: 10px;
+    }
+    .deposit-qr canvas { display: block; }
+    .deposit-qr-label { font-size: 0.78rem; color: var(--text-muted); }
+
+    /* Deposit loader overlay */
+    .deposit-loader-overlay {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      border-radius: 20px 20px 0 0; z-index: 10;
+    }
+    .deposit-spinner {
+      width: 48px; height: 48px; border: 4px solid rgba(255,255,255,0.2);
+      border-top-color: var(--primary); border-radius: 50%;
+      animation: dspin 0.8s linear infinite; margin-bottom: 16px;
+    }
+    @keyframes dspin { to { transform: rotate(360deg); } }
+    .deposit-loader-overlay p {
+      color: #fff; font-size: 0.95rem; font-weight: 600; text-align: center;
+    }
+    .deposit-loader-overlay .sub {
+      color: rgba(255,255,255,0.6); font-size: 0.8rem; font-weight: 400; margin-top: 4px;
+    }
+
+    .modal-sheet { position: relative; }
+
+    /* ---- My Page ---- */
+    .profile-card {
+      text-align: center; padding: 28px 20px; margin-bottom: 20px;
+    }
+    .profile-avatar {
+      width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 12px;
+      background: var(--gradient); display: flex; align-items: center; justify-content: center;
+      font-size: 1.8rem; font-weight: 800; color: #fff; overflow: hidden;
+    }
+    .profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-name { font-size: 1.1rem; font-weight: 700; margin-bottom: 2px; }
+    .profile-uid { font-size: 0.8rem; color: var(--text-muted); }
+    .profile-stats { display: flex; justify-content: center; gap: 32px; margin-top: 16px; }
+    .profile-stat { text-align: center; }
+    .profile-stat .val { font-size: 1.1rem; font-weight: 700; }
+    .profile-stat .label { font-size: 0.72rem; color: var(--text-muted); }
+
+    .menu-list { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 16px; }
+    .menu-item {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px;
+      border-bottom: 1px solid var(--border); cursor: pointer;
+      transition: background var(--transition); color: var(--text); text-decoration: none;
+    }
+    .menu-item:last-child { border-bottom: none; }
+    .menu-item:hover { background: var(--surface-hover); }
+    .menu-item svg { width: 20px; height: 20px; color: var(--text-secondary); flex-shrink: 0; }
+    .menu-item span { flex: 1; font-size: 0.9rem; font-weight: 500; }
+    .menu-item .menu-arrow { color: var(--text-muted); font-size: 0.9rem; }
+    .menu-item.danger { color: var(--negative); }
+    .menu-item.danger svg { color: var(--negative); }
+
+    /* ---- Modal ---- */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+      z-index: 200; display: flex; align-items: flex-end; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity var(--transition);
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: all; }
+    .modal-sheet {
+      background: var(--surface); border-radius: 20px 20px 0 0;
+      width: 100%; max-width: 500px; max-height: 85vh; overflow-y: auto;
+      padding: 24px 20px 32px; transform: translateY(100%); transition: transform var(--transition);
+    }
+    .modal-overlay.active .modal-sheet { transform: translateY(0); }
+    .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 0 auto 20px; }
+    .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
+
+    /* ---- Deposit Address ---- */
+    .deposit-network-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .deposit-network-tab {
+      flex: 1; padding: 10px; border-radius: 12px; border: 1.5px solid var(--border);
+      background: var(--bg); color: var(--text-secondary); font-size: 0.85rem; font-weight: 600;
+      font-family: var(--font); cursor: pointer; text-align: center; transition: all var(--transition);
+    }
+    .deposit-network-tab.active {
+      border-color: var(--primary); color: var(--primary); background: rgba(79,70,229,0.08);
+    }
+    .deposit-addr-block { margin-bottom: 20px; }
+    .deposit-addr-label {
+      font-size: 0.8rem; font-weight: 600; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px;
+    }
+    .deposit-addr-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .deposit-addr-text {
+      flex: 1; font-size: 0.82rem; font-weight: 500; word-break: break-all;
+      color: var(--text); font-family: 'Courier New', monospace;
+    }
+    .deposit-addr-placeholder {
+      flex: 1; font-size: 0.85rem; color: var(--text-muted); font-style: italic;
+    }
+    .deposit-copy-btn {
+      flex-shrink: 0; background: var(--primary); color: #fff; border: none;
+      border-radius: 8px; padding: 8px 14px; font-size: 0.78rem; font-weight: 600;
+      font-family: var(--font); cursor: pointer; transition: background var(--transition);
+    }
+    .deposit-copy-btn:hover { background: var(--primary-hover); }
+    .deposit-eye-btn {
+      flex-shrink: 0; background: none; border: none; color: var(--text-muted);
+      cursor: pointer; padding: 4px; display: flex; transition: color var(--transition);
+    }
+    .deposit-eye-btn:hover { color: var(--text); }
+    .deposit-warning {
+      display: flex; align-items: flex-start; gap: 8px; padding: 12px 14px;
+      background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15);
+      border-radius: 10px; margin-bottom: 20px;
+    }
+    .deposit-warning svg { flex-shrink: 0; color: var(--warning); margin-top: 1px; }
+    .deposit-warning p { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
+
+    /* ---- Responsive ---- */
+    @media (min-width: 600px) {
+      .tab-page { max-width: 600px; margin: 0 auto; }
+      .income-grid { grid-template-columns: repeat(4, 1fr); }
+      .nft-card-banner { height: 180px; }
+    }
+    @media (min-width: 900px) {
+      .tab-page { max-width: 720px; }
+      .nft-catalog { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+      .nft-card-banner { height: 160px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="app-header">
+    <img src="/assets/images/MetaLink-NFT-icon.svg" alt="MetaLinkNFT" class="app-header-logo">
+    <div class="app-header-right">
+      <span class="app-header-balance" id="headerBalance">0.00 USDT</span>
+    </div>
+  </header>
+
+  <main class="app-body">
+
+    <!-- ===== STAKE TAB ===== -->
+    <div class="tab-page active" id="page-stake">
+      <!-- Sub tabs -->
+      <div class="stake-subtabs">
+        <button class="stake-subtab active" data-stab="stake" onclick="switchStakeTab('stake')">Stake</button>
+        <button class="stake-subtab" data-stab="collection" onclick="switchStakeTab('collection')">Collection</button>
+        <button class="stake-subtab" data-stab="mystake" onclick="switchStakeTab('mystake')">My Stake</button>
+      </div>
+
+      <!-- Stake catalog -->
+      <div class="stake-sub-page active" id="stakeSubStake">
+        <div id="nftCatalog"></div>
+      </div>
+
+      <!-- Collection (placeholder) -->
+      <div class="stake-sub-page" id="stakeSubCollection">
+        <div class="empty-state" style="padding:60px 20px;"><p>Collections coming soon</p></div>
+      </div>
+
+      <!-- My Stakes -->
+      <div class="stake-sub-page" id="stakeSubMystake">
+        <div class="my-stakes-list" id="myStakesList">
+          <div class="empty-state"><p>No active stakes yet</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Stake Modal (bottom sheet) -->
+    <div class="modal-overlay" id="stakeModal">
+      <div class="modal-sheet" id="stakeSheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title">Stake <span id="stakeNftName"></span></div>
+        <div class="stat-row">
+          <span class="stat-label">Daily Income</span>
+          <span class="stat-value" id="stakeDaily" style="color:var(--positive)"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Duration</span>
+          <span class="stat-value" id="stakeDuration"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Pledge Range</span>
+          <span class="stat-value" id="stakeRange"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Handling Fee</span>
+          <span class="stat-value" id="stakeFee"></span>
+        </div>
+        <div class="form-field" style="margin-top:16px;">
+          <label>Amount (USDT)</label>
+          <input type="number" id="stakeAmount" placeholder="Enter amount">
+        </div>
+        <button class="btn btn-primary" id="stakeBtn">Confirm Stake</button>
+        <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- ===== EARN TAB ===== -->
+    <div class="tab-page" id="page-earn">
+      <h1 class="page-title">Earnings</h1>
+      <div class="earn-total">
+        <div class="label">Total Income</div>
+        <div class="amount gradient-text" id="earnTotal">0.00</div>
+      </div>
+      <div class="card-title">Income Breakdown</div>
+      <div class="income-grid" id="incomeGrid"></div>
+    </div>
+
+    <!-- ===== RESERVE TAB ===== -->
+    <div class="tab-page" id="page-reserve">
+      <h1 class="page-title">Reserve</h1>
+      <div class="reserve-stats">
+        <div class="reserve-stat">
+          <div class="label">Today's Earnings</div>
+          <div class="val" id="reserveToday" style="color:var(--positive)">0.00</div>
+        </div>
+        <div class="reserve-stat">
+          <div class="label">Cumulative Income</div>
+          <div class="val" id="reserveCumulative">0.00</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Make a Reservation</div>
+        <div class="stat-row">
+          <span class="stat-label">Range</span>
+          <span class="stat-value">50 - 2,000 USDT</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Your Balance</span>
+          <span class="stat-value" id="reserveBalance">0.00 USDT</span>
+        </div>
+        <div class="form-field" style="margin-top:16px;">
+          <label>Reservation Amount (USDT)</label>
+          <input type="number" id="reserveAmount" placeholder="50 - 2000" min="50" max="2000">
+        </div>
+        <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
+      </div>
+      <div class="card-title" style="margin-top:24px;">Order History</div>
+      <div class="card" id="reserveOrders">
+        <div class="empty-state"><p>No orders yet</p></div>
+      </div>
+    </div>
+
+    <!-- ===== ASSETS TAB ===== -->
+    <div class="tab-page" id="page-assets">
+      <h1 class="page-title">Assets(USDT)</h1>
+      <div class="balance-card">
+        <div class="amount gradient-text" id="assetsBalance" style="font-size:2.8rem;">0.00</div>
+        <div class="assets-summary">
+          <div class="assets-summary-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M12 8v8M8 12l4-4 4 4" stroke="#fff" stroke-width="2" fill="none"/></svg>
+            <div><div class="val" id="assetsRevenue">0.00</div><div class="label">Earnings</div></div>
+          </div>
+          <div class="assets-summary-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M12 16V8M8 12l4 4 4-4" stroke="#fff" stroke-width="2" fill="none"/></svg>
+            <div><div class="val" id="assetsWithdrawn">0.00</div><div class="label">Withdrawn</div></div>
+          </div>
+          <div class="assets-summary-item">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M8 12h8" stroke="#fff" stroke-width="2" fill="none"/></svg>
+            <div><div class="val" id="assetsNotWithdrawn" style="color:var(--positive)">0.00</div><div class="label">Undrawn</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deposit Addresses inline -->
+      <div class="card" id="assetsDepositCard">
+        <div class="deposit-addr-block">
+          <div class="deposit-addr-label">USDT Deposit Address (BEP-20)</div>
+          <div class="deposit-addr-row">
+            <span class="deposit-addr-text" id="assetAddrBep20" data-hidden="true">********************************</span>
+            <button class="deposit-eye-btn" onclick="toggleAssetAddr('bep20')" title="Show/Hide">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="deposit-addr-block" style="margin-top:16px;">
+          <div class="deposit-addr-label">USDT Deposit Address (TRC-20)</div>
+          <div class="deposit-addr-row">
+            <span class="deposit-addr-text" id="assetAddrTrc20" data-hidden="true">********************************</span>
+            <button class="deposit-eye-btn" onclick="toggleAssetAddr('trc20')" title="Show/Hide">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="assets-actions-grid">
+        <button class="assets-action-btn" onclick="openDepositModal()">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 13l3 3 3-3M12 7v9"/></svg>
+          <span>Deposit</span>
+        </button>
+        <button class="assets-action-btn" onclick="openWithdrawModal()">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M2 10h20"/></svg>
+          <span>Withdraw</span>
+        </button>
+        <button class="assets-action-btn" onclick="openWalletModal()">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Settings</span>
+        </button>
+      </div>
+
+      <div class="card-title">Account Activity</div>
+      <div class="card" id="assetsHistory">
+        <div class="empty-state"><p>No transactions yet</p></div>
+      </div>
+    </div>
+
+    <!-- ===== MY TAB ===== -->
+    <div class="tab-page" id="page-my">
+      <h1 class="page-title">My Account</h1>
+      <div class="card profile-card">
+        <div class="profile-avatar" id="profileAvatar">U</div>
+        <div class="profile-name" id="profileName">User</div>
+        <div class="profile-uid" id="profileUid">UID: ---</div>
+        <div class="profile-stats">
+          <div class="profile-stat">
+            <div class="val" id="profileLevel">0</div>
+            <div class="label">Level</div>
+          </div>
+          <div class="profile-stat">
+            <div class="val" id="profilePoints">0</div>
+            <div class="label">Points</div>
+          </div>
+          <div class="profile-stat">
+            <div class="val" id="profileBalance">0</div>
+            <div class="label">Balance</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-list">
+        <div class="menu-item" onclick="openWalletModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/></svg>
+          <span>Wallet Address</span>
+          <span class="menu-arrow">&rsaquo;</span>
+        </div>
+        <div class="menu-item" onclick="openTeamModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>My Team</span>
+          <span class="menu-arrow">&rsaquo;</span>
+        </div>
+        <div class="menu-item" onclick="copyReferral()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          <span>Copy Referral Code</span>
+          <span class="menu-arrow">&rsaquo;</span>
+        </div>
+        <a class="menu-item" href="/">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          <span>Home Page</span>
+          <span class="menu-arrow">&rsaquo;</span>
+        </a>
+      </div>
+
+      <div class="menu-list">
+        <div class="menu-item danger" onclick="logout()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <span>Sign Out</span>
+          <span class="menu-arrow">&rsaquo;</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Navigation -->
+  <nav class="bottom-nav">
+    <button class="nav-tab active" data-tab="stake">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Stake
+    </button>
+    <button class="nav-tab" data-tab="earn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Earn
+    </button>
+    <button class="nav-tab" data-tab="reserve">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
+      Reserve
+    </button>
+    <button class="nav-tab" data-tab="assets">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14" r="2"/></svg>
+      Assets
+    </button>
+    <button class="nav-tab" data-tab="my">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      My
+    </button>
+  </nav>
+
+  <!-- Deposit Modal -->
+  <div class="modal-overlay" id="depositModal">
+    <div class="modal-sheet" id="depositSheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Deposit USDT</div>
+
+      <div class="deposit-network-tabs">
+        <button class="deposit-network-tab active" data-network="trc20" onclick="switchDepositNetwork('trc20')">TRC-20</button>
+        <button class="deposit-network-tab" data-network="bep20" onclick="switchDepositNetwork('bep20')">BEP-20</button>
+      </div>
+
+      <!-- QR Code -->
+      <div class="deposit-qr-wrap" id="depositQrWrap">
+        <div class="deposit-qr"><canvas id="depositQrCanvas" width="180" height="180"></canvas></div>
+        <div class="deposit-qr-label">Scan to get deposit address</div>
+      </div>
+
+      <div class="deposit-addr-block" id="depositAddrTrc20">
+        <div class="deposit-addr-label">USDT Deposit Address (TRC-20)</div>
+        <div class="deposit-addr-row">
+          <span class="deposit-addr-text" id="depAddrTrc20Val" data-hidden="true">********************************</span>
+          <button class="deposit-eye-btn" onclick="toggleDepositAddr('trc20')" title="Show/Hide">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button class="deposit-copy-btn" onclick="copyDepositAddr('trc20')">Copy</button>
+        </div>
+      </div>
+
+      <div class="deposit-addr-block" id="depositAddrBep20" style="display:none;">
+        <div class="deposit-addr-label">USDT Deposit Address (BEP-20)</div>
+        <div class="deposit-addr-row">
+          <span class="deposit-addr-text" id="depAddrBep20Val" data-hidden="true">********************************</span>
+          <button class="deposit-eye-btn" onclick="toggleDepositAddr('bep20')" title="Show/Hide">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button class="deposit-copy-btn" onclick="copyDepositAddr('bep20')">Copy</button>
+        </div>
+      </div>
+
+      <div class="deposit-warning">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <p>Only send USDT on the selected network. Sending other tokens or using the wrong network may result in permanent loss of funds.</p>
+      </div>
+
+      <div class="form-field">
+        <label>Deposit Amount (USDT)</label>
+        <input type="number" id="depositAmount" placeholder="Enter amount you sent">
+      </div>
+      <button class="btn btn-primary" id="depositBtn">Submit Deposit Request</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Withdraw Modal -->
+  <div class="modal-overlay" id="withdrawModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Withdraw USDT</div>
+      <div class="form-field">
+        <label>Amount (USDT)</label>
+        <input type="number" id="withdrawAmount" placeholder="Enter amount">
+      </div>
+      <div class="form-field">
+        <label>Wallet Type</label>
+        <select id="withdrawWalletType">
+          <option value="trc20">TRC20</option>
+          <option value="erc20">ERC20</option>
+        </select>
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;">4% fee applies. Make sure your wallet address is set.</p>
+      <button class="btn btn-primary" id="withdrawBtn">Submit Withdrawal</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Wallet Address Modal -->
+  <div class="modal-overlay" id="walletAddrModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Wallet Address</div>
+      <div class="form-field">
+        <label>TRC20 Address</label>
+        <input type="text" id="walletTrc20" placeholder="Enter TRC20 address">
+      </div>
+      <div class="form-field">
+        <label>ERC20 Address</label>
+        <input type="text" id="walletErc20" placeholder="Enter ERC20 address">
+      </div>
+      <p style="font-size:0.8rem;color:var(--warning);margin-bottom:16px;">Changing your wallet address will suspend withdrawals for 48 hours.</p>
+      <button class="btn btn-primary" id="saveWalletBtn">Save Address</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Team Modal -->
+  <div class="modal-overlay" id="teamModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">My Team</div>
+      <div id="teamStats"></div>
+      <div id="teamMembers" style="margin-top:16px;"></div>
+      <button class="btn btn-outline" style="margin-top:16px;" onclick="closeAllModals()">Close</button>
+    </div>
+  </div>
+
+  <script>
+    const TOKEN = localStorage.getItem('mlk_token');
+    const USER = JSON.parse(localStorage.getItem('mlk_user') || '{}');
+
+    if (!TOKEN) window.location.href = '/signup.html#login';
+
+    const saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.setAttribute('data-theme', saved);
+
+    let selectedNft = null;
+    let profileData = null;
+
+    function api(url, opts = {}) {
+      return fetch(url, {
+        ...opts,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + TOKEN, ...(opts.headers || {}) }
+      }).then(async r => {
+        const d = await r.json();
+        if (r.status === 401) { logout(); throw new Error('Session expired'); }
+        if (!r.ok) throw new Error(d.error || 'Request failed');
+        return d;
+      });
+    }
+
+    function toast(msg, type = 'success') {
+      const el = document.createElement('div');
+      el.className = 'toast toast-' + type;
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(() => el.remove(), 3000);
+    }
+
+    function fmt(n) { return parseFloat(n || 0).toFixed(2); }
+    function fmtDate(d) { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
+
+    // ---- Tab Navigation ----
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('page-' + tab.dataset.tab).classList.add('active');
+        loadTabData(tab.dataset.tab);
+      });
+    });
+
+    function loadTabData(tab) {
+      if (tab === 'stake') loadStakes();
+      else if (tab === 'earn') loadEarn();
+      else if (tab === 'reserve') loadReserve();
+      else if (tab === 'assets') loadAssets();
+      else if (tab === 'my') loadProfile();
+    }
+
+    // ---- STAKE ----
+    async function loadStakes() {
+      try {
+        const [catalog, myStakes] = await Promise.all([
+          api('/api/stakes/catalog'),
+          api('/api/stakes/my')
+        ]);
+        renderCatalog(catalog);
+        renderMyStakes(myStakes);
+      } catch (e) { console.error(e); }
+    }
+
+    let nftCatalogCache = [];
+
+    function switchStakeTab(tab) {
+      document.querySelectorAll('.stake-subtab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.stake-subtab[data-stab="${tab}"]`).classList.add('active');
+      document.querySelectorAll('.stake-sub-page').forEach(p => p.classList.remove('active'));
+      document.getElementById('stakeSubStake').style.display = tab === 'stake' ? 'block' : 'none';
+      document.getElementById('stakeSubCollection').style.display = tab === 'collection' ? 'block' : 'none';
+      document.getElementById('stakeSubMystake').style.display = tab === 'mystake' ? 'block' : 'none';
+      if (tab === 'stake') document.getElementById('stakeSubStake').classList.add('active');
+      if (tab === 'collection') document.getElementById('stakeSubCollection').classList.add('active');
+      if (tab === 'mystake') document.getElementById('stakeSubMystake').classList.add('active');
+    }
+
+    function renderCatalog(catalog) {
+      nftCatalogCache = catalog;
+      const el = document.getElementById('nftCatalog');
+      el.innerHTML = catalog.map((nft, i) => `
+        <div class="nft-stake-card">
+          <div class="nft-card-header">
+            <h4>Exclusive Stake ${i + 1}</h4>
+            <span class="nft-card-level">${nft.levelReq || 'LV1-LV8'}</span>
+          </div>
+          ${nft.image
+            ? `<img class="nft-card-banner" src="${nft.image}" alt="${nft.name}" loading="lazy">`
+            : `<div class="nft-card-banner-placeholder" style="background:${nft.color}">${nft.name.charAt(0)}</div>`}
+          <div class="nft-card-details">
+            <div class="nft-card-row"><span class="label">Status</span><span class="nft-card-status">Open</span></div>
+            <div class="nft-card-row"><span class="label">Price Range:</span><span class="val">&#8378; ${nft.pledgeRange}</span></div>
+            <div class="nft-card-row"><span class="label">Income:</span><span class="val income">${nft.dailyIncome}</span></div>
+            <div class="nft-card-row"><span class="label">Handling fee:</span><span class="val">${nft.handlingFee || '1%'}</span></div>
+          </div>
+          <button class="nft-card-go" onclick="openStakeModal('${nft.id}')">Go to Stake</button>
+        </div>
+      `).join('');
+    }
+
+    function openStakeModal(id) {
+      const nft = nftCatalogCache.find(n => n.id === id);
+      if (!nft) return;
+      selectedNft = nft;
+      document.getElementById('stakeNftName').textContent = nft.name;
+      document.getElementById('stakeDaily').textContent = nft.dailyIncome;
+      document.getElementById('stakeDuration').textContent = nft.duration + ' days';
+      document.getElementById('stakeRange').textContent = nft.pledgeRange + ' USDT';
+      document.getElementById('stakeFee').textContent = nft.handlingFee || '1%';
+      document.getElementById('stakeAmount').value = '';
+      document.getElementById('stakeAmount').placeholder = nft.pledgeRange;
+      openModal('stakeModal');
+    }
+
+    document.getElementById('stakeBtn').addEventListener('click', async () => {
+      if (!selectedNft) return;
+      const amount = parseFloat(document.getElementById('stakeAmount').value);
+      if (!amount) return toast('Enter an amount', 'error');
+      const btn = document.getElementById('stakeBtn');
+      btn.disabled = true; btn.textContent = 'Processing...';
+      try {
+        await api('/api/stakes', { method: 'POST', body: JSON.stringify({ nftId: selectedNft.id, amount }) });
+        toast('Stake created successfully!');
+        closeAllModals();
+        selectedNft = null;
+        loadStakes();
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Confirm Stake'; }
+    });
+
+    function renderMyStakes(stakes) {
+      const el = document.getElementById('myStakesList');
+      if (!stakes.length) { el.innerHTML = '<div class="empty-state" style="padding:60px 20px;"><p>No stakes yet. Go to Stake tab to start earning.</p></div>'; return; }
+      el.innerHTML = stakes.map(s => {
+        const daysLeft = Math.max(0, Math.ceil((new Date(s.endDate) - new Date()) / (1000*60*60*24)));
+        const progress = Math.min(100, ((s.duration - daysLeft) / s.duration * 100)).toFixed(0);
+        return `
+        <div class="stake-item">
+          <div class="stake-item-top">
+            <div class="stake-icon" style="background:${s.color}">${s.nftName.charAt(0)}</div>
+            <div class="stake-info">
+              <div class="stake-name">${s.nftName} ${s.nftNumber}</div>
+              <div class="stake-detail">${s.dailyIncome}/day &middot; ${s.duration} days &middot; ${fmtDate(s.startDate)}</div>
+            </div>
+          </div>
+          <div class="stake-item-stats">
+            <div class="stake-item-stat"><div class="label">Staked</div><div class="val">${fmt(s.pledgeValue)}</div></div>
+            <div class="stake-item-stat"><div class="label">Days Left</div><div class="val">${s.status === 'active' ? daysLeft : '0'}</div></div>
+            <div class="stake-item-stat"><div class="label">Progress</div><div class="val">${s.status === 'active' ? progress + '%' : '100%'}</div></div>
+          </div>
+          ${s.status === 'active'
+            ? `<button class="stake-claim-btn" onclick="claimStake('${s.id}')">Claim Reward</button>`
+            : `<div style="text-align:center;"><span class="badge badge-completed">Completed &mdash; +${fmt(s.income)} USDT</span></div>`}
+        </div>`;
+      }).join('');
+    }
+
+    async function claimStake(id) {
+      try {
+        const r = await api('/api/stakes/' + id + '/claim', { method: 'POST' });
+        toast('Claimed! Income: ' + fmt(r.income) + ' USDT');
+        loadStakes();
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+
+    // ---- EARN ----
+    async function loadEarn() {
+      try {
+        const p = await api('/api/user/profile');
+        document.getElementById('earnTotal').textContent = fmt(p.totalIncome);
+        const labels = {
+          comprehensive: 'Comprehensive', reserve: 'Reserve', team: 'Team',
+          activity: 'Activity', finance: 'Finance', earn: 'Earn',
+          ecology: 'Ecology', growth: 'Growth', stake: 'Stake'
+        };
+        const grid = document.getElementById('incomeGrid');
+        grid.innerHTML = Object.entries(p.dailyIncome || {}).map(([k, v]) => `
+          <div class="income-item">
+            <div class="label">${labels[k] || k}</div>
+            <div class="val">${fmt(v)}</div>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    // ---- RESERVE ----
+    async function loadReserve() {
+      try {
+        const d = await api('/api/reserve/orders');
+        document.getElementById('reserveToday').textContent = fmt(d.todayEarnings);
+        document.getElementById('reserveCumulative').textContent = fmt(d.cumulativeIncome);
+        document.getElementById('reserveBalance').textContent = fmt(d.walletBalance) + ' USDT';
+
+        const el = document.getElementById('reserveOrders');
+        if (!d.orders.length) { el.innerHTML = '<div class="empty-state"><p>No orders yet</p></div>'; return; }
+        el.innerHTML = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate)).map(o => `
+          <div class="order-item">
+            <div class="order-left">
+              <div class="order-id">#${o.orderNumber.slice(-8)}</div>
+              <div class="order-date">${fmtDate(o.reservationDate)}</div>
+            </div>
+            <div class="order-right">
+              <div class="order-amount">${fmt(o.reservationAmount)} USDT</div>
+              <span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}${o.status === 'Won' ? ' +' + fmt(o.reward) : ''}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    document.getElementById('reserveBtn').addEventListener('click', async () => {
+      const amount = parseFloat(document.getElementById('reserveAmount').value);
+      if (!amount) return toast('Enter an amount', 'error');
+      const btn = document.getElementById('reserveBtn');
+      btn.disabled = true; btn.textContent = 'Processing...';
+      try {
+        const o = await api('/api/reserve/orders', { method: 'POST', body: JSON.stringify({ amount }) });
+        toast(o.status === 'Won' ? 'You won! +' + fmt(o.reward) + ' USDT' : 'Not won this time', o.status === 'Won' ? 'success' : 'error');
+        document.getElementById('reserveAmount').value = '';
+        loadReserve();
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Reserve Now'; }
+    });
+
+    // ---- ASSETS ----
+    async function loadAssets() {
+      try {
+        const d = await api('/api/assets');
+        document.getElementById('assetsBalance').textContent = fmt(d.balance);
+        document.getElementById('assetsRevenue').textContent = fmt(d.totalRevenue);
+        document.getElementById('assetsWithdrawn').textContent = fmt(d.totalWithdrawn);
+        document.getElementById('assetsNotWithdrawn').textContent = fmt(d.notWithdrawn);
+
+        loadAssetAddresses();
+
+        const el = document.getElementById('assetsHistory');
+        if (!d.history.length) { el.innerHTML = '<div class="empty-state"><p>No transactions yet</p></div>'; return; }
+        el.innerHTML = d.history.map(h => `
+          <div class="history-item">
+            <div>
+              <div class="h-type">${h.type}</div>
+              <div class="h-date">${fmtDate(h.date)}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="h-amount ${h.amount >= 0 ? 'positive' : 'negative'}">${h.amount >= 0 ? '+' : ''}${fmt(h.amount)} USDT</div>
+              <span class="badge badge-${h.status.toLowerCase()}">${h.status}</span>
+            </div>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    // ---- MY ----
+    async function loadProfile() {
+      try {
+        profileData = await api('/api/user/profile');
+        const p = profileData;
+        document.getElementById('profileName').textContent = p.username;
+        document.getElementById('profileUid').textContent = 'UID: ' + p.uid;
+        document.getElementById('profileLevel').textContent = p.level;
+        document.getElementById('profilePoints').textContent = fmt(p.points);
+        document.getElementById('profileBalance').textContent = fmt(p.walletBalance);
+        const avatar = document.getElementById('profileAvatar');
+        if (p.avatar) { avatar.innerHTML = `<img src="${p.avatar}" alt="">`; }
+        else { avatar.textContent = (p.username || 'U').charAt(0).toUpperCase(); }
+      } catch (e) { console.error(e); }
+    }
+
+    // ---- Header Balance ----
+    async function updateHeaderBalance() {
+      try {
+        const d = await api('/api/assets');
+        document.getElementById('headerBalance').textContent = fmt(d.balance) + ' USDT';
+      } catch (e) {}
+    }
+
+    // ---- Modals ----
+    function openModal(id) { document.getElementById(id).classList.add('active'); }
+    function closeAllModals() { document.querySelectorAll('.modal-overlay').forEach(m => m.classList.remove('active')); }
+    document.querySelectorAll('.modal-overlay').forEach(m => {
+      m.addEventListener('click', e => { if (e.target === m) closeAllModals(); });
+    });
+
+    let platformAddresses = { trc20: '', bep20: '' };
+    let currentDepositNetwork = 'trc20';
+
+    async function loadPlatformAddresses() {
+      try {
+        const addrs = await fetch('/api/platform/deposit-addresses').then(r => r.json());
+        platformAddresses = addrs;
+        return addrs;
+      } catch (e) { console.error(e); return platformAddresses; }
+    }
+
+    function setAddrField(el, addr) {
+      el.dataset.addr = addr || '';
+      el.dataset.hidden = 'true';
+      el.textContent = addr ? '********************************' : 'Not configured';
+      if (!addr) el.classList.add('deposit-addr-placeholder');
+      else el.classList.remove('deposit-addr-placeholder');
+    }
+
+    async function openDepositModal() {
+      openModal('depositModal');
+      const addrs = await loadPlatformAddresses();
+      setAddrField(document.getElementById('depAddrTrc20Val'), addrs.trc20);
+      setAddrField(document.getElementById('depAddrBep20Val'), addrs.bep20);
+      currentDepositNetwork = 'trc20';
+      renderDepositQR(addrs.trc20);
+    }
+
+    function switchDepositNetwork(network) {
+      currentDepositNetwork = network;
+      document.querySelectorAll('.deposit-network-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.deposit-network-tab[data-network="${network}"]`).classList.add('active');
+      document.getElementById('depositAddrTrc20').style.display = network === 'trc20' ? 'block' : 'none';
+      document.getElementById('depositAddrBep20').style.display = network === 'bep20' ? 'block' : 'none';
+      renderDepositQR(network === 'trc20' ? platformAddresses.trc20 : platformAddresses.bep20);
+    }
+
+    function toggleDepositAddr(type) {
+      const el = document.getElementById(type === 'trc20' ? 'depAddrTrc20Val' : 'depAddrBep20Val');
+      const addr = el.dataset.addr;
+      if (!addr) return;
+      if (el.dataset.hidden === 'true') { el.textContent = addr; el.dataset.hidden = 'false'; }
+      else { el.textContent = '********************************'; el.dataset.hidden = 'true'; }
+    }
+
+    function toggleAssetAddr(type) {
+      const el = document.getElementById(type === 'trc20' ? 'assetAddrTrc20' : 'assetAddrBep20');
+      const addr = el.dataset.addr;
+      if (!addr) return;
+      if (el.dataset.hidden === 'true') { el.textContent = addr; el.dataset.hidden = 'false'; }
+      else { el.textContent = '********************************'; el.dataset.hidden = 'true'; }
+    }
+
+    function copyDepositAddr(type) {
+      const addr = type === 'trc20' ? platformAddresses.trc20 : platformAddresses.bep20;
+      if (!addr) return toast('Address not configured', 'error');
+      navigator.clipboard.writeText(addr).then(() => toast('Address copied!'));
+    }
+
+    // QR Code generator (lightweight, no library)
+    function renderDepositQR(text) {
+      const canvas = document.getElementById('depositQrCanvas');
+      const ctx = canvas.getContext('2d');
+      const size = 180;
+      ctx.clearRect(0, 0, size, size);
+      if (!text) {
+        ctx.fillStyle = '#ccc';
+        ctx.font = '13px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('No address set', size / 2, size / 2);
+        return;
+      }
+      // Generate QR using simple encoding via image API
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => { ctx.drawImage(img, 0, 0, size, size); };
+      img.onerror = () => {
+        ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0, 0, size, size);
+        ctx.fillStyle = '#999'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('QR unavailable', size / 2, size / 2);
+      };
+      img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(text);
+    }
+
+    async function loadAssetAddresses() {
+      const addrs = await loadPlatformAddresses();
+      setAddrField(document.getElementById('assetAddrBep20'), addrs.bep20);
+      setAddrField(document.getElementById('assetAddrTrc20'), addrs.trc20);
+    }
+
+    function showDepositLoader() {
+      const sheet = document.getElementById('depositSheet');
+      let loader = sheet.querySelector('.deposit-loader-overlay');
+      if (!loader) {
+        loader = document.createElement('div');
+        loader.className = 'deposit-loader-overlay';
+        loader.innerHTML = '<div class="deposit-spinner"></div><p>Processing deposit...</p><p class="sub">Please wait while we confirm your transaction</p>';
+        sheet.appendChild(loader);
+      }
+    }
+
+    function hideDepositLoader() {
+      const loader = document.querySelector('.deposit-loader-overlay');
+      if (loader) loader.remove();
+    }
+    function openWithdrawModal() { openModal('withdrawModal'); }
+    function openWalletModal() {
+      if (profileData) {
+        document.getElementById('walletTrc20').value = profileData.walletAddress?.trc20 || '';
+        document.getElementById('walletErc20').value = profileData.walletAddress?.erc20 || '';
+      }
+      openModal('walletAddrModal');
+    }
+    async function openTeamModal() {
+      openModal('teamModal');
+      try {
+        const d = await api('/api/user/team');
+        document.getElementById('teamStats').innerHTML = `
+          <div class="reserve-stats">
+            <div class="reserve-stat"><div class="label">Total Members</div><div class="val">${d.stats.totalRegistered}</div></div>
+            <div class="reserve-stat"><div class="label">Valid Members</div><div class="val" style="color:var(--positive)">${d.stats.totalValid}</div></div>
+          </div>
+        `;
+        const el = document.getElementById('teamMembers');
+        if (!d.members.length) { el.innerHTML = '<div class="empty-state"><p>No team members yet. Share your referral code!</p></div>'; return; }
+        el.innerHTML = d.members.map(m => `
+          <div class="order-item">
+            <div class="order-left">
+              <div class="order-id">${m.username}</div>
+              <div class="order-date">Tier ${m.tier} &middot; ${fmtDate(m.joinedAt)}</div>
+            </div>
+            <span class="badge ${m.isValid ? 'badge-active' : 'badge-pending'}">${m.isValid ? 'Valid' : 'Inactive'}</span>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    document.getElementById('depositBtn').addEventListener('click', async () => {
+      const amount = parseFloat(document.getElementById('depositAmount').value);
+      if (!amount || amount <= 0) return toast('Enter a valid amount', 'error');
+      const btn = document.getElementById('depositBtn');
+      btn.disabled = true;
+      showDepositLoader();
+      try {
+        await api('/api/deposits', { method: 'POST', body: JSON.stringify({ amount }) });
+        hideDepositLoader();
+        toast('Deposit submitted! Admin will confirm shortly.');
+        closeAllModals();
+        document.getElementById('depositAmount').value = '';
+        loadAssets();
+      } catch (e) {
+        hideDepositLoader();
+        toast(e.message, 'error');
+      }
+      finally { btn.disabled = false; }
+    });
+
+    document.getElementById('withdrawBtn').addEventListener('click', async () => {
+      const amount = parseFloat(document.getElementById('withdrawAmount').value);
+      const walletType = document.getElementById('withdrawWalletType').value;
+      if (!amount || amount <= 0) return toast('Enter a valid amount', 'error');
+      const btn = document.getElementById('withdrawBtn');
+      btn.disabled = true;
+      try {
+        await api('/api/withdrawals', { method: 'POST', body: JSON.stringify({ amount, walletType }) });
+        toast('Withdrawal submitted!');
+        closeAllModals();
+        document.getElementById('withdrawAmount').value = '';
+        loadAssets();
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; }
+    });
+
+    document.getElementById('saveWalletBtn').addEventListener('click', async () => {
+      const trc20 = document.getElementById('walletTrc20').value;
+      const erc20 = document.getElementById('walletErc20').value;
+      const btn = document.getElementById('saveWalletBtn');
+      btn.disabled = true;
+      try {
+        await api('/api/user/wallet', { method: 'PUT', body: JSON.stringify({ trc20, erc20 }) });
+        toast('Wallet address updated!');
+        closeAllModals();
+        loadProfile();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; }
+    });
+
+    function copyReferral() {
+      if (profileData?.uid) {
+        navigator.clipboard.writeText(profileData.uid).then(() => toast('Referral code copied: ' + profileData.uid));
+      } else { toast('Load your profile first', 'error'); }
+    }
+
+    function logout() {
+      localStorage.removeItem('mlk_token');
+      localStorage.removeItem('mlk_user');
+      window.location.href = '/signup.html#login';
+    }
+
+    // ---- Init ----
+    loadStakes();
+    updateHeaderBalance();
+  </script>
+</body>
+</html>

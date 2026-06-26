@@ -753,6 +753,30 @@ app.post('/api/admin/upload', adminMiddleware, (req, res) => {
   res.json({ url: '/uploads/' + fname });
 });
 
+// ===================== PLATFORM CONFIG ROUTES =====================
+
+app.get('/api/platform/deposit-addresses', (req, res) => {
+  const config = readConfig('platform_config.json');
+  res.json({
+    trc20: config.depositAddressTrc20 || '',
+    bep20: config.depositAddressBep20 || ''
+  });
+});
+
+app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
+  const config = readConfig('platform_config.json');
+  res.json(config);
+});
+
+app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
+  let config = readConfig('platform_config.json');
+  const { depositAddressTrc20, depositAddressBep20 } = req.body;
+  if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
+  if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
+  writeConfig('platform_config.json', config);
+  res.json(config);
+});
+
 // Serve admin page
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
