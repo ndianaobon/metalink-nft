@@ -51,6 +51,10 @@
             </div>
           </div>
           <div id="authError" class="auth-error" style="display:none;"></div>
+          <div id="authSuccess" class="auth-success" style="display:none;"></div>
+          <div id="forgotLink" class="auth-forgot" style="display:none;">
+            <a href="/signup.html#forgot">Forgot password?</a>
+          </div>
           <button type="submit" class="btn btn-primary btn-block btn-lg auth-submit">Create Account</button>
         </form>
         <div class="auth-footer">
@@ -78,22 +82,48 @@
     }
 
     function showMode() {
-      const isLogin = window.location.hash === '#login';
-      const form = document.getElementById('signupForm');
+      const hash = window.location.hash;
+      const isLogin = hash === '#login';
+      const isForgot = hash === '#forgot';
       const header = document.querySelector('.auth-header h1');
       const subtitle = document.querySelector('.auth-header p');
       const submitBtn = document.querySelector('.auth-submit');
       const footer = document.querySelector('.auth-footer');
       const referralField = document.getElementById('signupReferral').closest('.auth-field');
       const confirmField = document.getElementById('signupConfirm').closest('.auth-field');
+      const passwordField = document.getElementById('signupPassword').closest('.auth-field');
+      const forgotLink = document.getElementById('forgotLink');
+      const confirmLabel = confirmField.querySelector('label');
+      const passwordLabel = passwordField.querySelector('label');
 
-      if (isLogin) {
+      document.getElementById('authError').style.display = 'none';
+      document.getElementById('authSuccess').style.display = 'none';
+
+      if (isForgot) {
+        header.textContent = 'Reset Password';
+        subtitle.textContent = 'Enter your email and a new password';
+        submitBtn.textContent = 'Reset Password';
+        footer.innerHTML = 'Remember your password? <a href="/signup.html#login">Sign In</a>';
+        referralField.style.display = 'none';
+        confirmField.style.display = 'block';
+        passwordField.style.display = 'block';
+        forgotLink.style.display = 'none';
+        passwordLabel.innerHTML = 'New Password <span class="required">*</span>';
+        confirmLabel.innerHTML = 'Confirm New Password <span class="required">*</span>';
+        document.getElementById('signupPassword').placeholder = 'Enter new password';
+        document.getElementById('signupConfirm').placeholder = 'Re-enter new password';
+        document.title = 'Reset Password — MetaLinkNFT';
+      } else if (isLogin) {
         header.textContent = 'Welcome Back';
         subtitle.textContent = 'Sign in to your MetaLinkNFT account';
         submitBtn.textContent = 'Sign In';
         footer.innerHTML = 'Don\'t have an account? <a href="/signup.html">Sign Up</a>';
         referralField.style.display = 'none';
         confirmField.style.display = 'none';
+        passwordField.style.display = 'block';
+        forgotLink.style.display = 'block';
+        passwordLabel.innerHTML = 'Password <span class="required">*</span>';
+        document.getElementById('signupPassword').placeholder = 'Min 6 characters';
         document.title = 'Sign In — MetaLinkNFT';
       } else {
         header.textContent = 'Create Account';
@@ -102,6 +132,12 @@
         footer.innerHTML = 'Already have an account? <a href="/signup.html#login">Sign In</a>';
         referralField.style.display = 'block';
         confirmField.style.display = 'block';
+        passwordField.style.display = 'block';
+        forgotLink.style.display = 'none';
+        passwordLabel.innerHTML = 'Password <span class="required">*</span>';
+        confirmLabel.innerHTML = 'Confirm Password <span class="required">*</span>';
+        document.getElementById('signupPassword').placeholder = 'Min 6 characters';
+        document.getElementById('signupConfirm').placeholder = 'Re-enter password';
         document.title = 'Sign Up — MetaLinkNFT';
       }
     }
@@ -109,18 +145,38 @@
     window.addEventListener('hashchange', showMode);
     showMode();
 
+    function showSuccess(msg) {
+      const el = document.getElementById('authSuccess');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const isLogin = window.location.hash === '#login';
+      const hash = window.location.hash;
+      const isLogin = hash === '#login';
+      const isForgot = hash === '#forgot';
       const email = document.getElementById('signupEmail').value;
       const password = document.getElementById('signupPassword').value;
       const submitBtn = document.querySelector('.auth-submit');
 
       submitBtn.disabled = true;
-      submitBtn.textContent = isLogin ? 'Signing in...' : 'Creating account...';
 
       try {
-        if (isLogin) {
+        if (isForgot) {
+          submitBtn.textContent = 'Resetting...';
+          const confirmPassword = document.getElementById('signupConfirm').value;
+          const res = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, confirmPassword })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          showSuccess('Password reset successfully! Redirecting to sign in...');
+          setTimeout(() => { window.location.hash = '#login'; }, 2000);
+        } else if (isLogin) {
+          submitBtn.textContent = 'Signing in...';
           const res = await fetch('/api/auth/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -132,6 +188,7 @@
           localStorage.setItem('mlk_user', JSON.stringify(data.user));
           window.location.href = '/app.html';
         } else {
+          submitBtn.textContent = 'Creating account...';
           const confirmPassword = document.getElementById('signupConfirm').value;
           const referralCode = document.getElementById('signupReferral').value;
           const res = await fetch('/api/auth/register', {
@@ -147,8 +204,11 @@
         }
       } catch (err) {
         showError(err.message);
+      } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = isLogin ? 'Sign In' : 'Create Account';
+        if (isForgot) submitBtn.textContent = 'Reset Password';
+        else if (isLogin) submitBtn.textContent = 'Sign In';
+        else submitBtn.textContent = 'Create Account';
       }
     });
   </script>
