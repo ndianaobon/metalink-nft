@@ -94,6 +94,7 @@
               <button class="admin-nav-item" data-page="users">&#128101; Users</button>
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
+              <button class="admin-nav-item" data-page="wallets">&#128092; Wallets</button>
               <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
               <button class="admin-nav-item" data-page="settings">&#9881; Settings</button>
               <button class="admin-nav-item" style="margin-top:auto;" onclick="Admin.logout()">&#128682; Logout</button>
@@ -130,6 +131,7 @@
         else if (this.currentPage === 'users') await this.loadUsers(c);
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
+        else if (this.currentPage === 'wallets') await this.loadWallets(c);
         else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
         else if (this.currentPage === 'settings') await this.loadSettings(c);
       },
@@ -198,7 +200,7 @@
               <div class="admin-form-group"><label class="admin-form-label">Level</label><input class="admin-form-input" id="editLevel" type="number" value="${user.level}"></div>
               <div class="admin-form-group"><label class="admin-form-label">Points</label><input class="admin-form-input" id="editPoints" type="number" value="${user.points}"></div>
               <div class="admin-form-group"><label class="admin-form-label">TRC20 Wallet</label><input class="admin-form-input" id="editTrc20" value="${user.walletAddress?.trc20 || ''}"></div>
-              <div class="admin-form-group"><label class="admin-form-label">ERC20 Wallet</label><input class="admin-form-input" id="editErc20" value="${user.walletAddress?.erc20 || ''}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">BEP-20 Wallet</label><input class="admin-form-input" id="editBep20" value="${user.walletAddress?.bep20 || user.walletAddress?.erc20 || ''}"></div>
               <div style="display:flex;gap:10px;">
                 <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
                 <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveUser('${id}')">Save</button>
@@ -219,8 +221,8 @@
           await this.api(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 
           const trc20 = document.getElementById('editTrc20').value;
-          const erc20 = document.getElementById('editErc20').value;
-          await this.api(`/admin/users/${id}/wallet`, { method: 'PUT', body: JSON.stringify({ trc20, erc20 }) });
+          const bep20 = document.getElementById('editBep20').value;
+          await this.api(`/admin/users/${id}/wallet`, { method: 'PUT', body: JSON.stringify({ trc20, erc20: bep20 }) });
 
           document.querySelector('.admin-modal-overlay')?.remove();
           this.toast('User updated!', 'success');
@@ -467,6 +469,43 @@
         } catch (e) { this.toast(e.message); }
       },
 
+      async loadWallets(c) {
+        try {
+          const subs = await this.api('/admin/wallet-submissions');
+          if (!subs.length) {
+            c.innerHTML = `<div class="admin-table-card"><div class="admin-table-header"><h3>Wallet Submissions</h3></div><div style="padding:40px;text-align:center;color:#888;">No wallet submissions yet.</div></div>`;
+            return;
+          }
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header"><h3>Wallet Submissions (${subs.length})</h3></div>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>User</th><th>UID</th><th>TRC-20</th><th>BEP-20</th><th>Submitted</th><th>Action</th></tr></thead>
+                  <tbody>${subs.map(s => `
+                    <tr>
+                      <td><strong>${s.username}</strong><br><span style="font-size:0.75rem;color:#888;">${s.email}</span></td>
+                      <td>${s.uid || '-'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.trc20 || '<span style="color:#ccc;">—</span>'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.bep20 || '<span style="color:#ccc;">—</span>'}</td>
+                      <td style="font-size:0.8rem;">${new Date(s.submittedAt).toLocaleString()}</td>
+                      <td><button class="admin-btn" style="font-size:0.75rem;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="Admin.deleteWalletSub('${s.id}')">Dismiss</button></td>
+                    </tr>
+                  `).join('')}</tbody>
+                </table>
+              </div>
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load wallet submissions</p>'; }
+      },
+
+      async deleteWalletSub(id) {
+        try {
+          await this.api('/admin/wallet-submissions/' + id, { method: 'DELETE' });
+          this.toast('Dismissed', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
       async loadSettings(c) {
         try {
           const config = await this.api('/admin/platform-config');
@@ -474,7 +513,7 @@
             <div class="admin-table-card">
               <div class="admin-table-header"><h3>Platform Deposit Addresses</h3></div>
               <div style="padding:24px;">
-                <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">These wallet addresses will be shown to users when they click Deposit. Users will send USDT to these addresses.</p>
+                <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">These wallet addresses will be shown to users when they click Deposit.</p>
                 <div class="admin-form-group">
                   <label class="admin-form-label">USDT Deposit Address (TRC-20)</label>
                   <input class="admin-form-input" id="cfgTrc20" value="${config.depositAddressTrc20 || ''}" placeholder="Enter TRC-20 USDT address">
@@ -483,13 +522,42 @@
                   <label class="admin-form-label">USDT Deposit Address (BEP-20)</label>
                   <input class="admin-form-input" id="cfgBep20" value="${config.depositAddressBep20 || ''}" placeholder="Enter BEP-20 USDT address">
                 </div>
-                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;" onclick="Admin.saveSettings()">Save Addresses</button>
+                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;" onclick="Admin.saveAddresses()">Save Addresses</button>
+              </div>
+            </div>
+
+            <div class="admin-table-card" style="margin-top:24px;">
+              <div class="admin-table-header"><h3>Platform Settings</h3></div>
+              <div style="padding:24px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Sign-up Bonus ($)</label>
+                    <input class="admin-form-input" id="cfgSignupBonus" type="number" step="0.01" value="${config.signupBonus !== undefined ? config.signupBonus : 10}" placeholder="10">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Amount credited to new users on registration</p>
+                  </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Minimum Deposit ($)</label>
+                    <input class="admin-form-input" id="cfgMinDeposit" type="number" step="0.01" value="${config.minDeposit !== undefined ? config.minDeposit : 50}" placeholder="50">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Users cannot deposit less than this amount</p>
+                  </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Referral Bonus (%)</label>
+                    <input class="admin-form-input" id="cfgReferralPct" type="number" step="0.1" value="${config.referralBonusPct !== undefined ? config.referralBonusPct : 15}" placeholder="15">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">% of deposit credited to referrer on first approved deposit</p>
+                  </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Withdrawal Fee (%)</label>
+                    <input class="admin-form-input" id="cfgWithdrawalFee" type="number" step="0.1" value="${config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4}" placeholder="4">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Fee deducted from withdrawal amount</p>
+                  </div>
+                </div>
+                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.savePlatformSettings()">Save Settings</button>
               </div>
             </div>`;
         } catch (e) { c.innerHTML = '<p>Failed to load settings</p>'; }
       },
 
-      async saveSettings() {
+      async saveAddresses() {
         try {
           await this.api('/admin/platform-config', {
             method: 'PUT',
@@ -499,6 +567,21 @@
             })
           });
           this.toast('Deposit addresses saved!', 'success');
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async savePlatformSettings() {
+        try {
+          await this.api('/admin/platform-config', {
+            method: 'PUT',
+            body: JSON.stringify({
+              signupBonus: document.getElementById('cfgSignupBonus').value,
+              minDeposit: document.getElementById('cfgMinDeposit').value,
+              referralBonusPct: document.getElementById('cfgReferralPct').value,
+              withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value
+            })
+          });
+          this.toast('Platform settings saved!', 'success');
         } catch (e) { this.toast(e.message); }
       },
 

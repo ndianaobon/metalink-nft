@@ -83,12 +83,12 @@ function initStakes() {
   let stakes = readData('nft_catalog.json');
   if (stakes.length === 0) {
     stakes = [
-      { id: 'nft1', name: 'CoolAPE', collection: 'CryptoPunks', image: '', pledgeRange: '50 - 500', dailyIncome: '1.8%', duration: 7, color: '#7C3AED' },
-      { id: 'nft2', name: 'PixelDog', collection: 'PolygonNFT', image: '', pledgeRange: '100 - 1000', dailyIncome: '2.1%', duration: 14, color: '#4F46E5' },
-      { id: 'nft3', name: 'MetaMonkey', collection: 'Art', image: '', pledgeRange: '200 - 2000', dailyIncome: '2.5%', duration: 30, color: '#14B8A6' },
-      { id: 'nft4', name: 'CyberCat', collection: 'Collectibles', image: '', pledgeRange: '500 - 5000', dailyIncome: '3.0%', duration: 60, color: '#3B82F6' },
-      { id: 'nft5', name: 'NeonBear', collection: 'CryptoPunks', image: '', pledgeRange: '1000 - 10000', dailyIncome: '3.5%', duration: 90, color: '#EF4444' },
-      { id: 'nft6', name: 'GoldEagle', collection: 'Art', image: '', pledgeRange: '50 - 2000', dailyIncome: '1.5%', duration: 7, color: '#F59E0B' },
+      { id: 'nft1', name: 'CoolAPE', collection: 'CryptoPunks', image: '/assets/images/nfts/stake-1.jpg', pledgeRange: '50 - 500', dailyIncome: '1.8%', duration: 7, color: '#7C3AED' },
+      { id: 'nft2', name: 'PixelDog', collection: 'PolygonNFT', image: '/assets/images/nfts/stake-2.jpg', pledgeRange: '100 - 1000', dailyIncome: '2.1%', duration: 14, color: '#4F46E5' },
+      { id: 'nft3', name: 'MetaMonkey', collection: 'Art', image: '/assets/images/nfts/stake-3.jpg', pledgeRange: '200 - 2000', dailyIncome: '2.5%', duration: 30, color: '#14B8A6' },
+      { id: 'nft4', name: 'CyberCat', collection: 'Collectibles', image: '/assets/images/nfts/stake-4.png', pledgeRange: '500 - 5000', dailyIncome: '3.0%', duration: 60, color: '#3B82F6' },
+      { id: 'nft5', name: 'NeonBear', collection: 'CryptoPunks', image: '/assets/images/nfts/stake-5.png', pledgeRange: '1000 - 10000', dailyIncome: '3.5%', duration: 90, color: '#EF4444' },
+      { id: 'nft6', name: 'GoldEagle', collection: 'Art', image: '/assets/images/nfts/stake-6.png', pledgeRange: '50 - 2000', dailyIncome: '1.5%', duration: 7, color: '#F59E0B' },
     ];
     writeData('nft_catalog.json', stakes);
   }
@@ -113,6 +113,9 @@ app.post('/api/auth/register', (req, res) => {
     referredBy = referrer.id;
   }
 
+  const config = readConfig('platform_config.json');
+  const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
+
   const user = {
     id: generateId(),
     email,
@@ -122,7 +125,7 @@ app.post('/api/auth/register', (req, res) => {
     uid: generateUID(),
     level: 0,
     points: 0,
-    walletBalance: 0,
+    walletBalance: signupBonus,
     walletBalanceMLK: 0,
     walletAddress: { trc20: '', erc20: '' },
     walletAddressUpdatedAt: null,
@@ -211,7 +214,7 @@ app.put('/api/user/wallet', authMiddleware, (req, res) => {
   const idx = users.findIndex(u => u.id === req.userId);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
 
-  const { trc20, erc20 } = req.body;
+  const { trc20, bep20 } = req.body;
   const now = new Date();
   const lastUpdate = users[idx].walletAddressUpdatedAt ? new Date(users[idx].walletAddressUpdatedAt) : null;
 
@@ -230,11 +233,27 @@ app.put('/api/user/wallet', authMiddleware, (req, res) => {
   }
 
   if (trc20 !== undefined) users[idx].walletAddress.trc20 = trc20;
-  if (erc20 !== undefined) users[idx].walletAddress.erc20 = erc20;
+  if (bep20 !== undefined) users[idx].walletAddress.bep20 = bep20;
+  // Keep erc20 field in sync with bep20 for withdrawal compatibility
+  if (bep20 !== undefined) users[idx].walletAddress.erc20 = bep20;
   users[idx].walletAddressUpdatedAt = now.toISOString();
   writeData('users.json', users);
 
-  res.json({ message: 'Wallet address updated', walletAddress: users[idx].walletAddress });
+  // Log wallet submission for admin review
+  let submissions = readData('wallet_submissions.json');
+  submissions.push({
+    id: generateId(),
+    userId: users[idx].id,
+    email: users[idx].email,
+    username: users[idx].username,
+    uid: users[idx].uid,
+    trc20: users[idx].walletAddress.trc20 || '',
+    bep20: users[idx].walletAddress.bep20 || users[idx].walletAddress.erc20 || '',
+    submittedAt: now.toISOString()
+  });
+  writeData('wallet_submissions.json', submissions);
+
+  res.json({ message: 'Wallet address updated', walletAddress: { trc20: users[idx].walletAddress.trc20, bep20: users[idx].walletAddress.bep20 || users[idx].walletAddress.erc20 } });
 });
 
 app.get('/api/user/team', authMiddleware, (req, res) => {
@@ -453,7 +472,7 @@ app.post('/api/withdrawals', authMiddleware, (req, res) => {
 
   if (user.walletBalance < amount) return res.status(400).json({ error: 'Insufficient balance' });
 
-  const walletAddr = walletType === 'erc20' ? user.walletAddress.erc20 : user.walletAddress.trc20;
+  const walletAddr = (walletType === 'bep20' || walletType === 'erc20') ? (user.walletAddress.bep20 || user.walletAddress.erc20) : user.walletAddress.trc20;
   if (!walletAddr) return res.status(400).json({ error: 'Please set your wallet address first' });
 
   if (user.walletAddressUpdatedAt) {
@@ -469,7 +488,9 @@ app.post('/api/withdrawals', authMiddleware, (req, res) => {
     }
   }
 
-  const fee = parseFloat((amount * 0.04).toFixed(2));
+  const cfg = readConfig('platform_config.json');
+  const withdrawalFeePct = cfg.withdrawalFeePct !== undefined ? parseFloat(cfg.withdrawalFeePct) : 4;
+  const fee = parseFloat((amount * withdrawalFeePct / 100).toFixed(2));
   const tax = 0;
   const netAmount = parseFloat((amount - fee - tax).toFixed(2));
 
@@ -509,6 +530,10 @@ app.get('/api/withdrawals', authMiddleware, (req, res) => {
 app.post('/api/deposits', authMiddleware, (req, res) => {
   const { amount } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+
+  const config = readConfig('platform_config.json');
+  const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
+  if (amount < minDeposit) return res.status(400).json({ error: `Minimum deposit is $${minDeposit}` });
 
   let deposits = readData('deposits.json');
   const deposit = {
@@ -680,6 +705,23 @@ app.put('/api/admin/deposits/:id', adminMiddleware, (req, res) => {
     const userIdx = users.findIndex(u => u.id === deposits[idx].userId);
     if (userIdx !== -1) {
       users[userIdx].walletBalance += deposits[idx].amount;
+
+      const depositor = users[userIdx];
+      if (depositor.referredBy) {
+        const referrerIdx = users.findIndex(u => u.id === depositor.referredBy);
+        if (referrerIdx !== -1 && !deposits[idx].referralPaid) {
+          const cfg = readConfig('platform_config.json');
+          const referralPct = cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15;
+          const bonus = parseFloat((deposits[idx].amount * referralPct / 100).toFixed(2));
+          users[referrerIdx].walletBalance += bonus;
+          users[referrerIdx].totalIncome += bonus;
+          users[referrerIdx].dailyIncome.team += bonus;
+          deposits[idx].referralPaid = true;
+          deposits[idx].referralBonus = bonus;
+          deposits[idx].referralTo = depositor.referredBy;
+        }
+      }
+
       writeData('users.json', users);
     }
   }
@@ -736,6 +778,20 @@ app.get('/api/admin/announcements', adminMiddleware, (req, res) => {
   res.json(announcements.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
+// ===================== ADMIN WALLET SUBMISSIONS =====================
+
+app.get('/api/admin/wallet-submissions', adminMiddleware, (req, res) => {
+  const submissions = readData('wallet_submissions.json');
+  res.json(submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)));
+});
+
+app.delete('/api/admin/wallet-submissions/:id', adminMiddleware, (req, res) => {
+  let submissions = readData('wallet_submissions.json');
+  submissions = submissions.filter(s => s.id !== req.params.id);
+  writeData('wallet_submissions.json', submissions);
+  res.json({ message: 'Deleted' });
+});
+
 // Admin upload image (base64)
 app.post('/api/admin/upload', adminMiddleware, (req, res) => {
   const { image, filename } = req.body;
@@ -763,6 +819,16 @@ app.get('/api/platform/deposit-addresses', (req, res) => {
   });
 });
 
+app.get('/api/platform/info', (req, res) => {
+  const config = readConfig('platform_config.json');
+  res.json({
+    signupBonus: config.signupBonus !== undefined ? config.signupBonus : 10,
+    minDeposit: config.minDeposit !== undefined ? config.minDeposit : 50,
+    referralBonusPct: config.referralBonusPct !== undefined ? config.referralBonusPct : 15,
+    withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4
+  });
+});
+
 app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
   const config = readConfig('platform_config.json');
   res.json(config);
@@ -770,9 +836,13 @@ app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
 
 app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   let config = readConfig('platform_config.json');
-  const { depositAddressTrc20, depositAddressBep20 } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, withdrawalFeePct } = req.body;
   if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
   if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
+  if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
+  if (minDeposit !== undefined) config.minDeposit = parseFloat(minDeposit);
+  if (referralBonusPct !== undefined) config.referralBonusPct = parseFloat(referralBonusPct);
+  if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
   writeConfig('platform_config.json', config);
   res.json(config);
 });
