@@ -20,6 +20,10 @@
 <body>
   <div id="adminApp"></div>
   <script>
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     const Admin = {
       token: localStorage.getItem('mlk_admin_token'),
       currentPage: 'dashboard',
@@ -165,16 +169,16 @@
                   <tbody>
                     ${users.map(u => `
                       <tr>
-                        <td><strong>${u.uid}</strong></td>
-                        <td>${u.username}</td>
-                        <td>${u.email}</td>
+                        <td><strong>${escapeHtml(u.uid)}</strong></td>
+                        <td>${escapeHtml(u.username)}</td>
+                        <td>${escapeHtml(u.email)}</td>
                         <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
                         <td>${u.level}</td>
-                        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;">${u.walletAddress?.trc20 || '-'}</td>
+                        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(u.walletAddress?.trc20) || '-'}</td>
                         <td>${new Date(u.createdAt).toLocaleDateString()}</td>
                         <td style="white-space:nowrap;">
-                          <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${u.id}')">Edit</button>
-                          <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${u.id}','${u.username}')">+ Balance</button>
+                          <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(u.id)}')">Edit</button>
+                          <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${escapeHtml(u.id)}','${escapeHtml(u.username)}')">+ Balance</button>
                         </td>
                       </tr>`).join('')}
                   </tbody>
@@ -194,16 +198,16 @@
           modal.className = 'admin-modal-overlay';
           modal.innerHTML = `
             <div class="admin-modal">
-              <h3>Edit User: ${user.username}</h3>
-              <div class="admin-form-group"><label class="admin-form-label">Username</label><input class="admin-form-input" id="editUsername" value="${user.username}"></div>
+              <h3>Edit User: ${escapeHtml(user.username)}</h3>
+              <div class="admin-form-group"><label class="admin-form-label">Username</label><input class="admin-form-input" id="editUsername" value="${escapeHtml(user.username)}"></div>
               <div class="admin-form-group"><label class="admin-form-label">Balance (USDT)</label><input class="admin-form-input" id="editBalance" type="number" value="${user.walletBalance}"></div>
               <div class="admin-form-group"><label class="admin-form-label">Level</label><input class="admin-form-input" id="editLevel" type="number" value="${user.level}"></div>
               <div class="admin-form-group"><label class="admin-form-label">Points</label><input class="admin-form-input" id="editPoints" type="number" value="${user.points}"></div>
-              <div class="admin-form-group"><label class="admin-form-label">TRC20 Wallet</label><input class="admin-form-input" id="editTrc20" value="${user.walletAddress?.trc20 || ''}"></div>
-              <div class="admin-form-group"><label class="admin-form-label">BEP-20 Wallet</label><input class="admin-form-input" id="editBep20" value="${user.walletAddress?.bep20 || user.walletAddress?.erc20 || ''}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">TRC20 Wallet</label><input class="admin-form-input" id="editTrc20" value="${escapeHtml(user.walletAddress?.trc20)}"></div>
+              <div class="admin-form-group"><label class="admin-form-label">BEP-20 Wallet</label><input class="admin-form-input" id="editBep20" value="${escapeHtml(user.walletAddress?.bep20 || user.walletAddress?.erc20)}"></div>
               <div style="display:flex;gap:10px;">
                 <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
-                <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveUser('${id}')">Save</button>
+                <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveUser('${escapeHtml(id)}')">Save</button>
               </div>
             </div>`;
           document.body.appendChild(modal);
@@ -235,7 +239,7 @@
         modal.className = 'admin-modal-overlay';
         modal.innerHTML = `
           <div class="admin-modal">
-            <h3>Add Balance: ${username}</h3>
+            <h3>Add Balance: ${escapeHtml(username)}</h3>
             <div class="admin-form-group"><label class="admin-form-label">Amount (USDT)</label><input class="admin-form-input" id="addBalanceAmount" type="number" placeholder="Enter amount"></div>
             <div class="admin-form-group">
               <label class="admin-form-label">Action</label>
@@ -247,7 +251,7 @@
             </div>
             <div style="display:flex;gap:10px;">
               <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
-              <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.confirmAddBalance('${id}')">Confirm</button>
+              <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.confirmAddBalance('${escapeHtml(id)}')">Confirm</button>
             </div>
           </div>`;
         document.body.appendChild(modal);
@@ -280,19 +284,19 @@
                     ${withdrawals.map(w => `
                       <tr>
                         <td>${new Date(w.createdAt).toLocaleString()}</td>
-                        <td>${w.username}</td>
-                        <td>${w.email}</td>
-                        <td>${w.uid}</td>
+                        <td>${escapeHtml(w.username)}</td>
+                        <td>${escapeHtml(w.email)}</td>
+                        <td>${escapeHtml(w.uid)}</td>
                         <td><strong>${w.amount}</strong></td>
                         <td>${w.fee}</td>
                         <td>${w.netAmount}</td>
-                        <td>${w.walletType?.toUpperCase()}</td>
-                        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;" title="${w.walletAddress}">${w.walletAddress}</td>
-                        <td><span class="admin-badge admin-badge-${w.status.toLowerCase()}">${w.status}</span></td>
+                        <td>${escapeHtml(w.walletType?.toUpperCase())}</td>
+                        <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(w.walletAddress)}">${escapeHtml(w.walletAddress)}</td>
+                        <td><span class="admin-badge admin-badge-${w.status.toLowerCase()}">${escapeHtml(w.status)}</span></td>
                         <td style="white-space:nowrap;">
                           ${w.status === 'Pending' ? `
-                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateWithdrawal('${w.id}','Approved')">Approve</button>
-                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateWithdrawal('${w.id}','Rejected')">Reject</button>
+                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Approved')">Approve</button>
+                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Rejected')">Reject</button>
                           ` : `<span style="color:#888;">Processed</span>`}
                         </td>
                       </tr>`).join('')}
@@ -328,13 +332,13 @@
                       const user = users.find(u => u.id === d.userId);
                       return `<tr>
                         <td>${new Date(d.createdAt).toLocaleString()}</td>
-                        <td>${user?.username || 'Unknown'} (${user?.email || ''})</td>
+                        <td>${escapeHtml(user?.username || 'Unknown')} (${escapeHtml(user?.email)})</td>
                         <td><strong>${d.amount} USDT</strong></td>
-                        <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${d.status}</span></td>
+                        <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span></td>
                         <td>
                           ${d.status === 'Pending' ? `
-                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${d.id}','Approved')">Approve</button>
-                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${d.id}','Rejected')">Reject</button>
+                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Approved')">Approve</button>
+                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Rejected')">Reject</button>
                           ` : '<span style="color:#888;">Processed</span>'}
                         </td>
                       </tr>`;
@@ -484,12 +488,12 @@
                   <thead><tr><th>User</th><th>UID</th><th>TRC-20</th><th>BEP-20</th><th>Submitted</th><th>Action</th></tr></thead>
                   <tbody>${subs.map(s => `
                     <tr>
-                      <td><strong>${s.username}</strong><br><span style="font-size:0.75rem;color:#888;">${s.email}</span></td>
-                      <td>${s.uid || '-'}</td>
-                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.trc20 || '<span style="color:#ccc;">—</span>'}</td>
-                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.bep20 || '<span style="color:#ccc;">—</span>'}</td>
+                      <td><strong>${escapeHtml(s.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(s.email)}</span></td>
+                      <td>${escapeHtml(s.uid) || '-'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.trc20 ? escapeHtml(s.trc20) : '<span style="color:#ccc;">—</span>'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.bep20 ? escapeHtml(s.bep20) : '<span style="color:#ccc;">—</span>'}</td>
                       <td style="font-size:0.8rem;">${new Date(s.submittedAt).toLocaleString()}</td>
-                      <td><button class="admin-btn" style="font-size:0.75rem;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="Admin.deleteWalletSub('${s.id}')">Dismiss</button></td>
+                      <td><button class="admin-btn" style="font-size:0.75rem;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="Admin.deleteWalletSub('${escapeHtml(s.id)}')">Dismiss</button></td>
                     </tr>
                   `).join('')}</tbody>
                 </table>
@@ -586,6 +590,9 @@
       },
 
       logout() {
+        if (this.token) {
+          fetch('/api/admin/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + this.token } }).catch(() => {});
+        }
         this.token = null;
         localStorage.removeItem('mlk_admin_token');
         this.renderLogin();

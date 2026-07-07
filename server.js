@@ -3,11 +3,26 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
+const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, 'data');
+
+app.use(helmet({
+  contentSecurityPolicy: false // app relies on inline <script>/<style>; CSP would need a rewrite of every page to use nonces
+}));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please try again later.' }
+});
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -41,36 +56,56 @@ function writeConfig(file, data) {
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
 function generateUID() { return 'MLK' + Math.random().toString(36).substr(2, 8).toUpperCase(); }
 function generateOrderNumber() { return Date.now().toString() + Math.floor(Math.random() * 100000).toString(); }
-function hashPassword(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
 
+// Legacy unsalted-SHA256 hash, kept only to verify passwords created before the bcrypt migration.
+function legacyHash(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
+function isBcryptHash(h) { return typeof h === 'string' && /^\$2[aby]?\$/.test(h); }
+async function hashPassword(pw) { return bcrypt.hash(pw, 10); }
+// Verifies against bcrypt hashes; transparently accepts one-time legacy sha256 hashes so existing accounts aren't locked out.
+async function verifyPassword(pw, storedHash) {
+  if (isBcryptHash(storedHash)) return bcrypt.compare(pw, storedHash);
+  return legacyHash(pw) === storedHash;
+}
+
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const sessions = {};
+
+function createSession(subjectId, role) {
+  const token = crypto.randomBytes(32).toString('hex');
+  sessions[token] = { userId: subjectId, role, expiresAt: Date.now() + SESSION_TTL_MS };
+  return token;
+}
 
 function authMiddleware(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || !sessions[token]) return res.status(401).json({ error: 'Unauthorized' });
-  req.userId = sessions[token].userId;
-  req.userRole = sessions[token].role || 'user';
+  const session = token && sessions[token];
+  if (!session) return res.status(401).json({ error: 'Unauthorized' });
+  if (session.expiresAt < Date.now()) { delete sessions[token]; return res.status(401).json({ error: 'Session expired' }); }
+  req.token = token;
+  req.userId = session.userId;
+  req.userRole = session.role || 'user';
   next();
 }
 
 function adminMiddleware(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token || !sessions[token] || sessions[token].role !== 'admin') {
-    return res.status(403).json({ error: 'Admin access required' });
-  }
-  req.userId = sessions[token].userId;
+  const session = token && sessions[token];
+  if (!session || session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  if (session.expiresAt < Date.now()) { delete sessions[token]; return res.status(403).json({ error: 'Session expired' }); }
+  req.token = token;
+  req.userId = session.userId;
   req.userRole = 'admin';
   next();
 }
 
 // Initialize default admin
-function initAdmin() {
+async function initAdmin() {
   let admins = readData('admins.json');
   if (admins.length === 0) {
     admins.push({
       id: generateId(),
       username: 'admin',
-      password: hashPassword('admin123'),
+      password: await hashPassword('admin123'),
       createdAt: new Date().toISOString()
     });
     writeData('admins.json', admins);
@@ -97,7 +132,7 @@ initStakes();
 
 // ===================== AUTH ROUTES =====================
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', authLimiter, async (req, res) => {
   const { email, password, confirmPassword, referralCode } = req.body;
   if (!email || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
   if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
@@ -119,8 +154,8 @@ app.post('/api/auth/register', (req, res) => {
   const user = {
     id: generateId(),
     email,
-    password: hashPassword(password),
-    secondPassword: hashPassword(password),
+    password: await hashPassword(password),
+    secondPassword: await hashPassword(password),
     username: email.split('@')[0],
     uid: generateUID(),
     level: 0,
@@ -147,22 +182,27 @@ app.post('/api/auth/register', (req, res) => {
     writeData('teams.json', teams);
   }
 
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { userId: user.id, role: 'user' };
+  const token = createSession(user.id, 'user');
 
   res.json({ token, user: { id: user.id, email: user.email, username: user.username, uid: user.uid, level: user.level, points: user.points } });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-  const users = readData('users.json');
-  const user = users.find(u => u.email === email && u.password === hashPassword(password));
-  if (!user) return res.status(401).json({ error: 'Account or password is incorrect' });
+  let users = readData('users.json');
+  const idx = users.findIndex(u => u.email === email);
+  if (idx === -1 || !(await verifyPassword(password, users[idx].password))) {
+    return res.status(401).json({ error: 'Account or password is incorrect' });
+  }
+  if (!isBcryptHash(users[idx].password)) {
+    users[idx].password = await hashPassword(password);
+    writeData('users.json', users);
+  }
+  const user = users[idx];
 
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { userId: user.id, role: 'user' };
+  const token = createSession(user.id, 'user');
 
   res.json({
     token,
@@ -170,18 +210,13 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-app.post('/api/auth/forgot-password', (req, res) => {
-  const { email, password, confirmPassword } = req.body;
-  if (!email || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
-  if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
+app.post('/api/auth/forgot-password', authLimiter, (req, res) => {
+  res.status(403).json({ error: 'Self-service password reset is temporarily disabled. Please contact support to reset your password.' });
+});
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.email === email);
-  if (idx === -1) return res.status(404).json({ error: 'User does not exist' });
-
-  users[idx].password = hashPassword(password);
-  writeData('users.json', users);
-  res.json({ message: 'Password reset successfully' });
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+  delete sessions[req.token];
+  res.json({ message: 'Logged out' });
 });
 
 // ===================== USER ROUTES =====================
@@ -195,14 +230,23 @@ app.get('/api/user/profile', authMiddleware, (req, res) => {
   res.json(profile);
 });
 
+const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
+const AVATAR_RE = /^(\/uploads\/[A-Za-z0-9_-]+\.(png|jpe?g|gif|webp)|data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/]+=*)$/;
+
 app.put('/api/user/profile', authMiddleware, (req, res) => {
   let users = readData('users.json');
   const idx = users.findIndex(u => u.id === req.userId);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
 
   const { username, avatar } = req.body;
-  if (username) users[idx].username = username;
-  if (avatar) users[idx].avatar = avatar;
+  if (username) {
+    if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 3-20 characters: letters, numbers, - or _ only' });
+    users[idx].username = username;
+  }
+  if (avatar) {
+    if (!AVATAR_RE.test(avatar)) return res.status(400).json({ error: 'Invalid avatar format' });
+    users[idx].avatar = avatar;
+  }
   writeData('users.json', users);
 
   const { password, secondPassword, ...profile } = users[idx];
@@ -565,15 +609,26 @@ app.get('/api/announcements/:id', (req, res) => {
 
 // ===================== ADMIN ROUTES =====================
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
-  const admins = readData('admins.json');
-  const admin = admins.find(a => a.username === username && a.password === hashPassword(password));
-  if (!admin) return res.status(401).json({ error: 'Invalid admin credentials' });
+  let admins = readData('admins.json');
+  const idx = admins.findIndex(a => a.username === username);
+  if (idx === -1 || !(await verifyPassword(password, admins[idx].password))) {
+    return res.status(401).json({ error: 'Invalid admin credentials' });
+  }
+  if (!isBcryptHash(admins[idx].password)) {
+    admins[idx].password = await hashPassword(password);
+    writeData('admins.json', admins);
+  }
+  const admin = admins[idx];
 
-  const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { userId: admin.id, role: 'admin' };
+  const token = createSession(admin.id, 'admin');
   res.json({ token, admin: { id: admin.id, username: admin.username } });
+});
+
+app.post('/api/admin/logout', adminMiddleware, (req, res) => {
+  delete sessions[req.token];
+  res.json({ message: 'Logged out' });
 });
 
 app.get('/api/admin/stats', adminMiddleware, (req, res) => {
@@ -794,15 +849,18 @@ app.delete('/api/admin/wallet-submissions/:id', adminMiddleware, (req, res) => {
 
 // Admin upload image (base64)
 app.post('/api/admin/upload', adminMiddleware, (req, res) => {
-  const { image, filename } = req.body;
+  const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'No image provided' });
 
   const matches = image.match(/^data:image\/(\w+);base64,(.+)$/);
   if (!matches) return res.status(400).json({ error: 'Invalid image format' });
 
-  const ext = matches[1];
+  const allowedExt = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
+  const ext = matches[1].toLowerCase();
+  if (!allowedExt.includes(ext)) return res.status(400).json({ error: 'Unsupported image type' });
   const data = matches[2];
-  const fname = (filename || generateId()) + '.' + ext;
+  // Filename is always server-generated — never derived from client input — to prevent path traversal.
+  const fname = generateId() + '.' + ext;
   const fpath = path.join(DATA_DIR, 'uploads', fname);
 
   fs.writeFileSync(fpath, Buffer.from(data, 'base64'));

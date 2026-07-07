@@ -124,7 +124,7 @@
         referralField.style.display = 'none';
         confirmField.style.display = 'none';
         passwordField.style.display = 'block';
-        forgotLink.style.display = 'block';
+        forgotLink.style.display = 'none'; // self-service reset disabled server-side; see server.js forgot-password route
         confirmInput.required = false;
         passwordLabel.innerHTML = 'Password <span class="required">*</span>';
         document.getElementById('signupPassword').placeholder = 'Min 6 characters';

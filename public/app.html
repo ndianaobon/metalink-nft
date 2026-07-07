@@ -1422,6 +1422,10 @@
   <!-- Team Modal removed - now uses inline team page view -->
 
   <script>
+    function escapeHtml(str) {
+      return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
     const TOKEN = localStorage.getItem('mlk_token');
     const USER = JSON.parse(localStorage.getItem('mlk_user') || '{}');
 
@@ -1702,8 +1706,13 @@
         document.getElementById('profileLevelBadge').textContent = p.level || 0;
         document.getElementById('profilePointsBadge').textContent = fmt(p.points) + ' pts';
         const avatar = document.getElementById('profileAvatar');
-        if (p.avatar) { avatar.innerHTML = `<img src="${p.avatar}" alt="">`; }
-        else { avatar.textContent = (p.username || 'U').charAt(0).toUpperCase(); }
+        if (p.avatar) {
+          avatar.textContent = '';
+          const img = document.createElement('img');
+          img.src = p.avatar;
+          img.alt = '';
+          avatar.appendChild(img);
+        } else { avatar.textContent = (p.username || 'U').charAt(0).toUpperCase(); }
 
         const di = p.dailyIncome || {};
         document.getElementById('myDailyComp').textContent = '$' + fmt(di.comprehensive || 0);
@@ -1775,9 +1784,9 @@
       }
       el.innerHTML = filtered.map(m => `
         <div class="team-member-row">
-          <div class="team-member-avatar">${(m.username || '?').charAt(0).toUpperCase()}</div>
+          <div class="team-member-avatar">${escapeHtml((m.username || '?').charAt(0).toUpperCase())}</div>
           <div class="team-member-info">
-            <div class="team-member-name">${m.username}</div>
+            <div class="team-member-name">${escapeHtml(m.username)}</div>
             <div class="team-member-date">Joined ${fmtDate(m.joinedAt)}</div>
           </div>
           <span class="team-member-badge ${m.isValid ? 'valid' : 'inactive'}">${m.isValid ? 'Valid' : 'Inactive'}</span>
@@ -1995,8 +2004,14 @@
       document.getElementById('inviteUid').textContent = 'ID: ' + (p.uid || '---');
       document.getElementById('inviteLinkText').textContent = getInviteLink();
       const av = document.getElementById('inviteAvatar');
-      if (p.avatar) av.innerHTML = '<img src="' + p.avatar + '" alt="" style="width:100%;height:100%;object-fit:cover;">';
-      else av.textContent = (p.username || 'U').charAt(0).toUpperCase();
+      if (p.avatar) {
+        av.textContent = '';
+        const img = document.createElement('img');
+        img.src = p.avatar;
+        img.alt = '';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+        av.appendChild(img);
+      } else av.textContent = (p.username || 'U').charAt(0).toUpperCase();
 
       try {
         if (!teamDataCache) teamDataCache = await api('/api/user/team');
@@ -2034,6 +2049,7 @@
     }
 
     function logout() {
+      fetch('/api/auth/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + TOKEN } }).catch(() => {});
       localStorage.removeItem('mlk_token');
       localStorage.removeItem('mlk_user');
       window.location.href = '/signup.html#login';
