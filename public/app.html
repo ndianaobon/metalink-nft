@@ -191,32 +191,62 @@
       font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all var(--transition);
     }
     .stake-subtab.active {
-      background: var(--primary); color: #fff;
+      background: var(--gradient); color: #fff; box-shadow: 0 4px 14px rgba(124,58,237,0.35);
     }
     .stake-sub-page { display: none; }
     .stake-sub-page.active { display: block; }
 
-    .nft-catalog { display: flex; flex-direction: column; gap: 20px; }
+    /* Category filter pills — horizontally scrollable, filters by NFT collection */
+    .stake-category-tabs {
+      display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 18px;
+      scrollbar-width: none;
+    }
+    .stake-category-tabs::-webkit-scrollbar { display: none; }
+    .stake-category-tab {
+      flex-shrink: 0; padding: 8px 16px; border-radius: 20px; border: 1.5px solid var(--border);
+      background: var(--surface); color: var(--text-secondary); font-family: var(--font);
+      font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all var(--transition);
+      white-space: nowrap;
+    }
+    .stake-category-tab.active {
+      background: var(--primary); border-color: var(--primary); color: #fff;
+    }
+
+    .nft-catalog { display: grid; grid-template-columns: 1fr; gap: 18px; }
     .nft-stake-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
       overflow: hidden; transition: all var(--transition);
     }
-    .nft-stake-card:hover { box-shadow: var(--shadow); }
-    .nft-card-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 16px 8px;
-    }
-    .nft-card-header h4 { font-size: 0.95rem; font-weight: 700; }
-    .nft-card-level {
-      font-size: 0.72rem; font-weight: 700; color: var(--primary);
-      background: rgba(79,70,229,0.1); padding: 3px 8px; border-radius: 6px;
-    }
+    .nft-stake-card:hover { box-shadow: var(--shadow); transform: translateY(-3px); border-color: rgba(124,58,237,0.35); }
+    .nft-card-banner-wrap { position: relative; }
     .nft-card-banner {
-      width: 100%; height: 140px; object-fit: cover; display: block;
+      width: 100%; height: 170px; object-fit: cover; display: block;
     }
     .nft-card-banner-placeholder {
-      width: 100%; height: 140px; display: flex; align-items: center; justify-content: center;
+      width: 100%; height: 170px; display: flex; align-items: center; justify-content: center;
       font-size: 3rem; font-weight: 900; color: #fff;
+    }
+    .nft-card-banner-scrim {
+      position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.55), transparent 55%);
+      pointer-events: none;
+    }
+    .nft-card-collection-tag {
+      position: absolute; top: 10px; left: 10px; padding: 3px 10px; border-radius: 20px;
+      font-size: 0.68rem; font-weight: 700; color: #fff; background: rgba(0,0,0,0.45);
+      backdrop-filter: blur(4px); letter-spacing: 0.3px;
+    }
+    .nft-card-status-tag {
+      position: absolute; top: 10px; right: 10px; padding: 3px 10px; border-radius: 20px;
+      font-size: 0.68rem; font-weight: 700; background: rgba(20,184,166,0.9); color: #fff;
+    }
+    .nft-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px 8px;
+    }
+    .nft-card-header h4 { font-size: 1rem; font-weight: 700; }
+    .nft-card-level {
+      font-size: 0.72rem; font-weight: 700; color: var(--primary);
+      background: rgba(79,70,229,0.1); padding: 3px 8px; border-radius: 6px; white-space: nowrap;
     }
     .nft-card-details { padding: 0 16px; }
     .nft-card-row {
@@ -232,13 +262,19 @@
       font-size: 0.72rem; font-weight: 600; background: rgba(20,184,166,0.15); color: var(--positive);
     }
     .nft-card-go {
-      display: block; width: calc(100% - 32px); margin: 12px 16px 16px;
-      padding: 12px; border: none; border-radius: 12px; font-family: var(--font);
+      display: block; width: calc(100% - 32px); margin: 14px 16px 16px;
+      padding: 13px; border: none; border-radius: 12px; font-family: var(--font);
       font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer;
-      background: linear-gradient(135deg, var(--primary), #14B8A6);
+      background: var(--gradient); background-size: 160% 160%;
       transition: all var(--transition);
     }
-    .nft-card-go:hover { opacity: 0.9; transform: translateY(-1px); }
+    .nft-card-go:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(124,58,237,0.3); }
+    .stake-collection-group { margin-bottom: 8px; }
+    .stake-collection-group-title {
+      font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;
+      letter-spacing: 0.5px; margin: 20px 0 12px;
+    }
+    .stake-collection-group:first-child .stake-collection-group-title { margin-top: 0; }
 
     /* My stakes */
     .my-stakes-list { padding: 0 4px; }
@@ -813,8 +849,12 @@
       .tab-page { max-width: 720px; }
       .team-page { max-width: 720px; }
       .invite-page { max-width: 720px; }
-      .nft-catalog { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
-      .nft-card-banner { height: 160px; }
+      #page-stake { max-width: 960px; }
+      .nft-catalog { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    }
+    @media (min-width: 1300px) {
+      #page-stake { max-width: 1240px; }
+      .nft-catalog { grid-template-columns: repeat(3, 1fr); }
     }
   </style>
 </head>
@@ -841,12 +881,13 @@
 
       <!-- Stake catalog -->
       <div class="stake-sub-page active" id="stakeSubStake">
+        <div class="stake-category-tabs" id="stakeCategoryTabs"></div>
         <div id="nftCatalog"></div>
       </div>
 
-      <!-- Collection (placeholder) -->
+      <!-- Collection: catalog grouped by collection -->
       <div class="stake-sub-page" id="stakeSubCollection">
-        <div class="empty-state" style="padding:60px 20px;"><p>Collections coming soon</p></div>
+        <div id="nftByCollection"></div>
       </div>
 
       <!-- My Stakes -->
@@ -1514,25 +1555,71 @@
       if (tab === 'mystake') document.getElementById('stakeSubMystake').classList.add('active');
     }
 
+    let activeCategory = 'All';
+
+    function nftCardHtml(nft, i) {
+      return `
+        <div class="nft-stake-card">
+          <div class="nft-card-banner-wrap">
+            ${nft.image
+              ? `<img class="nft-card-banner" src="${nft.image}" alt="${escapeHtml(nft.name)}" loading="lazy">`
+              : `<div class="nft-card-banner-placeholder" style="background:${nft.color}">${escapeHtml(nft.name.charAt(0))}</div>`}
+            <div class="nft-card-banner-scrim"></div>
+            <span class="nft-card-collection-tag">${escapeHtml(nft.collection || 'NFT')}</span>
+            <span class="nft-card-status-tag">Open</span>
+          </div>
+          <div class="nft-card-header">
+            <h4>${escapeHtml(nft.name)}</h4>
+            <span class="nft-card-level">${nft.duration} Days</span>
+          </div>
+          <div class="nft-card-details">
+            <div class="nft-card-row"><span class="label">Price Range</span><span class="val">${escapeHtml(nft.pledgeRange)} USDT</span></div>
+            <div class="nft-card-row"><span class="label">Daily Income</span><span class="val income">${escapeHtml(nft.dailyIncome)}</span></div>
+            <div class="nft-card-row"><span class="label">Handling Fee</span><span class="val">${escapeHtml(nft.handlingFee || '1%')}</span></div>
+          </div>
+          <button class="nft-card-go" onclick="openStakeModal('${escapeHtml(nft.id)}')">Stake Now</button>
+        </div>`;
+    }
+
+    function renderCategoryTabs(catalog) {
+      const categories = ['All', ...new Set(catalog.map(n => n.collection).filter(Boolean))];
+      const el = document.getElementById('stakeCategoryTabs');
+      el.innerHTML = categories.map(cat => `
+        <button class="stake-category-tab ${cat === activeCategory ? 'active' : ''}" onclick="filterCatalogByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)}</button>
+      `).join('');
+    }
+
+    function filterCatalogByCategory(cat) {
+      activeCategory = cat;
+      renderCategoryTabs(nftCatalogCache);
+      renderCatalogGrid();
+    }
+
+    function renderCatalogGrid() {
+      const el = document.getElementById('nftCatalog');
+      const filtered = activeCategory === 'All' ? nftCatalogCache : nftCatalogCache.filter(n => n.collection === activeCategory);
+      el.innerHTML = filtered.map((nft, i) => nftCardHtml(nft, i)).join('');
+    }
+
     function renderCatalog(catalog) {
       nftCatalogCache = catalog;
-      const el = document.getElementById('nftCatalog');
-      el.innerHTML = catalog.map((nft, i) => `
-        <div class="nft-stake-card">
-          <div class="nft-card-header">
-            <h4>Exclusive Stake ${i + 1}</h4>
-            <span class="nft-card-level">${nft.levelReq || 'LV1-LV8'}</span>
-          </div>
-          ${nft.image
-            ? `<img class="nft-card-banner" src="${nft.image}" alt="${nft.name}" loading="lazy">`
-            : `<div class="nft-card-banner-placeholder" style="background:${nft.color}">${nft.name.charAt(0)}</div>`}
-          <div class="nft-card-details">
-            <div class="nft-card-row"><span class="label">Status</span><span class="nft-card-status">Open</span></div>
-            <div class="nft-card-row"><span class="label">Price Range:</span><span class="val">&#8378; ${nft.pledgeRange}</span></div>
-            <div class="nft-card-row"><span class="label">Income:</span><span class="val income">${nft.dailyIncome}</span></div>
-            <div class="nft-card-row"><span class="label">Handling fee:</span><span class="val">${nft.handlingFee || '1%'}</span></div>
-          </div>
-          <button class="nft-card-go" onclick="openStakeModal('${nft.id}')">Go to Stake</button>
+      renderCategoryTabs(catalog);
+      renderCatalogGrid();
+      renderByCollection(catalog);
+    }
+
+    function renderByCollection(catalog) {
+      const el = document.getElementById('nftByCollection');
+      const groups = {};
+      catalog.forEach(nft => {
+        const key = nft.collection || 'Other';
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(nft);
+      });
+      el.innerHTML = Object.keys(groups).map(key => `
+        <div class="stake-collection-group">
+          <div class="stake-collection-group-title">${escapeHtml(key)}</div>
+          <div class="nft-catalog">${groups[key].map((nft, i) => nftCardHtml(nft, i)).join('')}</div>
         </div>
       `).join('');
     }
