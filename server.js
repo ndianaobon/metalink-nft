@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -56,6 +57,35 @@ function writeConfig(file, data) {
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
 function generateUID() { return 'MLK' + Math.random().toString(36).substr(2, 8).toUpperCase(); }
 function generateOrderNumber() { return Date.now().toString() + Math.floor(Math.random() * 100000).toString(); }
+
+function generateVerificationCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
+
+function verificationEmailHtml(code) {
+  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
+    <p>Hello,</p>
+    <p>Thank you for signing up with MetaLink NFT.</p>
+    <p>To complete your email verification and activate your account, please use the verification code below:</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:6px;text-align:center;padding:16px;background:#f4f4fa;border-radius:8px;">${code}</p>
+    <p>This code will expire shortly for your security. If you did not request this verification code, please ignore this email or contact our support team.</p>
+    <p>Thank you for choosing MetaLink NFT.</p>
+    <p>Best regards,<br>MetaLink NFT Team</p>
+  </div>`;
+}
+
+async function sendEmail(to, subject, html) {
+  if (!process.env.RESEND_API_KEY) throw new Error('Email service not configured');
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: process.env.EMAIL_FROM || 'MetaLinkNFT <onboarding@resend.dev>', to, subject, html })
+  });
+  if (!resp.ok) throw new Error('Failed to send email: ' + (await resp.text()));
+}
+
+// Pending (unverified) signups, keyed by email. In-memory like sessions — acceptable for the
+// same reason: single-instance deployment. Entries are short-lived (10 min) so restart impact is minimal.
+const VERIFICATION_TTL_MS = 10 * 60 * 1000;
+const pendingSignups = {};
 
 // Legacy unsalted-SHA256 hash, kept only to verify passwords created before the bcrypt migration.
 function legacyHash(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
@@ -133,12 +163,13 @@ initStakes();
 // ===================== AUTH ROUTES =====================
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
-  const { email, password, confirmPassword, referralCode } = req.body;
+  const { email, password, confirmPassword, referralCode, phoneCountryCode, phoneNumber } = req.body;
   if (!email || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
   if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  if (!phoneCountryCode || !phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
-  let users = readData('users.json');
+  const users = readData('users.json');
   if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });
 
   let referredBy = null;
@@ -148,16 +179,73 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     referredBy = referrer.id;
   }
 
+  const code = generateVerificationCode();
+  pendingSignups[email] = {
+    code,
+    expiresAt: Date.now() + VERIFICATION_TTL_MS,
+    passwordHash: await hashPassword(password),
+    referredBy,
+    phoneCountryCode,
+    phoneNumber
+  };
+
+  try {
+    await sendEmail(email, 'Verify your MetaLinkNFT account', verificationEmailHtml(code));
+  } catch (e) {
+    delete pendingSignups[email];
+    return res.status(502).json({ error: 'Failed to send verification email. Please try again.' });
+  }
+
+  res.json({ message: 'Verification code sent to your email', email });
+});
+
+app.post('/api/auth/resend-code', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  const pending = pendingSignups[email];
+  if (!pending) return res.status(404).json({ error: 'No pending signup found for this email. Please register again.' });
+
+  pending.code = generateVerificationCode();
+  pending.expiresAt = Date.now() + VERIFICATION_TTL_MS;
+
+  try {
+    await sendEmail(email, 'Verify your MetaLinkNFT account', verificationEmailHtml(pending.code));
+  } catch (e) {
+    return res.status(502).json({ error: 'Failed to send verification email. Please try again.' });
+  }
+
+  res.json({ message: 'Verification code resent' });
+});
+
+app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
+  const { email, code } = req.body;
+  if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
+
+  const pending = pendingSignups[email];
+  if (!pending) return res.status(400).json({ error: 'No pending signup found. Please register again.' });
+  if (pending.expiresAt < Date.now()) {
+    delete pendingSignups[email];
+    return res.status(400).json({ error: 'Verification code expired. Please register again.' });
+  }
+  if (pending.code !== code) return res.status(400).json({ error: 'Invalid verification code' });
+
+  let users = readData('users.json');
+  if (users.find(u => u.email === email)) {
+    delete pendingSignups[email];
+    return res.status(400).json({ error: 'Email already registered' });
+  }
+
   const config = readConfig('platform_config.json');
   const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
 
   const user = {
     id: generateId(),
     email,
-    password: await hashPassword(password),
-    secondPassword: await hashPassword(password),
+    password: pending.passwordHash,
+    secondPassword: pending.passwordHash,
     username: email.split('@')[0],
     uid: generateUID(),
+    phoneCountryCode: pending.phoneCountryCode,
+    phoneNumber: pending.phoneNumber,
     level: 0,
     points: 0,
     walletBalance: signupBonus,
@@ -166,7 +254,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     walletAddressUpdatedAt: null,
     avatar: '',
     referralCode: null,
-    referredBy,
+    referredBy: pending.referredBy,
     createdAt: new Date().toISOString(),
     totalIncome: 0,
     totalWithdrawn: 0,
@@ -176,11 +264,13 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   users.push(user);
   writeData('users.json', users);
 
-  if (referredBy) {
+  if (user.referredBy) {
     let teams = readData('teams.json');
-    teams.push({ userId: referredBy, memberId: user.id, tier: 'C', joinedAt: new Date().toISOString() });
+    teams.push({ userId: user.referredBy, memberId: user.id, tier: 'C', joinedAt: new Date().toISOString() });
     writeData('teams.json', teams);
   }
+
+  delete pendingSignups[email];
 
   const token = createSession(user.id, 'user');
 
