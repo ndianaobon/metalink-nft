@@ -520,9 +520,10 @@ app.get('/api/reserve/orders', authMiddleware, (req, res) => {
   res.json({
     todayEarnings,
     cumulativeIncome,
+    teamBenefits: user?.dailyIncome?.team || 0,
     reservationRange: '50 - 2,000',
     walletBalance: user?.walletBalance || 0,
-    balanceForReservation: 0,
+    balanceForReservation: Math.min(user?.walletBalance || 0, 2000),
     orders: myOrders
   });
 });

@@ -323,12 +323,34 @@
 
     /* ---- Reserve Page ---- */
     .reserve-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-    .reserve-stat {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm);
-      padding: 16px; text-align: center;
+    .reserve-stat-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px 16px 16px 18px; position: relative; overflow: hidden;
     }
-    .reserve-stat .label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
-    .reserve-stat .val { font-size: 1.2rem; font-weight: 700; }
+    .reserve-stat-card::before {
+      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary);
+    }
+    .reserve-stat-card.accent-teal::before { background: var(--positive); }
+    .reserve-stat-card.accent-amber::before { background: var(--warning); }
+    .reserve-stat-card.accent-muted::before { background: var(--text-muted); }
+    .reserve-stat-icon {
+      width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+      background: rgba(79,70,229,0.12); color: var(--primary); margin-bottom: 10px;
+    }
+    .reserve-stat-card.accent-teal .reserve-stat-icon { background: rgba(20,184,166,0.12); color: var(--positive); }
+    .reserve-stat-card.accent-amber .reserve-stat-icon { background: rgba(245,158,11,0.12); color: var(--warning); }
+    .reserve-stat-card.accent-muted .reserve-stat-icon { background: rgba(107,107,128,0.12); color: var(--text-muted); }
+    .reserve-stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+    .reserve-stat-val { font-size: 1.25rem; font-weight: 800; }
+
+    .reserve-layout { display: block; }
+    .reserve-quick-amounts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
+    .reserve-quick-amount {
+      padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg);
+      color: var(--text-secondary); font-family: var(--font); font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; transition: all var(--transition);
+    }
+    .reserve-quick-amount.active, .reserve-quick-amount:hover { border-color: var(--primary); color: var(--primary); background: rgba(79,70,229,0.08); }
 
     .order-item {
       display: flex; align-items: center; justify-content: space-between;
@@ -851,10 +873,14 @@
       .invite-page { max-width: 720px; }
       #page-stake { max-width: 960px; }
       .nft-catalog { grid-template-columns: repeat(2, 1fr); gap: 20px; }
+      #page-reserve { max-width: 960px; }
+      .reserve-stats { grid-template-columns: repeat(3, 1fr); }
+      .reserve-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
     }
     @media (min-width: 1300px) {
       #page-stake { max-width: 1240px; }
       .nft-catalog { grid-template-columns: repeat(3, 1fr); }
+      #page-reserve { max-width: 1100px; }
     }
   </style>
 </head>
@@ -943,34 +969,70 @@
     <div class="tab-page" id="page-reserve">
       <h1 class="page-title">Reserve</h1>
       <div class="reserve-stats">
-        <div class="reserve-stat">
-          <div class="label">Today's Earnings</div>
-          <div class="val" id="reserveToday" style="color:var(--positive)">0.00</div>
+        <div class="reserve-stat-card accent-blue">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+          <div class="reserve-stat-label">Today's Earnings</div>
+          <div class="reserve-stat-val" id="reserveToday" style="color:var(--positive)">0.00</div>
         </div>
-        <div class="reserve-stat">
-          <div class="label">Cumulative Income</div>
-          <div class="val" id="reserveCumulative">0.00</div>
+        <div class="reserve-stat-card accent-teal">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+          <div class="reserve-stat-label">Cumulative Income</div>
+          <div class="reserve-stat-val" id="reserveCumulative">0.00</div>
+        </div>
+        <div class="reserve-stat-card accent-muted">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+          <div class="reserve-stat-label">Team Benefits</div>
+          <div class="reserve-stat-val" id="reserveTeamBenefits">0.00</div>
+        </div>
+        <div class="reserve-stat-card accent-amber">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
+          <div class="reserve-stat-label">Reservation Range</div>
+          <div class="reserve-stat-val" id="reserveRange" style="font-size:1.05rem;">50 - 2,000</div>
+        </div>
+        <div class="reserve-stat-card accent-blue">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/></svg></div>
+          <div class="reserve-stat-label">Wallet Balance</div>
+          <div class="reserve-stat-val" id="reserveBalance">0.00</div>
+        </div>
+        <div class="reserve-stat-card accent-muted">
+          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+          <div class="reserve-stat-label">Balance for Reservation</div>
+          <div class="reserve-stat-val" id="reserveBalanceFor">0.00</div>
         </div>
       </div>
-      <div class="card">
-        <div class="card-title">Make a Reservation</div>
-        <div class="stat-row">
-          <span class="stat-label">Range</span>
-          <span class="stat-value">50 - 2,000 USDT</span>
+
+      <div class="reserve-layout">
+        <div class="card">
+          <div class="card-title">Make a Reservation</div>
+          <div class="stat-row">
+            <span class="stat-label">Range</span>
+            <span class="stat-value">50 - 2,000 USDT</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">Your Balance</span>
+            <span class="stat-value" id="reserveBalance2">0.00 USDT</span>
+          </div>
+          <div class="form-field" style="margin-top:16px;margin-bottom:0;">
+            <label>Reservation Amount (USDT)</label>
+            <input type="number" id="reserveAmount" placeholder="50 - 2000" min="50" max="2000">
+          </div>
+          <div class="reserve-quick-amounts">
+            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(50)">50</button>
+            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(100)">100</button>
+            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(500)">500</button>
+            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(1000)">1000</button>
+            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(2000)">2000</button>
+          </div>
+          <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
         </div>
-        <div class="stat-row">
-          <span class="stat-label">Your Balance</span>
-          <span class="stat-value" id="reserveBalance">0.00 USDT</span>
+
+        <div>
+          <div class="card-title">Order History</div>
+          <div class="stake-category-tabs" id="reserveOrderTabs"></div>
+          <div class="card" id="reserveOrders">
+            <div class="empty-state"><p>No orders yet</p></div>
+          </div>
         </div>
-        <div class="form-field" style="margin-top:16px;">
-          <label>Reservation Amount (USDT)</label>
-          <input type="number" id="reserveAmount" placeholder="50 - 2000" min="50" max="2000">
-        </div>
-        <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
-      </div>
-      <div class="card-title" style="margin-top:24px;">Order History</div>
-      <div class="card" id="reserveOrders">
-        <div class="empty-state"><p>No orders yet</p></div>
       </div>
     </div>
 
@@ -1712,28 +1774,60 @@
     }
 
     // ---- RESERVE ----
+    let reserveOrdersCache = [];
+    let reserveOrderFilter = 'all';
+
     async function loadReserve() {
       try {
         const d = await api('/api/reserve/orders');
         document.getElementById('reserveToday').textContent = fmt(d.todayEarnings);
         document.getElementById('reserveCumulative').textContent = fmt(d.cumulativeIncome);
-        document.getElementById('reserveBalance').textContent = fmt(d.walletBalance) + ' USDT';
+        document.getElementById('reserveTeamBenefits').textContent = fmt(d.teamBenefits);
+        document.getElementById('reserveRange').textContent = d.reservationRange;
+        document.getElementById('reserveBalance').textContent = fmt(d.walletBalance);
+        document.getElementById('reserveBalance2').textContent = fmt(d.walletBalance) + ' USDT';
+        document.getElementById('reserveBalanceFor').textContent = fmt(d.balanceForReservation);
 
-        const el = document.getElementById('reserveOrders');
-        if (!d.orders.length) { el.innerHTML = '<div class="empty-state"><p>No orders yet</p></div>'; return; }
-        el.innerHTML = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate)).map(o => `
-          <div class="order-item">
-            <div class="order-left">
-              <div class="order-id">#${o.orderNumber.slice(-8)}</div>
-              <div class="order-date">${fmtDate(o.reservationDate)}</div>
-            </div>
-            <div class="order-right">
-              <div class="order-amount">${fmt(o.reservationAmount)} USDT</div>
-              <span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}${o.status === 'Won' ? ' +' + fmt(o.reward) : ''}</span>
-            </div>
-          </div>
-        `).join('');
+        reserveOrdersCache = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate));
+        renderReserveOrderTabs();
+        renderReserveOrders();
       } catch (e) { console.error(e); }
+    }
+
+    function setReserveAmount(amount) {
+      document.getElementById('reserveAmount').value = amount;
+      document.querySelectorAll('.reserve-quick-amount').forEach(b => b.classList.toggle('active', parseFloat(b.textContent) === amount));
+    }
+
+    function filterReserveOrders(status) {
+      reserveOrderFilter = status;
+      renderReserveOrderTabs();
+      renderReserveOrders();
+    }
+
+    function renderReserveOrderTabs() {
+      const labels = { all: 'All', 'Won': 'Won', 'Not Won': 'Not Won' };
+      document.getElementById('reserveOrderTabs').innerHTML = Object.keys(labels).map(key => `
+        <button class="stake-category-tab ${key === reserveOrderFilter ? 'active' : ''}" onclick="filterReserveOrders('${key}')">${labels[key]}</button>
+      `).join('');
+    }
+
+    function renderReserveOrders() {
+      const el = document.getElementById('reserveOrders');
+      const filtered = reserveOrderFilter === 'all' ? reserveOrdersCache : reserveOrdersCache.filter(o => o.status === reserveOrderFilter);
+      if (!filtered.length) { el.innerHTML = '<div class="empty-state"><p>No orders yet</p></div>'; return; }
+      el.innerHTML = filtered.map(o => `
+        <div class="order-item">
+          <div class="order-left">
+            <div class="order-id">#${o.orderNumber.slice(-8)}</div>
+            <div class="order-date">${fmtDate(o.reservationDate)}</div>
+          </div>
+          <div class="order-right">
+            <div class="order-amount">${fmt(o.reservationAmount)} USDT</div>
+            <span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}${o.status === 'Won' ? ' +' + fmt(o.reward) : ''}</span>
+          </div>
+        </div>
+      `).join('');
     }
 
     document.getElementById('reserveBtn').addEventListener('click', async () => {
@@ -1745,6 +1839,7 @@
         const o = await api('/api/reserve/orders', { method: 'POST', body: JSON.stringify({ amount }) });
         toast(o.status === 'Won' ? 'You won! +' + fmt(o.reward) + ' USDT' : 'Not won this time', o.status === 'Won' ? 'success' : 'error');
         document.getElementById('reserveAmount').value = '';
+        document.querySelectorAll('.reserve-quick-amount').forEach(b => b.classList.remove('active'));
         loadReserve();
         updateHeaderBalance();
       } catch (e) { toast(e.message, 'error'); }
