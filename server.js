@@ -504,6 +504,15 @@ app.post('/api/stakes/:id/claim', authMiddleware, (req, res) => {
 
 // ===================== RESERVE ROUTES =====================
 
+const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function getNextReservationAt(myOrders) {
+  if (!myOrders.length) return null;
+  const lastOrder = myOrders.reduce((latest, o) => new Date(o.reservationDate) > new Date(latest.reservationDate) ? o : latest);
+  const nextAt = new Date(lastOrder.reservationDate).getTime() + RESERVE_COOLDOWN_MS;
+  return nextAt > Date.now() ? new Date(nextAt).toISOString() : null;
+}
+
 app.get('/api/reserve/orders', authMiddleware, (req, res) => {
   const orders = readData('reserve_orders.json');
   const myOrders = orders.filter(o => o.userId === req.userId);
@@ -524,6 +533,7 @@ app.get('/api/reserve/orders', authMiddleware, (req, res) => {
     reservationRange: '50 - 2,000',
     walletBalance: user?.walletBalance || 0,
     balanceForReservation: Math.min(user?.walletBalance || 0, 2000),
+    nextReservationAt: getNextReservationAt(myOrders),
     orders: myOrders
   });
 });
@@ -540,6 +550,10 @@ const RESERVE_ITEMS = [
 ];
 
 app.post('/api/reserve/orders', authMiddleware, (req, res) => {
+  const existingOrders = readData('reserve_orders.json').filter(o => o.userId === req.userId);
+  const nextReservationAt = getNextReservationAt(existingOrders);
+  if (nextReservationAt) return res.status(400).json({ error: 'You can only reserve once every 24 hours', nextReservationAt });
+
   let users = readData('users.json');
   const userIdx = users.findIndex(u => u.id === req.userId);
   const balance = users[userIdx].walletBalance;

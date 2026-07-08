@@ -824,6 +824,22 @@
     .reserve-draw-item-price { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
     .reserve-draw-item-price .val { color: var(--text); font-weight: 600; }
 
+    /* ---- Reservation cooldown ring ---- */
+    .reserve-cooldown-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 24px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: center;
+    }
+    .reserve-cooldown-ring-wrap { position: relative; width: 116px; height: 116px; }
+    .reserve-cooldown-ring { width: 116px; height: 116px; transform: rotate(-90deg); }
+    .reserve-cooldown-ring circle { fill: none; stroke-width: 8; }
+    .reserve-cooldown-ring .ring-bg { stroke: var(--border); }
+    .reserve-cooldown-ring .ring-progress { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
+    .reserve-cooldown-time {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text);
+    }
+    .reserve-cooldown-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 14px; }
+
     /* ---- Deposit Address ---- */
     .deposit-network-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .deposit-network-tab {
@@ -1049,6 +1065,16 @@
         </div>
 
         <div>
+          <div class="reserve-cooldown-card" id="reserveCooldownCard" style="display:none;">
+            <div class="reserve-cooldown-ring-wrap">
+              <svg class="reserve-cooldown-ring" viewBox="0 0 116 116">
+                <circle class="ring-bg" cx="58" cy="58" r="50"></circle>
+                <circle class="ring-progress" id="reserveCooldownRingProgress" cx="58" cy="58" r="50"></circle>
+              </svg>
+              <div class="reserve-cooldown-time" id="reserveCooldownTime">24:00:00</div>
+            </div>
+            <div class="reserve-cooldown-label">Next reservation available in</div>
+          </div>
           <div class="card-title">Order History</div>
           <div class="stake-category-tabs" id="reserveOrderTabs"></div>
           <div class="card" id="reserveOrders">
@@ -1813,7 +1839,47 @@
         reserveOrdersCache = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate));
         renderReserveOrderTabs();
         renderReserveOrders();
+
+        if (d.nextReservationAt) startReserveCooldown(d.nextReservationAt);
+        else stopReserveCooldown();
       } catch (e) { console.error(e); }
+    }
+
+    let reserveCooldownInterval = null;
+    const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+    const RESERVE_RING_CIRCUMFERENCE = 2 * Math.PI * 50;
+
+    function startReserveCooldown(nextReservationAt) {
+      clearInterval(reserveCooldownInterval);
+      const card = document.getElementById('reserveCooldownCard');
+      const ring = document.getElementById('reserveCooldownRingProgress');
+      const timeEl = document.getElementById('reserveCooldownTime');
+      const btn = document.getElementById('reserveBtn');
+      ring.style.strokeDasharray = RESERVE_RING_CIRCUMFERENCE;
+      card.style.display = 'flex';
+      btn.disabled = true;
+
+      function tick() {
+        const remaining = new Date(nextReservationAt).getTime() - Date.now();
+        if (remaining <= 0) { stopReserveCooldown(); loadReserve(); return; }
+        const h = Math.floor(remaining / 3600000);
+        const m = Math.floor((remaining % 3600000) / 60000);
+        const s = Math.floor((remaining % 60000) / 1000);
+        timeEl.textContent = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        btn.textContent = 'Available in ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+        const fraction = Math.max(0, Math.min(1, remaining / RESERVE_COOLDOWN_MS));
+        ring.style.strokeDashoffset = RESERVE_RING_CIRCUMFERENCE * (1 - fraction);
+      }
+      tick();
+      reserveCooldownInterval = setInterval(tick, 1000);
+    }
+
+    function stopReserveCooldown() {
+      clearInterval(reserveCooldownInterval);
+      document.getElementById('reserveCooldownCard').style.display = 'none';
+      const btn = document.getElementById('reserveBtn');
+      btn.disabled = false;
+      btn.textContent = 'Reserve Now';
     }
 
     function filterReserveOrders(status) {
@@ -1865,10 +1931,12 @@
         statusEl.textContent = o.status === 'Won' ? 'You won +' + fmt(o.reward) + ' USDT' : 'Not won this time';
         statusEl.className = 'reserve-result-status ' + (o.status === 'Won' ? 'won' : 'lost');
         openModal('reserveResultModal');
-        loadReserve();
         updateHeaderBalance();
-      } catch (e) { toast(e.message, 'error'); }
-      finally { btn.disabled = false; btn.textContent = 'Reserve Now'; }
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false; btn.textContent = 'Reserve Now';
+      }
+      loadReserve();
     });
 
     // ---- ASSETS ----
