@@ -528,13 +528,27 @@ app.get('/api/reserve/orders', authMiddleware, (req, res) => {
   });
 });
 
-app.post('/api/reserve/orders', authMiddleware, (req, res) => {
-  const { amount } = req.body;
-  if (!amount || amount < 50 || amount > 2000) return res.status(400).json({ error: 'Amount must be between 50 and 2000 USDT' });
+const RESERVE_ITEMS = [
+  { name: 'Blue Cap Ape', image: '/assets/images/nfts/blue-cap-ape.jpg', price: 50 },
+  { name: 'Purple Hat Ape', image: '/assets/images/nfts/purple-hat-ape.jpg', price: 100 },
+  { name: 'Cartoon Ape', image: '/assets/images/nfts/cartoon-ape.jpg', price: 250 },
+  { name: 'Steampunk Rat', image: '/assets/images/nfts/steampunk-rat.jpg', price: 500 },
+  { name: 'Collector Edition I', image: '/assets/images/nfts/col1.jpg', price: 750 },
+  { name: 'Collector Edition II', image: '/assets/images/nfts/col2.jpg', price: 1000 },
+  { name: 'Collector Edition III', image: '/assets/images/nfts/col3.jpg', price: 1500 },
+  { name: 'Collector Edition IV', image: '/assets/images/nfts/col4.jpg', price: 2000 }
+];
 
+app.post('/api/reserve/orders', authMiddleware, (req, res) => {
   let users = readData('users.json');
   const userIdx = users.findIndex(u => u.id === req.userId);
-  if (users[userIdx].walletBalance < amount) return res.status(400).json({ error: 'Insufficient balance' });
+  const balance = users[userIdx].walletBalance;
+
+  const affordable = RESERVE_ITEMS.filter(item => item.price <= balance);
+  if (!affordable.length) return res.status(400).json({ error: 'Insufficient balance. Minimum reservation is 50 USDT' });
+
+  const item = affordable[Math.floor(Math.random() * affordable.length)];
+  const amount = item.price;
 
   users[userIdx].walletBalance -= amount;
   writeData('users.json', users);
@@ -548,8 +562,12 @@ app.post('/api/reserve/orders', authMiddleware, (req, res) => {
     userId: req.userId,
     orderNumber: generateOrderNumber(),
     reservationDate: new Date().toISOString(),
-    amount: `${amount} - ${amount}`,
     reservationAmount: amount,
+    itemName: item.name,
+    itemImage: item.image,
+    itemPrice: amount,
+    estimatedMin: amount,
+    estimatedMax: parseFloat((amount * 1.06).toFixed(2)),
     status: won ? 'Won' : 'Not Won',
     reward: parseFloat(reward.toFixed(2))
   };

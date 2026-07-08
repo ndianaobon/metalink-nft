@@ -344,24 +344,6 @@
     .reserve-stat-val { font-size: 1.25rem; font-weight: 800; }
 
     .reserve-layout { display: block; }
-    .reserve-quick-amounts { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 16px; }
-    .reserve-quick-amount {
-      padding: 7px 14px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--bg);
-      color: var(--text-secondary); font-family: var(--font); font-size: 0.8rem; font-weight: 600;
-      cursor: pointer; transition: all var(--transition);
-    }
-    .reserve-quick-amount.active, .reserve-quick-amount:hover { border-color: var(--primary); color: var(--primary); background: rgba(79,70,229,0.08); }
-
-    .order-item {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 12px 0; border-bottom: 1px solid var(--border);
-    }
-    .order-item:last-child { border-bottom: none; }
-    .order-item .order-left { min-width: 0; }
-    .order-item .order-id { font-size: 0.82rem; font-weight: 600; }
-    .order-item .order-date { font-size: 0.72rem; color: var(--text-muted); }
-    .order-item .order-right { text-align: right; flex-shrink: 0; }
-    .order-item .order-amount { font-size: 0.85rem; font-weight: 600; }
 
     /* ---- Assets Page ---- */
     .balance-card {
@@ -805,6 +787,43 @@
     .modal-handle { width: 40px; height: 4px; background: var(--border); border-radius: 4px; margin: 0 auto 20px; }
     .modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: 20px; }
 
+    /* ---- Centered reveal modal (reservation result) ---- */
+    .modal-overlay.centered { align-items: center; padding: 20px; }
+    .modal-sheet.centered { border-radius: 20px; transform: scale(0.92); text-align: center; max-width: 340px; }
+    .modal-overlay.centered.active .modal-sheet.centered { transform: scale(1); }
+    .reserve-result-title { font-size: 1.15rem; font-weight: 800; margin-bottom: 20px; }
+    .reserve-result-image { width: 160px; height: 160px; border-radius: 16px; object-fit: cover; margin: 0 auto 16px; display: block; box-shadow: var(--shadow); }
+    .reserve-result-name { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .reserve-result-status { font-size: 0.85rem; margin-bottom: 20px; }
+    .reserve-result-status.won { color: var(--positive); font-weight: 700; }
+    .reserve-result-status.lost { color: var(--text-muted); }
+    .reserve-result-confirm-btn {
+      width: 100%; padding: 14px; border: none; border-radius: 30px; font-family: var(--font);
+      font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer;
+      background: var(--gradient); transition: all var(--transition);
+    }
+    .reserve-result-confirm-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+
+    /* ---- Reserve order draw cards ---- */
+    .reserve-draw-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; margin-bottom: 12px;
+    }
+    .reserve-draw-date { font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-bottom: 10px; }
+    .reserve-draw-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .reserve-draw-row .label { font-size: 0.78rem; color: var(--text-muted); }
+    .reserve-draw-order-no { font-size: 0.92rem; font-weight: 700; margin-bottom: 10px; }
+    .reserve-draw-est { font-size: 0.85rem; font-weight: 600; }
+    .reserve-draw-item {
+      display: flex; align-items: center; gap: 12px; margin-top: 12px; padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .reserve-draw-item img { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .reserve-draw-item-info { flex: 1; min-width: 0; }
+    .reserve-draw-item-name { font-size: 0.88rem; font-weight: 600; }
+    .reserve-draw-item-price { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+    .reserve-draw-item-price .val { color: var(--text); font-weight: 600; }
+
     /* ---- Deposit Address ---- */
     .deposit-network-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .deposit-network-tab {
@@ -924,6 +943,17 @@
       </div>
     </div>
 
+    <!-- Reservation Result Modal -->
+    <div class="modal-overlay centered" id="reserveResultModal">
+      <div class="modal-sheet centered">
+        <div class="reserve-result-title" id="reserveResultTitle">Reservation Success</div>
+        <img class="reserve-result-image" id="reserveResultImage" src="" alt="">
+        <div class="reserve-result-name" id="reserveResultName"></div>
+        <div class="reserve-result-status" id="reserveResultStatus"></div>
+        <button class="reserve-result-confirm-btn" onclick="closeAllModals()">Confirm</button>
+      </div>
+    </div>
+
     <!-- Stake Modal (bottom sheet) -->
     <div class="modal-overlay" id="stakeModal">
       <div class="modal-sheet" id="stakeSheet">
@@ -1012,17 +1042,9 @@
             <span class="stat-label">Your Balance</span>
             <span class="stat-value" id="reserveBalance2">0.00 USDT</span>
           </div>
-          <div class="form-field" style="margin-top:16px;margin-bottom:0;">
-            <label>Reservation Amount (USDT)</label>
-            <input type="number" id="reserveAmount" placeholder="50 - 2000" min="50" max="2000">
-          </div>
-          <div class="reserve-quick-amounts">
-            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(50)">50</button>
-            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(100)">100</button>
-            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(500)">500</button>
-            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(1000)">1000</button>
-            <button type="button" class="reserve-quick-amount" onclick="setReserveAmount(2000)">2000</button>
-          </div>
+          <p style="font-size:0.82rem;color:var(--text-secondary);margin:16px 0;line-height:1.5;">
+            Tap below to instantly reserve a random item within your balance range. No amount entry needed &mdash; the item and price are drawn automatically.
+          </p>
           <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
         </div>
 
@@ -1794,11 +1816,6 @@
       } catch (e) { console.error(e); }
     }
 
-    function setReserveAmount(amount) {
-      document.getElementById('reserveAmount').value = amount;
-      document.querySelectorAll('.reserve-quick-amount').forEach(b => b.classList.toggle('active', parseFloat(b.textContent) === amount));
-    }
-
     function filterReserveOrders(status) {
       reserveOrderFilter = status;
       renderReserveOrderTabs();
@@ -1817,29 +1834,37 @@
       const filtered = reserveOrderFilter === 'all' ? reserveOrdersCache : reserveOrdersCache.filter(o => o.status === reserveOrderFilter);
       if (!filtered.length) { el.innerHTML = '<div class="empty-state"><p>No orders yet</p></div>'; return; }
       el.innerHTML = filtered.map(o => `
-        <div class="order-item">
-          <div class="order-left">
-            <div class="order-id">#${o.orderNumber.slice(-8)}</div>
-            <div class="order-date">${fmtDate(o.reservationDate)}</div>
-          </div>
-          <div class="order-right">
-            <div class="order-amount">${fmt(o.reservationAmount)} USDT</div>
-            <span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}${o.status === 'Won' ? ' +' + fmt(o.reward) : ''}</span>
-          </div>
+        <div class="reserve-draw-card">
+          <div class="reserve-draw-date">Draw date: ${fmtDate(o.reservationDate)} ${new Date(o.reservationDate).toLocaleTimeString()}</div>
+          <div class="reserve-draw-row"><span class="label">Order No.</span><span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}</span></div>
+          <div class="reserve-draw-order-no">${escapeHtml(o.orderNumber)}</div>
+          <div class="reserve-draw-row"><span class="label">Estimated Amount</span><span class="reserve-draw-est">${fmt(o.estimatedMin ?? o.reservationAmount)} ~ ${fmt(o.estimatedMax ?? o.reservationAmount)}</span></div>
+          ${o.itemName ? `
+            <div class="reserve-draw-item">
+              <img src="${escapeHtml(o.itemImage)}" alt="${escapeHtml(o.itemName)}">
+              <div class="reserve-draw-item-info">
+                <div class="reserve-draw-item-name">${escapeHtml(o.itemName)}</div>
+                <div class="reserve-draw-item-price">Item Price <span class="val">${fmt(o.itemPrice)}</span></div>
+              </div>
+            </div>
+          ` : ''}
         </div>
       `).join('');
     }
 
     document.getElementById('reserveBtn').addEventListener('click', async () => {
-      const amount = parseFloat(document.getElementById('reserveAmount').value);
-      if (!amount) return toast('Enter an amount', 'error');
       const btn = document.getElementById('reserveBtn');
-      btn.disabled = true; btn.textContent = 'Processing...';
+      btn.disabled = true; btn.textContent = 'Drawing...';
       try {
-        const o = await api('/api/reserve/orders', { method: 'POST', body: JSON.stringify({ amount }) });
-        toast(o.status === 'Won' ? 'You won! +' + fmt(o.reward) + ' USDT' : 'Not won this time', o.status === 'Won' ? 'success' : 'error');
-        document.getElementById('reserveAmount').value = '';
-        document.querySelectorAll('.reserve-quick-amount').forEach(b => b.classList.remove('active'));
+        const o = await api('/api/reserve/orders', { method: 'POST' });
+        document.getElementById('reserveResultTitle').textContent = o.status === 'Won' ? 'Reservation Success' : 'Reservation Complete';
+        document.getElementById('reserveResultImage').src = o.itemImage;
+        document.getElementById('reserveResultImage').alt = o.itemName;
+        document.getElementById('reserveResultName').textContent = o.itemName;
+        const statusEl = document.getElementById('reserveResultStatus');
+        statusEl.textContent = o.status === 'Won' ? 'You won +' + fmt(o.reward) + ' USDT' : 'Not won this time';
+        statusEl.className = 'reserve-result-status ' + (o.status === 'Won' ? 'won' : 'lost');
+        openModal('reserveResultModal');
         loadReserve();
         updateHeaderBalance();
       } catch (e) { toast(e.message, 'error'); }
