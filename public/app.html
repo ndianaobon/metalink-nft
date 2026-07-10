@@ -940,6 +940,40 @@
     .deposit-warning svg { flex-shrink: 0; color: var(--warning); margin-top: 1px; }
     .deposit-warning p { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5; }
 
+    /* ---- Brand Loader ---- */
+    .brand-loader {
+      position: relative; width: 84px; height: 84px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .brand-loader-sm { width: 40px; height: 40px; }
+    .brand-loader-ring {
+      position: absolute; inset: 0; border-radius: 50%;
+      background: conic-gradient(from 0deg, #14B8A6, #4F46E5, #7C3AED, #14B8A6);
+      animation: brandLoaderSpin 1s linear infinite;
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
+    }
+    .brand-loader-sm .brand-loader-ring {
+      -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+      mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+    }
+    .brand-loader-logo {
+      position: relative; width: 42%; height: 42%; object-fit: contain;
+      animation: brandLoaderPulse 1.6s ease-in-out infinite;
+      filter: drop-shadow(0 0 8px rgba(124,58,237,0.4));
+    }
+    @keyframes brandLoaderSpin { to { transform: rotate(360deg); } }
+    @keyframes brandLoaderPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(0.86); opacity: 0.78; }
+    }
+    .brand-loader-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg); opacity: 1; transition: opacity 0.35s ease;
+    }
+    .brand-loader-overlay.fade-out { opacity: 0; pointer-events: none; }
+
     /* ---- Responsive ---- */
     @media (max-width: 380px) {
       .my-quick-actions { grid-template-columns: repeat(2, 1fr); }
@@ -976,6 +1010,13 @@
   </style>
 </head>
 <body>
+
+  <div class="brand-loader-overlay" id="bootLoader">
+    <div class="brand-loader">
+      <div class="brand-loader-ring"></div>
+      <img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo">
+    </div>
+  </div>
 
   <!-- Header -->
   <header class="app-header">
@@ -2376,7 +2417,7 @@
       if (!loader) {
         loader = document.createElement('div');
         loader.className = 'deposit-loader-overlay';
-        loader.innerHTML = '<div class="deposit-spinner"></div><p>Processing deposit...</p><p class="sub">Please wait while we confirm your transaction</p>';
+        loader.innerHTML = '<div class="brand-loader"><div class="brand-loader-ring"></div><img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo"></div><p>Processing deposit...</p><p class="sub">Please wait while we confirm your transaction</p>';
         sheet.appendChild(loader);
       }
     }
@@ -2604,8 +2645,16 @@
     }
 
     // ---- Init ----
-    loadStakes();
-    updateHeaderBalance();
+    function hideBootLoader() {
+      const el = document.getElementById('bootLoader');
+      if (!el) return;
+      el.classList.add('fade-out');
+      setTimeout(() => el.remove(), 400);
+    }
+    Promise.race([
+      Promise.all([loadStakes(), updateHeaderBalance()]),
+      new Promise(resolve => setTimeout(resolve, 4000)) // safety net so the loader never gets stuck on a slow/failed request
+    ]).then(hideBootLoader);
   </script>
 </body>
 </html>

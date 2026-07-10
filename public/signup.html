@@ -12,6 +12,12 @@
   <link rel="stylesheet" href="/assets/auth.css">
 </head>
 <body>
+  <div class="brand-loader-overlay" id="redirectLoader" style="display:none;">
+    <div class="brand-loader">
+      <div class="brand-loader-ring"></div>
+      <img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo">
+    </div>
+  </div>
   <div class="auth-page">
     <div class="auth-container">
       <a href="/" class="auth-back">&larr; Back to Home</a>
@@ -272,6 +278,10 @@
       el.style.display = 'block';
     }
 
+    function showRedirectLoader() {
+      document.getElementById('redirectLoader').style.display = 'flex';
+    }
+
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const hash = window.location.hash;
@@ -320,6 +330,7 @@
           if (!res.ok) throw new Error(data.error);
           localStorage.setItem('mlk_token', data.token);
           localStorage.setItem('mlk_user', JSON.stringify(data.user));
+          showRedirectLoader();
           window.location.href = '/app.html';
         } else {
           submitBtn.textContent = 'Creating account...';
@@ -383,6 +394,7 @@
         if (!res.ok) throw new Error(data.error);
         localStorage.setItem('mlk_token', data.token);
         localStorage.setItem('mlk_user', JSON.stringify(data.user));
+        showRedirectLoader();
         window.location.href = '/app.html';
       } catch (err) {
         showVerifyError(err.message);

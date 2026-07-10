@@ -129,7 +129,7 @@
 
       async loadPage() {
         const c = document.getElementById('adminContent');
-        c.innerHTML = '<div style="text-align:center;padding:40px;"><div class="spinner" style="border-color:rgba(0,0,0,0.1);border-top-color:#7c3aed;"></div></div>';
+        c.innerHTML = '<div style="text-align:center;padding:40px;"><div class="brand-loader"><div class="brand-loader-ring"></div><img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo"></div></div>';
 
         if (this.currentPage === 'dashboard') await this.loadDashboard(c);
         else if (this.currentPage === 'users') await this.loadUsers(c);
