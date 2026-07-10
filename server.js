@@ -409,6 +409,31 @@ app.put('/api/user/profile', authMiddleware, (req, res) => {
   res.json(profile);
 });
 
+app.post('/api/user/change-password', authLimiter, authMiddleware, async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  if (!currentPassword || !newPassword || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
+  if (newPassword !== confirmPassword) return res.status(400).json({ error: 'New passwords do not match' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
+  let users = readData('users.json');
+  const idx = users.findIndex(u => u.id === req.userId);
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+
+  if (!(await verifyPassword(currentPassword, users[idx].password))) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+
+  users[idx].password = await hashPassword(newPassword);
+  writeData('users.json', users);
+
+  // Invalidate other sessions but keep this one alive so the user isn't logged out mid-flow.
+  Object.keys(sessions).forEach(token => {
+    if (sessions[token].userId === req.userId && token !== req.token) delete sessions[token];
+  });
+
+  res.json({ message: 'Password changed successfully' });
+});
+
 app.put('/api/user/wallet', authMiddleware, (req, res) => {
   let users = readData('users.json');
   const idx = users.findIndex(u => u.id === req.userId);

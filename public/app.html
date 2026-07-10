@@ -572,6 +572,39 @@
     }
     .my-signout-btn:hover { background: rgba(239,68,68,0.12); }
 
+    /* ---- Settings Page (full page) ---- */
+    .settings-page { display: none; padding: 20px 16px 24px; animation: fadeUp 0.3s ease; }
+    .settings-page.active { display: block; }
+    .settings-profile-card {
+      display: flex; align-items: center; gap: 14px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px 16px; margin-bottom: 20px;
+    }
+    .settings-profile-info { flex: 1; min-width: 0; }
+    .settings-profile-name { font-size: 1.05rem; font-weight: 800; }
+    .settings-profile-uid { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; font-family: 'Courier New', monospace; }
+    .settings-level-badge {
+      flex-shrink: 0; padding: 6px 14px; border-radius: 20px; background: var(--gradient);
+      color: #fff; font-size: 0.78rem; font-weight: 700;
+    }
+    .settings-section-title { font-size: 1.1rem; font-weight: 800; margin-bottom: 14px; }
+    .settings-list { display: flex; flex-direction: column; gap: 10px; }
+    .settings-row {
+      display: flex; align-items: center; gap: 14px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 16px; cursor: pointer; transition: all var(--transition); text-align: left;
+      width: 100%; font-family: var(--font); color: var(--text);
+    }
+    .settings-row:hover { border-color: rgba(124,58,237,0.35); background: var(--surface-hover); }
+    .settings-row-icon {
+      flex-shrink: 0; width: 44px; height: 44px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
+    }
+    .settings-row-info { flex: 1; min-width: 0; }
+    .settings-row-title { font-size: 0.92rem; font-weight: 700; }
+    .settings-row-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .settings-row-chevron { flex-shrink: 0; color: var(--text-muted); }
+
     /* ---- Team Page (full page, replaces modal) ---- */
     .team-page { display: none; padding: 20px 16px 24px; animation: fadeUp 0.3s ease; }
     .team-page.active { display: block; }
@@ -920,6 +953,7 @@
       .tab-page { max-width: 600px; margin: 0 auto; }
       .team-page { max-width: 600px; margin: 0 auto; }
       .invite-page { max-width: 600px; margin: 0 auto; }
+      .settings-page { max-width: 600px; margin: 0 auto; }
       .income-grid { grid-template-columns: repeat(4, 1fr); }
       .nft-card-banner { height: 180px; }
     }
@@ -927,6 +961,7 @@
       .tab-page { max-width: 720px; }
       .team-page { max-width: 720px; }
       .invite-page { max-width: 720px; }
+      .settings-page { max-width: 720px; }
       #page-stake { max-width: 960px; }
       .nft-catalog { grid-template-columns: repeat(2, 1fr); gap: 20px; }
       #page-reserve { max-width: 960px; }
@@ -1173,7 +1208,7 @@
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="16" cy="12" r="2"/><path d="M2 10h20"/></svg>
           <span>Withdraw</span>
         </button>
-        <button class="assets-action-btn" onclick="openWalletModal()">
+        <button class="assets-action-btn" onclick="openSettingsPage()">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
           <span>Settings</span>
         </button>
@@ -1201,7 +1236,7 @@
             </div>
           </div>
           <div class="my-profile-actions">
-            <button onclick="openWalletModal()" title="Settings">
+            <button onclick="openSettingsPage()" title="Settings">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
           </div>
@@ -1228,7 +1263,7 @@
             <div class="my-quick-icon invite"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div>
             <span>Invite</span>
           </button>
-          <button class="my-quick-btn" onclick="openWalletModal()">
+          <button class="my-quick-btn" onclick="openSettingsPage()">
             <div class="my-quick-icon settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div>
             <span>Settings</span>
           </button>
@@ -1325,7 +1360,7 @@
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               <span>Tutorials</span>
             </button>
-            <button class="my-func-btn" onclick="openWalletModal()">
+            <button class="my-func-btn" onclick="openSettingsPage()">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
               <span>Settings</span>
             </button>
@@ -1485,6 +1520,59 @@
           </div>
         </div>
       </div>
+
+      <!-- Settings Full Page View -->
+      <div class="settings-page" id="settingsPageView">
+        <button class="team-back-btn" onclick="closeSettingsPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+
+        <div class="settings-profile-card">
+          <div class="profile-avatar" id="settingsAvatar">U</div>
+          <div class="settings-profile-info">
+            <div class="settings-profile-name" id="settingsName">User</div>
+            <div class="settings-profile-uid" id="settingsUid">UID: ---</div>
+          </div>
+          <div class="settings-level-badge">LV <span id="settingsLevel">0</span></div>
+        </div>
+
+        <div class="settings-section-title">Account Settings</div>
+        <div class="settings-list">
+          <button class="settings-row" onclick="toast('Google Authenticator is coming soon', 'error')">
+            <div class="settings-row-icon" style="background:rgba(245,158,11,0.12);">&#128274;</div>
+            <div class="settings-row-info">
+              <div class="settings-row-title">Google Authenticator</div>
+              <div class="settings-row-sub">Enable extra security protection &mdash; coming soon</div>
+            </div>
+            <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="settings-row" onclick="openUserSettingModal()">
+            <div class="settings-row-icon" style="background:rgba(79,70,229,0.12);">&#128100;</div>
+            <div class="settings-row-info">
+              <div class="settings-row-title">User Setting</div>
+              <div class="settings-row-sub">View and update your account details</div>
+            </div>
+            <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="settings-row" onclick="openChangePasswordModal()">
+            <div class="settings-row-icon" style="background:rgba(245,158,11,0.12);">&#128273;</div>
+            <div class="settings-row-info">
+              <div class="settings-row-title">Change Password</div>
+              <div class="settings-row-sub">Update your account password</div>
+            </div>
+            <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="settings-row" onclick="openWalletModal()">
+            <div class="settings-row-icon" style="background:rgba(20,184,166,0.12);">&#128179;</div>
+            <div class="settings-row-info">
+              <div class="settings-row-title">Bind Wallet Address</div>
+              <div class="settings-row-sub">Update your withdrawal wallet</div>
+            </div>
+            <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -1603,6 +1691,50 @@
       </div>
       <p style="font-size:0.8rem;color:var(--warning);margin-bottom:16px;">Changing your wallet address will suspend withdrawals for 48 hours.</p>
       <button class="btn btn-primary" id="saveWalletBtn">Save Address</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- User Setting Modal -->
+  <div class="modal-overlay" id="userSettingModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">User Setting</div>
+      <div class="form-field">
+        <label>Email</label>
+        <input type="text" id="settingEmail" disabled>
+      </div>
+      <div class="form-field">
+        <label>Username</label>
+        <input type="text" id="settingUsername" placeholder="3-20 characters: letters, numbers, - or _">
+      </div>
+      <div class="form-field">
+        <label>Phone Number</label>
+        <input type="text" id="settingPhone" disabled>
+      </div>
+      <button class="btn btn-primary" id="saveUserSettingBtn">Save Changes</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div class="modal-overlay" id="changePasswordModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Change Password</div>
+      <div class="form-field">
+        <label>Current Password</label>
+        <input type="password" id="currentPasswordInput" placeholder="Enter current password">
+      </div>
+      <div class="form-field">
+        <label>New Password</label>
+        <input type="password" id="newPasswordInput" placeholder="Min 6 characters">
+      </div>
+      <div class="form-field">
+        <label>Confirm New Password</label>
+        <input type="password" id="confirmNewPasswordInput" placeholder="Re-enter new password">
+      </div>
+      <button class="btn btn-primary" id="saveChangePasswordBtn">Update Password</button>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
     </div>
   </div>
@@ -2369,6 +2501,83 @@
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('myMainView').style.display = '';
     }
+
+    async function openSettingsPage() {
+      switchTab('my');
+      if (!profileData) {
+        try { profileData = await api('/api/user/profile'); } catch(e) { toast('Load your profile first', 'error'); return; }
+      }
+      document.getElementById('myMainView').style.display = 'none';
+      document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('settingsPageView').classList.add('active');
+
+      const p = profileData;
+      document.getElementById('settingsName').textContent = p.username || 'User';
+      document.getElementById('settingsUid').textContent = 'UID: ' + (p.uid || '---');
+      document.getElementById('settingsLevel').textContent = p.level || 0;
+      const avatarEl = document.getElementById('settingsAvatar');
+      if (p.avatar) {
+        avatarEl.textContent = '';
+        const img = document.createElement('img');
+        img.src = p.avatar; img.alt = '';
+        avatarEl.appendChild(img);
+      } else {
+        avatarEl.textContent = (p.username || 'U').charAt(0).toUpperCase();
+      }
+    }
+
+    function closeSettingsPage() {
+      document.getElementById('settingsPageView').classList.remove('active');
+      document.getElementById('myMainView').style.display = '';
+    }
+
+    function openUserSettingModal() {
+      if (!profileData) return;
+      document.getElementById('settingEmail').value = profileData.email || '';
+      document.getElementById('settingUsername').value = profileData.username || '';
+      document.getElementById('settingPhone').value = (profileData.phoneCountryCode && profileData.phoneNumber)
+        ? (profileData.phoneCountryCode + ' ' + profileData.phoneNumber) : 'Not set';
+      openModal('userSettingModal');
+    }
+
+    document.getElementById('saveUserSettingBtn').addEventListener('click', async () => {
+      const username = document.getElementById('settingUsername').value.trim();
+      const btn = document.getElementById('saveUserSettingBtn');
+      btn.disabled = true; btn.textContent = 'Saving...';
+      try {
+        const updated = await api('/api/user/profile', { method: 'PUT', body: JSON.stringify({ username }) });
+        profileData = { ...profileData, ...updated };
+        document.getElementById('settingsName').textContent = profileData.username;
+        document.getElementById('profileName').textContent = profileData.username;
+        toast('Profile updated!', 'success');
+        closeAllModals();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Save Changes'; }
+    });
+
+    function openChangePasswordModal() {
+      document.getElementById('currentPasswordInput').value = '';
+      document.getElementById('newPasswordInput').value = '';
+      document.getElementById('confirmNewPasswordInput').value = '';
+      openModal('changePasswordModal');
+    }
+
+    document.getElementById('saveChangePasswordBtn').addEventListener('click', async () => {
+      const currentPassword = document.getElementById('currentPasswordInput').value;
+      const newPassword = document.getElementById('newPasswordInput').value;
+      const confirmPassword = document.getElementById('confirmNewPasswordInput').value;
+      if (!currentPassword || !newPassword || !confirmPassword) return toast('Fill in all fields', 'error');
+      if (newPassword !== confirmPassword) return toast('New passwords do not match', 'error');
+      const btn = document.getElementById('saveChangePasswordBtn');
+      btn.disabled = true; btn.textContent = 'Updating...';
+      try {
+        await api('/api/user/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword, confirmPassword }) });
+        toast('Password changed successfully!', 'success');
+        closeAllModals();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Update Password'; }
+    });
 
     function copyInviteLink() {
       const link = getInviteLink();
