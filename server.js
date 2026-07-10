@@ -72,6 +72,17 @@ function verificationEmailHtml(code) {
   </div>`;
 }
 
+function passwordResetEmailHtml(code) {
+  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
+    <p>Hello,</p>
+    <p>We received a request to reset your MetaLink NFT password.</p>
+    <p>Use the verification code below to confirm this request and set a new password:</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:6px;text-align:center;padding:16px;background:#f4f4fa;border-radius:8px;">${code}</p>
+    <p>This code will expire shortly for your security. If you did not request a password reset, please ignore this email &mdash; your password will not be changed.</p>
+    <p>Best regards,<br>MetaLink NFT Team</p>
+  </div>`;
+}
+
 async function sendEmail(to, subject, html) {
   if (!process.env.RESEND_API_KEY) throw new Error('Email service not configured');
   const resp = await fetch('https://api.resend.com/emails', {
@@ -86,6 +97,8 @@ async function sendEmail(to, subject, html) {
 // same reason: single-instance deployment. Entries are short-lived (10 min) so restart impact is minimal.
 const VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const pendingSignups = {};
+// Pending password resets, keyed by email. Same in-memory/short-lived rationale as pendingSignups.
+const passwordResets = {};
 
 // Legacy unsalted-SHA256 hash, kept only to verify passwords created before the bcrypt migration.
 function legacyHash(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
@@ -306,8 +319,55 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   });
 });
 
-app.post('/api/auth/forgot-password', authLimiter, (req, res) => {
-  res.status(403).json({ error: 'Self-service password reset is temporarily disabled. Please contact support to reset your password.' });
+app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Email is required' });
+
+  const users = readData('users.json');
+  const user = users.find(u => u.email === email);
+
+  // Always respond the same way whether or not the account exists, so this endpoint can't be used to enumerate registered emails.
+  if (user) {
+    const code = generateVerificationCode();
+    passwordResets[email] = { code, expiresAt: Date.now() + VERIFICATION_TTL_MS };
+    try {
+      await sendEmail(email, 'Reset your MetaLinkNFT password', passwordResetEmailHtml(code));
+    } catch (e) {
+      delete passwordResets[email];
+      return res.status(502).json({ error: 'Failed to send reset email. Please try again.' });
+    }
+  }
+
+  res.json({ message: 'If that email is registered, a reset code has been sent.' });
+});
+
+app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
+  const { email, code, password, confirmPassword } = req.body;
+  if (!email || !code || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
+  if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
+  if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+  const reset = passwordResets[email];
+  if (!reset) return res.status(400).json({ error: 'No password reset requested for this email. Please request a new code.' });
+  if (reset.expiresAt < Date.now()) {
+    delete passwordResets[email];
+    return res.status(400).json({ error: 'Reset code expired. Please request a new one.' });
+  }
+  if (reset.code !== code) return res.status(400).json({ error: 'Invalid reset code' });
+
+  let users = readData('users.json');
+  const idx = users.findIndex(u => u.email === email);
+  if (idx === -1) { delete passwordResets[email]; return res.status(400).json({ error: 'Account not found' }); }
+
+  users[idx].password = await hashPassword(password);
+  writeData('users.json', users);
+  delete passwordResets[email];
+
+  // Invalidate existing sessions so a token stolen before the reset stops working.
+  const resetUserId = users[idx].id;
+  Object.keys(sessions).forEach(token => { if (sessions[token].userId === resetUserId) delete sessions[token]; });
+
+  res.json({ message: 'Password reset successfully' });
 });
 
 app.post('/api/auth/logout', authMiddleware, (req, res) => {

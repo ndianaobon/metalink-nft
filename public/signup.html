@@ -39,6 +39,11 @@
             <label for="signupReferral">Referral Code <span class="optional">(optional)</span></label>
             <input type="text" id="signupReferral" placeholder="Enter referral code">
           </div>
+          <div class="auth-field" id="forgotCodeField" style="display:none;">
+            <label for="forgotCode">Verification Code <span class="required">*</span></label>
+            <input type="text" id="forgotCode" placeholder="Enter 6-digit code" maxlength="6" inputmode="numeric">
+            <p style="font-size:0.8rem;margin-top:6px;">Didn't get it? <a href="#" id="resendForgotCodeLink">Resend</a></p>
+          </div>
           <div class="auth-field">
             <label for="signupPassword">Password <span class="required">*</span></label>
             <div class="auth-password-wrap">
@@ -154,6 +159,8 @@
       setTimeout(() => el.style.display = 'none', 4000);
     }
 
+    let forgotStep = 'email';
+
     function showMode() {
       const hash = window.location.hash;
       const isLogin = hash === '#login';
@@ -164,11 +171,13 @@
       const footer = document.getElementById('mainFooter');
       const referralField = document.getElementById('signupReferral').closest('.auth-field');
       const phoneField = document.getElementById('phoneField');
+      const codeField = document.getElementById('forgotCodeField');
       const confirmField = document.getElementById('signupConfirm').closest('.auth-field');
       const passwordField = document.getElementById('signupPassword').closest('.auth-field');
       const forgotLink = document.getElementById('forgotLink');
       const confirmLabel = confirmField.querySelector('label');
       const passwordLabel = passwordField.querySelector('label');
+      const emailInput = document.getElementById('signupEmail');
 
       document.getElementById('authError').style.display = 'none';
       document.getElementById('authSuccess').style.display = 'none';
@@ -176,42 +185,60 @@
       const confirmInput = document.getElementById('signupConfirm');
 
       if (isForgot) {
-        header.textContent = 'Reset Password';
-        subtitle.textContent = 'Enter your email and a new password';
-        submitBtn.textContent = 'Reset Password';
-        footer.innerHTML = 'Remember your password? <a href="/signup.html#login">Sign In</a>';
         referralField.style.display = 'none';
         phoneField.style.display = 'none';
-        confirmField.style.display = 'block';
-        passwordField.style.display = 'block';
         forgotLink.style.display = 'none';
-        confirmInput.required = true;
-        passwordLabel.innerHTML = 'New Password <span class="required">*</span>';
-        confirmLabel.innerHTML = 'Confirm New Password <span class="required">*</span>';
-        document.getElementById('signupPassword').placeholder = 'Enter new password';
-        confirmInput.placeholder = 'Re-enter new password';
+        footer.innerHTML = 'Remember your password? <a href="/signup.html#login">Sign In</a>';
         document.title = 'Reset Password — MetaLinkNFT';
+
+        if (forgotStep === 'email') {
+          header.textContent = 'Reset Password';
+          subtitle.textContent = 'Enter your email to receive a verification code';
+          submitBtn.textContent = 'Send Reset Code';
+          codeField.style.display = 'none';
+          confirmField.style.display = 'none';
+          passwordField.style.display = 'none';
+          confirmInput.required = false;
+          emailInput.readOnly = false;
+        } else {
+          header.textContent = 'Reset Password';
+          subtitle.textContent = 'Enter the code sent to your email and a new password';
+          submitBtn.textContent = 'Reset Password';
+          codeField.style.display = 'block';
+          confirmField.style.display = 'block';
+          passwordField.style.display = 'block';
+          confirmInput.required = true;
+          emailInput.readOnly = true;
+          passwordLabel.innerHTML = 'New Password <span class="required">*</span>';
+          confirmLabel.innerHTML = 'Confirm New Password <span class="required">*</span>';
+          document.getElementById('signupPassword').placeholder = 'Enter new password';
+          confirmInput.placeholder = 'Re-enter new password';
+        }
       } else if (isLogin) {
+        emailInput.readOnly = false;
         header.textContent = 'Welcome Back';
         subtitle.textContent = 'Sign in to your MetaLinkNFT account';
         submitBtn.textContent = 'Sign In';
         footer.innerHTML = 'Don\'t have an account? <a href="/signup.html">Sign Up</a>';
         referralField.style.display = 'none';
         phoneField.style.display = 'none';
+        codeField.style.display = 'none';
         confirmField.style.display = 'none';
         passwordField.style.display = 'block';
-        forgotLink.style.display = 'none'; // self-service reset disabled server-side; see server.js forgot-password route
+        forgotLink.style.display = 'block';
         confirmInput.required = false;
         passwordLabel.innerHTML = 'Password <span class="required">*</span>';
         document.getElementById('signupPassword').placeholder = 'Min 6 characters';
         document.title = 'Sign In — MetaLinkNFT';
       } else {
+        emailInput.readOnly = false;
         header.textContent = 'Create Account';
         subtitle.textContent = 'Join MetaLinkNFT and start trading NFTs';
         submitBtn.textContent = 'Create Account';
         footer.innerHTML = 'Already have an account? <a href="/signup.html#login">Sign In</a>';
         referralField.style.display = 'block';
         phoneField.style.display = 'block';
+        codeField.style.display = 'none';
         confirmField.style.display = 'block';
         passwordField.style.display = 'block';
         forgotLink.style.display = 'none';
@@ -224,7 +251,7 @@
       }
     }
 
-    window.addEventListener('hashchange', showMode);
+    window.addEventListener('hashchange', () => { forgotStep = 'email'; showMode(); });
     showMode();
 
     function showSuccess(msg) {
@@ -245,13 +272,26 @@
       submitBtn.disabled = true;
 
       try {
-        if (isForgot) {
-          submitBtn.textContent = 'Resetting...';
-          const confirmPassword = document.getElementById('signupConfirm').value;
+        if (isForgot && forgotStep === 'email') {
+          submitBtn.textContent = 'Sending...';
           const res = await fetch('/api/auth/forgot-password', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, confirmPassword })
+            body: JSON.stringify({ email })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error);
+          forgotStep = 'reset';
+          showMode();
+          showSuccess('If that email is registered, a code has been sent.');
+        } else if (isForgot && forgotStep === 'reset') {
+          submitBtn.textContent = 'Resetting...';
+          const code = document.getElementById('forgotCode').value;
+          const confirmPassword = document.getElementById('signupConfirm').value;
+          const res = await fetch('/api/auth/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, code, password, confirmPassword })
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
@@ -292,7 +332,7 @@
         showError(err.message);
       } finally {
         submitBtn.disabled = false;
-        if (isForgot) submitBtn.textContent = 'Reset Password';
+        if (isForgot) submitBtn.textContent = forgotStep === 'email' ? 'Send Reset Code' : 'Reset Password';
         else if (isLogin) submitBtn.textContent = 'Sign In';
         else submitBtn.textContent = 'Create Account';
       }
@@ -352,6 +392,22 @@
         showVerifySuccess('A new code has been sent to your email');
       } catch (err) {
         showVerifyError(err.message);
+      }
+    });
+
+    document.getElementById('resendForgotCodeLink').addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        const res = await fetch('/api/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: document.getElementById('signupEmail').value })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        showSuccess('A new code has been sent to your email');
+      } catch (err) {
+        showError(err.message);
       }
     });
   </script>
