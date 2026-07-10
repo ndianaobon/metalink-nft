@@ -176,14 +176,16 @@ initStakes();
 // ===================== AUTH ROUTES =====================
 
 app.post('/api/auth/register', authLimiter, async (req, res) => {
-  const { email, password, confirmPassword, referralCode, phoneCountryCode, phoneNumber } = req.body;
-  if (!email || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
+  const { username, email, password, confirmPassword, referralCode, phoneCountryCode, phoneNumber } = req.body;
+  if (!username || !email || !password || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
+  if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 3-20 characters: letters, numbers, - or _ only' });
   if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (!phoneCountryCode || !phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
   const users = readData('users.json');
   if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });
+  if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) return res.status(400).json({ error: 'Username is already taken' });
 
   let referredBy = null;
   if (referralCode) {
@@ -197,6 +199,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     code,
     expiresAt: Date.now() + VERIFICATION_TTL_MS,
     passwordHash: await hashPassword(password),
+    username,
     referredBy,
     phoneCountryCode,
     phoneNumber
@@ -246,6 +249,10 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
     delete pendingSignups[email];
     return res.status(400).json({ error: 'Email already registered' });
   }
+  if (users.find(u => u.username.toLowerCase() === pending.username.toLowerCase())) {
+    delete pendingSignups[email];
+    return res.status(400).json({ error: 'Username is already taken. Please register again with a different one.' });
+  }
 
   const config = readConfig('platform_config.json');
   const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
@@ -255,7 +262,7 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
     email,
     password: pending.passwordHash,
     secondPassword: pending.passwordHash,
-    username: email.split('@')[0],
+    username: pending.username,
     uid: generateUID(),
     phoneCountryCode: pending.phoneCountryCode,
     phoneNumber: pending.phoneNumber,

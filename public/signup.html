@@ -24,6 +24,10 @@
           <p>Join MetaLinkNFT and start trading NFTs</p>
         </div>
         <form id="signupForm" class="auth-form">
+          <div class="auth-field" id="usernameField">
+            <label for="signupUsername">Username <span class="required">*</span></label>
+            <input type="text" id="signupUsername" placeholder="Choose a username" maxlength="20">
+          </div>
           <div class="auth-field">
             <label for="signupEmail">Email <span class="required">*</span></label>
             <input type="email" id="signupEmail" placeholder="Enter your email" required>
@@ -99,6 +103,10 @@
     const saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
 
+    // Auto-fill referral code from a shared invite link (?ref=UID)
+    const refFromLink = new URLSearchParams(window.location.search).get('ref');
+    if (refFromLink) document.getElementById('signupReferral').value = refFromLink;
+
     const COUNTRY_CODES = [
       ['Pakistan','+92'],['Afghanistan','+93'],['Albania','+355'],['Algeria','+213'],['Andorra','+376'],
       ['Angola','+244'],['Argentina','+54'],['Armenia','+374'],['Australia','+61'],['Austria','+43'],
@@ -170,6 +178,7 @@
       const submitBtn = document.querySelector('.auth-submit');
       const footer = document.getElementById('mainFooter');
       const referralField = document.getElementById('signupReferral').closest('.auth-field');
+      const usernameField = document.getElementById('usernameField');
       const phoneField = document.getElementById('phoneField');
       const codeField = document.getElementById('forgotCodeField');
       const confirmField = document.getElementById('signupConfirm').closest('.auth-field');
@@ -186,6 +195,7 @@
 
       if (isForgot) {
         referralField.style.display = 'none';
+        usernameField.style.display = 'none';
         phoneField.style.display = 'none';
         forgotLink.style.display = 'none';
         footer.innerHTML = 'Remember your password? <a href="/signup.html#login">Sign In</a>';
@@ -221,6 +231,7 @@
         submitBtn.textContent = 'Sign In';
         footer.innerHTML = 'Don\'t have an account? <a href="/signup.html">Sign Up</a>';
         referralField.style.display = 'none';
+        usernameField.style.display = 'none';
         phoneField.style.display = 'none';
         codeField.style.display = 'none';
         confirmField.style.display = 'none';
@@ -237,6 +248,7 @@
         submitBtn.textContent = 'Create Account';
         footer.innerHTML = 'Already have an account? <a href="/signup.html#login">Sign In</a>';
         referralField.style.display = 'block';
+        usernameField.style.display = 'block';
         phoneField.style.display = 'block';
         codeField.style.display = 'none';
         confirmField.style.display = 'block';
@@ -311,6 +323,7 @@
           window.location.href = '/app.html';
         } else {
           submitBtn.textContent = 'Creating account...';
+          const username = document.getElementById('signupUsername').value.trim();
           const confirmPassword = document.getElementById('signupConfirm').value;
           const referralCode = document.getElementById('signupReferral').value;
           const phoneCountryCode = document.getElementById('signupPhoneCode').value;
@@ -318,7 +331,7 @@
           const res = await fetch('/api/auth/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, confirmPassword, referralCode, phoneCountryCode, phoneNumber })
+            body: JSON.stringify({ username, email, password, confirmPassword, referralCode, phoneCountryCode, phoneNumber })
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error);
