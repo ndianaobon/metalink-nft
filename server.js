@@ -266,7 +266,13 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
 
   if (user.referredBy) {
     let teams = readData('teams.json');
-    teams.push({ userId: user.referredBy, memberId: user.id, tier: 'C', joinedAt: new Date().toISOString() });
+    const tiers = ['A', 'B', 'C'];
+    let currentReferrerId = user.referredBy;
+    for (let i = 0; i < tiers.length && currentReferrerId; i++) {
+      teams.push({ userId: currentReferrerId, memberId: user.id, tier: tiers[i], joinedAt: new Date().toISOString() });
+      const referrer = users.find(u => u.id === currentReferrerId);
+      currentReferrerId = referrer ? referrer.referredBy : null;
+    }
     writeData('teams.json', teams);
   }
 
@@ -513,6 +519,15 @@ function getNextReservationAt(myOrders) {
   return nextAt > Date.now() ? new Date(nextAt).toISOString() : null;
 }
 
+const RESERVE_LEVELS = [
+  { level: 1, min: 50, max: 499, rewardPct: 2.5, name: 'Blue Cap Ape', image: '/assets/images/nfts/blue-cap-ape.jpg' },
+  { level: 2, min: 500, max: 1999, rewardPct: 3.0, name: 'Purple Hat Ape', image: '/assets/images/nfts/purple-hat-ape.jpg' },
+  { level: 3, min: 2000, max: 4999, rewardPct: 3.5, name: 'Cartoon Ape', image: '/assets/images/nfts/cartoon-ape.jpg' },
+  { level: 4, min: 5000, max: 9999, rewardPct: 4.0, name: 'Steampunk Rat', image: '/assets/images/nfts/steampunk-rat.jpg' },
+  { level: 5, min: 10000, max: 49999, rewardPct: 4.5, name: 'Collector Edition I', image: '/assets/images/nfts/col1.jpg' },
+  { level: 6, min: 50000, max: 100000, rewardPct: 5.0, name: 'Collector Edition II', image: '/assets/images/nfts/col2.jpg' }
+];
+
 app.get('/api/reserve/orders', authMiddleware, (req, res) => {
   const orders = readData('reserve_orders.json');
   const myOrders = orders.filter(o => o.userId === req.userId);
@@ -530,24 +545,14 @@ app.get('/api/reserve/orders', authMiddleware, (req, res) => {
     todayEarnings,
     cumulativeIncome,
     teamBenefits: user?.dailyIncome?.team || 0,
-    reservationRange: '50 - 2,000',
+    reservationRange: `${RESERVE_LEVELS[0].min} - ${RESERVE_LEVELS[RESERVE_LEVELS.length - 1].max}`,
     walletBalance: user?.walletBalance || 0,
-    balanceForReservation: Math.min(user?.walletBalance || 0, 2000),
+    balanceForReservation: Math.min(user?.walletBalance || 0, RESERVE_LEVELS[RESERVE_LEVELS.length - 1].max),
     nextReservationAt: getNextReservationAt(myOrders),
+    levels: RESERVE_LEVELS,
     orders: myOrders
   });
 });
-
-const RESERVE_ITEMS = [
-  { name: 'Blue Cap Ape', image: '/assets/images/nfts/blue-cap-ape.jpg', price: 50 },
-  { name: 'Purple Hat Ape', image: '/assets/images/nfts/purple-hat-ape.jpg', price: 100 },
-  { name: 'Cartoon Ape', image: '/assets/images/nfts/cartoon-ape.jpg', price: 250 },
-  { name: 'Steampunk Rat', image: '/assets/images/nfts/steampunk-rat.jpg', price: 500 },
-  { name: 'Collector Edition I', image: '/assets/images/nfts/col1.jpg', price: 750 },
-  { name: 'Collector Edition II', image: '/assets/images/nfts/col2.jpg', price: 1000 },
-  { name: 'Collector Edition III', image: '/assets/images/nfts/col3.jpg', price: 1500 },
-  { name: 'Collector Edition IV', image: '/assets/images/nfts/col4.jpg', price: 2000 }
-];
 
 app.post('/api/reserve/orders', authMiddleware, (req, res) => {
   const existingOrders = readData('reserve_orders.json').filter(o => o.userId === req.userId);
@@ -558,17 +563,18 @@ app.post('/api/reserve/orders', authMiddleware, (req, res) => {
   const userIdx = users.findIndex(u => u.id === req.userId);
   const balance = users[userIdx].walletBalance;
 
-  const affordable = RESERVE_ITEMS.filter(item => item.price <= balance);
-  if (!affordable.length) return res.status(400).json({ error: 'Insufficient balance. Minimum reservation is 50 USDT' });
+  const affordableLevels = RESERVE_LEVELS.filter(lv => lv.min <= balance);
+  if (!affordableLevels.length) return res.status(400).json({ error: `Insufficient balance. Minimum reservation is ${RESERVE_LEVELS[0].min} USDT` });
 
-  const item = affordable[Math.floor(Math.random() * affordable.length)];
-  const amount = item.price;
+  const level = affordableLevels[Math.floor(Math.random() * affordableLevels.length)];
+  const maxAmount = Math.min(level.max, balance);
+  const amount = parseFloat((level.min + Math.random() * (maxAmount - level.min)).toFixed(2));
 
   users[userIdx].walletBalance -= amount;
   writeData('users.json', users);
 
   const won = Math.random() > 0.3;
-  const reward = won ? amount * (0.01 + Math.random() * 0.05) : 0;
+  const reward = won ? amount * (level.rewardPct / 100) : 0;
 
   let orders = readData('reserve_orders.json');
   const order = {
@@ -577,11 +583,13 @@ app.post('/api/reserve/orders', authMiddleware, (req, res) => {
     orderNumber: generateOrderNumber(),
     reservationDate: new Date().toISOString(),
     reservationAmount: amount,
-    itemName: item.name,
-    itemImage: item.image,
+    level: level.level,
+    rewardPct: level.rewardPct,
+    itemName: level.name,
+    itemImage: level.image,
     itemPrice: amount,
-    estimatedMin: amount,
-    estimatedMax: parseFloat((amount * 1.06).toFixed(2)),
+    estimatedMin: level.min,
+    estimatedMax: level.max,
     status: won ? 'Won' : 'Not Won',
     reward: parseFloat(reward.toFixed(2))
   };
@@ -884,20 +892,27 @@ app.put('/api/admin/deposits/:id', adminMiddleware, (req, res) => {
     if (userIdx !== -1) {
       users[userIdx].walletBalance += deposits[idx].amount;
 
-      const depositor = users[userIdx];
-      if (depositor.referredBy) {
-        const referrerIdx = users.findIndex(u => u.id === depositor.referredBy);
-        if (referrerIdx !== -1 && !deposits[idx].referralPaid) {
-          const cfg = readConfig('platform_config.json');
-          const referralPct = cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15;
-          const bonus = parseFloat((deposits[idx].amount * referralPct / 100).toFixed(2));
+      if (!deposits[idx].referralPaid) {
+        const cfg = readConfig('platform_config.json');
+        const tiers = [
+          { tier: 'A', pct: cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15 },
+          { tier: 'B', pct: cfg.referralBonusPctB !== undefined ? parseFloat(cfg.referralBonusPctB) : 8 },
+          { tier: 'C', pct: cfg.referralBonusPctC !== undefined ? parseFloat(cfg.referralBonusPctC) : 3 }
+        ];
+        const payouts = [];
+        let currentReferrerId = users[userIdx].referredBy;
+        for (let i = 0; i < tiers.length && currentReferrerId; i++) {
+          const referrerIdx = users.findIndex(u => u.id === currentReferrerId);
+          if (referrerIdx === -1) break;
+          const bonus = parseFloat((deposits[idx].amount * tiers[i].pct / 100).toFixed(2));
           users[referrerIdx].walletBalance += bonus;
           users[referrerIdx].totalIncome += bonus;
           users[referrerIdx].dailyIncome.team += bonus;
-          deposits[idx].referralPaid = true;
-          deposits[idx].referralBonus = bonus;
-          deposits[idx].referralTo = depositor.referredBy;
+          payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
+          currentReferrerId = users[referrerIdx].referredBy;
         }
+        deposits[idx].referralPaid = true;
+        deposits[idx].referralPayouts = payouts;
       }
 
       writeData('users.json', users);
@@ -1006,6 +1021,8 @@ app.get('/api/platform/info', (req, res) => {
     signupBonus: config.signupBonus !== undefined ? config.signupBonus : 10,
     minDeposit: config.minDeposit !== undefined ? config.minDeposit : 50,
     referralBonusPct: config.referralBonusPct !== undefined ? config.referralBonusPct : 15,
+    referralBonusPctB: config.referralBonusPctB !== undefined ? config.referralBonusPctB : 8,
+    referralBonusPctC: config.referralBonusPctC !== undefined ? config.referralBonusPctC : 3,
     withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4
   });
 });
@@ -1017,12 +1034,14 @@ app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
 
 app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   let config = readConfig('platform_config.json');
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, withdrawalFeePct } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct } = req.body;
   if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
   if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
   if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
   if (minDeposit !== undefined) config.minDeposit = parseFloat(minDeposit);
   if (referralBonusPct !== undefined) config.referralBonusPct = parseFloat(referralBonusPct);
+  if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
+  if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
   if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
   writeConfig('platform_config.json', config);
   res.json(config);

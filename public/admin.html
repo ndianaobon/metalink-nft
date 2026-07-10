@@ -545,9 +545,19 @@
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Users cannot deposit less than this amount</p>
                   </div>
                   <div class="admin-form-group">
-                    <label class="admin-form-label">Referral Bonus (%)</label>
+                    <label class="admin-form-label">Team Commission &mdash; Tier A (%)</label>
                     <input class="admin-form-input" id="cfgReferralPct" type="number" step="0.1" value="${config.referralBonusPct !== undefined ? config.referralBonusPct : 15}" placeholder="15">
-                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">% of deposit credited to referrer on first approved deposit</p>
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">% of deposit paid to the direct referrer (level 1) on approval</p>
+                  </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Team Commission &mdash; Tier B (%)</label>
+                    <input class="admin-form-input" id="cfgReferralPctB" type="number" step="0.1" value="${config.referralBonusPctB !== undefined ? config.referralBonusPctB : 8}" placeholder="8">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">% paid to the referrer's referrer (level 2)</p>
+                  </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Team Commission &mdash; Tier C (%)</label>
+                    <input class="admin-form-input" id="cfgReferralPctC" type="number" step="0.1" value="${config.referralBonusPctC !== undefined ? config.referralBonusPctC : 3}" placeholder="3">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">% paid to the third level up the referral chain</p>
                   </div>
                   <div class="admin-form-group">
                     <label class="admin-form-label">Withdrawal Fee (%)</label>
@@ -582,6 +592,8 @@
               signupBonus: document.getElementById('cfgSignupBonus').value,
               minDeposit: document.getElementById('cfgMinDeposit').value,
               referralBonusPct: document.getElementById('cfgReferralPct').value,
+              referralBonusPctB: document.getElementById('cfgReferralPctB').value,
+              referralBonusPctC: document.getElementById('cfgReferralPctC').value,
               withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value
             })
           });

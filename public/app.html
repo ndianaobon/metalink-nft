@@ -840,6 +840,27 @@
     }
     .reserve-cooldown-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 14px; }
 
+    /* ---- Reservation levels / rules ---- */
+    .reserve-info-btn {
+      background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px;
+      display: flex; transition: color var(--transition);
+    }
+    .reserve-info-btn:hover { color: var(--primary); }
+    .reserve-eligible-levels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+    .reserve-level-chip {
+      font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 20px;
+      background: rgba(79,70,229,0.1); color: var(--primary);
+    }
+    .reserve-level-chip.locked { background: var(--bg); color: var(--text-muted); }
+    .reserve-rules-row {
+      display: flex; justify-content: space-between; align-items: center; padding: 10px 0;
+      border-bottom: 1px solid var(--border); font-size: 0.85rem;
+    }
+    .reserve-rules-row:last-child { border-bottom: none; }
+    .reserve-rules-row .rr-level { font-weight: 700; }
+    .reserve-rules-row .rr-range { color: var(--text-muted); font-size: 0.8rem; }
+    .reserve-rules-row .rr-pct { font-weight: 700; color: var(--positive); }
+
     /* ---- Deposit Address ---- */
     .deposit-network-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
     .deposit-network-tab {
@@ -965,8 +986,18 @@
         <div class="reserve-result-title" id="reserveResultTitle">Reservation Success</div>
         <img class="reserve-result-image" id="reserveResultImage" src="" alt="">
         <div class="reserve-result-name" id="reserveResultName"></div>
+        <div class="nft-card-level" id="reserveResultLevel" style="display:inline-block;margin-bottom:10px;"></div>
         <div class="reserve-result-status" id="reserveResultStatus"></div>
         <button class="reserve-result-confirm-btn" onclick="closeAllModals()">Confirm</button>
+      </div>
+    </div>
+
+    <!-- Reservation Rules Modal -->
+    <div class="modal-overlay centered" id="reserveRulesModal">
+      <div class="modal-sheet centered" style="max-width:380px;text-align:left;">
+        <div class="reserve-result-title" style="text-align:center;">Reservation Rules</div>
+        <div id="reserveRulesTable"></div>
+        <button class="reserve-result-confirm-btn" style="margin-top:16px;" onclick="closeAllModals()">Got it</button>
       </div>
     </div>
 
@@ -1049,17 +1080,23 @@
 
       <div class="reserve-layout">
         <div class="card">
-          <div class="card-title">Make a Reservation</div>
+          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <span>Make a Reservation</span>
+            <button type="button" class="reserve-info-btn" onclick="openReserveRulesModal()" title="Reservation Rules">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            </button>
+          </div>
           <div class="stat-row">
             <span class="stat-label">Range</span>
-            <span class="stat-value">50 - 2,000 USDT</span>
+            <span class="stat-value" id="reserveRangeText">50 - 100000 USDT</span>
           </div>
           <div class="stat-row">
             <span class="stat-label">Your Balance</span>
             <span class="stat-value" id="reserveBalance2">0.00 USDT</span>
           </div>
+          <div class="reserve-eligible-levels" id="reserveEligibleLevels"></div>
           <p style="font-size:0.82rem;color:var(--text-secondary);margin:16px 0;line-height:1.5;">
-            Tap below to instantly reserve a random item within your balance range. No amount entry needed &mdash; the item and price are drawn automatically.
+            Tap below to instantly reserve a random item within your eligible level range. No amount entry needed &mdash; the level, item, and price are drawn automatically.
           </p>
           <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
         </div>
@@ -1825,6 +1862,8 @@
     let reserveOrdersCache = [];
     let reserveOrderFilter = 'all';
 
+    let reserveLevelsCache = [];
+
     async function loadReserve() {
       try {
         const d = await api('/api/reserve/orders');
@@ -1832,9 +1871,13 @@
         document.getElementById('reserveCumulative').textContent = fmt(d.cumulativeIncome);
         document.getElementById('reserveTeamBenefits').textContent = fmt(d.teamBenefits);
         document.getElementById('reserveRange').textContent = d.reservationRange;
+        document.getElementById('reserveRangeText').textContent = d.reservationRange + ' USDT';
         document.getElementById('reserveBalance').textContent = fmt(d.walletBalance);
         document.getElementById('reserveBalance2').textContent = fmt(d.walletBalance) + ' USDT';
         document.getElementById('reserveBalanceFor').textContent = fmt(d.balanceForReservation);
+
+        reserveLevelsCache = d.levels || [];
+        renderReserveEligibleLevels(d.walletBalance);
 
         reserveOrdersCache = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate));
         renderReserveOrderTabs();
@@ -1843,6 +1886,25 @@
         if (d.nextReservationAt) startReserveCooldown(d.nextReservationAt);
         else stopReserveCooldown();
       } catch (e) { console.error(e); }
+    }
+
+    function renderReserveEligibleLevels(balance) {
+      const el = document.getElementById('reserveEligibleLevels');
+      el.innerHTML = reserveLevelsCache.map(lv => `
+        <span class="reserve-level-chip ${lv.min > balance ? 'locked' : ''}">Lv${lv.level} (${lv.rewardPct}%)</span>
+      `).join('');
+    }
+
+    function openReserveRulesModal() {
+      const el = document.getElementById('reserveRulesTable');
+      el.innerHTML = reserveLevelsCache.map(lv => `
+        <div class="reserve-rules-row">
+          <span class="rr-level">Level ${lv.level}</span>
+          <span class="rr-range">${fmt(lv.min)} &ndash; ${fmt(lv.max)} USDT</span>
+          <span class="rr-pct">${lv.rewardPct}%</span>
+        </div>
+      `).join('');
+      openModal('reserveRulesModal');
     }
 
     let reserveCooldownInterval = null;
@@ -1904,6 +1966,7 @@
           <div class="reserve-draw-date">Draw date: ${fmtDate(o.reservationDate)} ${new Date(o.reservationDate).toLocaleTimeString()}</div>
           <div class="reserve-draw-row"><span class="label">Order No.</span><span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}</span></div>
           <div class="reserve-draw-order-no">${escapeHtml(o.orderNumber)}</div>
+          ${o.level ? `<div class="reserve-draw-row"><span class="label">Level</span><span class="reserve-draw-est">Lv${o.level} &middot; ${o.rewardPct}%</span></div>` : ''}
           <div class="reserve-draw-row"><span class="label">Estimated Amount</span><span class="reserve-draw-est">${fmt(o.estimatedMin ?? o.reservationAmount)} ~ ${fmt(o.estimatedMax ?? o.reservationAmount)}</span></div>
           ${o.itemName ? `
             <div class="reserve-draw-item">
@@ -1927,6 +1990,7 @@
         document.getElementById('reserveResultImage').src = o.itemImage;
         document.getElementById('reserveResultImage').alt = o.itemName;
         document.getElementById('reserveResultName').textContent = o.itemName;
+        document.getElementById('reserveResultLevel').textContent = 'Level ' + o.level + ' · ' + o.rewardPct + '%';
         const statusEl = document.getElementById('reserveResultStatus');
         statusEl.textContent = o.status === 'Won' ? 'You won +' + fmt(o.reward) + ' USDT' : 'Not won this time';
         statusEl.className = 'reserve-result-status ' + (o.status === 'Won' ? 'won' : 'lost');
