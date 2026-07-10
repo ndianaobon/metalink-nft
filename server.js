@@ -459,6 +459,8 @@ app.put('/api/user/wallet', authMiddleware, (req, res) => {
 app.get('/api/user/team', authMiddleware, (req, res) => {
   const teams = readData('teams.json');
   const users = readData('users.json');
+  const deposits = readData('deposits.json');
+  const depositedUserIds = new Set(deposits.filter(d => d.status === 'Approved').map(d => d.userId));
   const myTeam = teams.filter(t => t.userId === req.userId);
 
   const members = myTeam.map(t => {
@@ -468,7 +470,9 @@ app.get('/api/user/team', authMiddleware, (req, res) => {
       username: member?.username || 'Unknown',
       tier: t.tier,
       joinedAt: t.joinedAt,
-      isValid: (member?.walletBalance || 0) > 0
+      // A member only counts as "valid" once they've made at least one approved deposit —
+      // wallet balance alone isn't a reliable signal since every account starts with a signup bonus.
+      isValid: depositedUserIds.has(t.memberId)
     };
   });
 
