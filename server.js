@@ -669,7 +669,9 @@ app.post('/api/reserve/orders', authMiddleware, (req, res) => {
   users[userIdx].walletBalance -= amount;
   writeData('users.json', users);
 
-  const won = Math.random() > 0.3;
+  const cfg = readConfig('platform_config.json');
+  const winRatePct = cfg.reserveWinRatePct !== undefined ? parseFloat(cfg.reserveWinRatePct) : 70;
+  const won = Math.random() * 100 < winRatePct;
   const reward = won ? amount * (level.rewardPct / 100) : 0;
 
   let orders = readData('reserve_orders.json');
@@ -1130,7 +1132,7 @@ app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
 
 app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   let config = readConfig('platform_config.json');
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct } = req.body;
   if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
   if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
   if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
@@ -1139,6 +1141,11 @@ app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
   if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
   if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
+  if (reserveWinRatePct !== undefined) {
+    const rate = parseFloat(reserveWinRatePct);
+    if (isNaN(rate) || rate < 0 || rate > 100) return res.status(400).json({ error: 'Reservation win rate must be between 0 and 100' });
+    config.reserveWinRatePct = rate;
+  }
   writeConfig('platform_config.json', config);
   res.json(config);
 });

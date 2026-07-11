@@ -564,6 +564,11 @@
                     <input class="admin-form-input" id="cfgWithdrawalFee" type="number" step="0.1" value="${config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4}" placeholder="4">
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Fee deducted from withdrawal amount</p>
                   </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Reservation Win Rate (%)</label>
+                    <input class="admin-form-input" id="cfgReserveWinRate" type="number" step="0.1" min="0" max="100" value="${config.reserveWinRatePct !== undefined ? config.reserveWinRatePct : 70}" placeholder="70">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Chance a reservation draw wins (the rest lose, i.e. "Not Won")</p>
+                  </div>
                 </div>
                 <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.savePlatformSettings()">Save Settings</button>
               </div>
@@ -594,7 +599,8 @@
               referralBonusPct: document.getElementById('cfgReferralPct').value,
               referralBonusPctB: document.getElementById('cfgReferralPctB').value,
               referralBonusPctC: document.getElementById('cfgReferralPctC').value,
-              withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value
+              withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value,
+              reserveWinRatePct: document.getElementById('cfgReserveWinRate').value
             })
           });
           this.toast('Platform settings saved!', 'success');
