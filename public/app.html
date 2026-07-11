@@ -1107,15 +1107,54 @@
       </div>
     </div>
 
+    <!-- Earn Plan Modal -->
+    <div class="modal-overlay" id="earnPlanModal">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div class="modal-title"><span id="earnPlanName"></span></div>
+        <div class="stat-row">
+          <span class="stat-label">Amount</span>
+          <span class="stat-value" id="earnPlanAmount"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Daily Income (max)</span>
+          <span class="stat-value" id="earnPlanDaily" style="color:var(--positive)"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Periodic Reward</span>
+          <span class="stat-value" id="earnPlanReward"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Duration</span>
+          <span class="stat-value" id="earnPlanDays"></span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Your Balance</span>
+          <span class="stat-value" id="earnPlanBalance"></span>
+        </div>
+        <button class="btn btn-primary" id="earnPlanBtn" style="margin-top:16px;">Activate Plan</button>
+        <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+
     <!-- ===== EARN TAB ===== -->
     <div class="tab-page" id="page-earn">
-      <h1 class="page-title">Earnings</h1>
+      <h1 class="page-title">Earn</h1>
+
       <div class="earn-total">
         <div class="label">Total Income</div>
         <div class="amount gradient-text" id="earnTotal">0.00</div>
       </div>
-      <div class="card-title">Income Breakdown</div>
-      <div class="income-grid" id="incomeGrid"></div>
+
+      <div class="stake-category-tabs" id="earnCategoryTabs"></div>
+
+      <div class="stake-subtabs" style="margin-bottom:16px;">
+        <button class="stake-subtab active" data-esub="earn" onclick="switchEarnSubtab('earn')">Earn</button>
+        <button class="stake-subtab" data-esub="record" onclick="switchEarnSubtab('record')">Record</button>
+      </div>
+
+      <div id="earnPlansGrid" class="nft-catalog"></div>
+      <div id="earnRecordList" class="my-stakes-list" style="display:none;"></div>
     </div>
 
     <!-- ===== RESERVE TAB ===== -->
@@ -2013,23 +2052,148 @@
     }
 
     // ---- EARN ----
+    let earnPlansCache = [];
+    let earnPositionsCache = [];
+    let earnActiveCategory = null;
+    let selectedEarnPlan = null;
+
     async function loadEarn() {
       try {
-        const p = await api('/api/user/profile');
+        const [p, plans] = await Promise.all([api('/api/user/profile'), api('/api/earn/plans')]);
         document.getElementById('earnTotal').textContent = fmt(p.totalIncome);
-        const labels = {
-          comprehensive: 'Comprehensive', reserve: 'Reserve', team: 'Team',
-          activity: 'Activity', finance: 'Finance', earn: 'Earn',
-          ecology: 'Ecology', growth: 'Growth', stake: 'Stake'
-        };
-        const grid = document.getElementById('incomeGrid');
-        grid.innerHTML = Object.entries(p.dailyIncome || {}).map(([k, v]) => `
-          <div class="income-item">
-            <div class="label">${labels[k] || k}</div>
-            <div class="val">${fmt(v)}</div>
-          </div>
-        `).join('');
+        earnPlansCache = plans;
+        renderEarnCategoryTabs();
+        renderEarnPlansGrid();
       } catch (e) { console.error(e); }
+    }
+
+    function renderEarnCategoryTabs() {
+      const categories = [...new Set(earnPlansCache.map(p => p.categoryLabel))];
+      if (!earnActiveCategory || !categories.includes(earnActiveCategory)) earnActiveCategory = categories[0] || null;
+      const el = document.getElementById('earnCategoryTabs');
+      el.innerHTML = categories.map(cat => `
+        <button class="stake-category-tab ${cat === earnActiveCategory ? 'active' : ''}" onclick="filterEarnByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)}</button>
+      `).join('');
+    }
+
+    function filterEarnByCategory(cat) {
+      earnActiveCategory = cat;
+      renderEarnCategoryTabs();
+      renderEarnPlansGrid();
+    }
+
+    function earnPlanCardHtml(plan) {
+      const dailyMax = (plan.amount * plan.dailyRatePct / 100).toFixed(2);
+      const periodicReward = (plan.amount * plan.dailyRatePct / 100 * plan.days).toFixed(2);
+      return `
+        <div class="nft-stake-card">
+          <div class="nft-card-banner-wrap">
+            <div class="nft-card-banner-placeholder" style="background:${plan.color};font-size:2.5rem;">${plan.icon}</div>
+            <div class="nft-card-banner-scrim"></div>
+            <span class="nft-card-collection-tag">${escapeHtml(plan.categoryLabel)}</span>
+            <span class="nft-card-status-tag">Open</span>
+          </div>
+          <div class="nft-card-header">
+            <h4>${escapeHtml(plan.name)}</h4>
+            <span class="nft-card-level">Lv1~Lv6</span>
+          </div>
+          <div class="nft-card-details">
+            <div class="nft-card-row"><span class="label">Amount</span><span class="val">${plan.amount} USDT</span></div>
+            <div class="nft-card-row"><span class="label">Daily Income (max)</span><span class="val income">${dailyMax}</span></div>
+            <div class="nft-card-row"><span class="label">Periodic Reward</span><span class="val">${periodicReward}</span></div>
+            <div class="nft-card-row"><span class="label">Duration</span><span class="val">${plan.days} Days</span></div>
+          </div>
+          <button class="nft-card-go" onclick="openEarnPlanModal('${escapeHtml(plan.id)}')">Details</button>
+        </div>`;
+    }
+
+    function renderEarnPlansGrid() {
+      const el = document.getElementById('earnPlansGrid');
+      const filtered = earnPlansCache.filter(p => p.categoryLabel === earnActiveCategory);
+      el.innerHTML = filtered.map(earnPlanCardHtml).join('');
+    }
+
+    async function openEarnPlanModal(id) {
+      const plan = earnPlansCache.find(p => p.id === id);
+      if (!plan) return;
+      selectedEarnPlan = plan;
+      const dailyMax = (plan.amount * plan.dailyRatePct / 100).toFixed(2);
+      const periodicReward = (plan.amount * plan.dailyRatePct / 100 * plan.days).toFixed(2);
+      document.getElementById('earnPlanName').textContent = plan.name;
+      document.getElementById('earnPlanAmount').textContent = plan.amount + ' USDT';
+      document.getElementById('earnPlanDaily').textContent = dailyMax + ' USDT';
+      document.getElementById('earnPlanReward').textContent = periodicReward + ' USDT';
+      document.getElementById('earnPlanDays').textContent = plan.days + ' days';
+      try {
+        const assets = await api('/api/assets');
+        document.getElementById('earnPlanBalance').textContent = fmt(assets.balance) + ' USDT';
+      } catch (e) {}
+      openModal('earnPlanModal');
+    }
+
+    document.getElementById('earnPlanBtn').addEventListener('click', async () => {
+      if (!selectedEarnPlan) return;
+      const btn = document.getElementById('earnPlanBtn');
+      btn.disabled = true; btn.textContent = 'Processing...';
+      try {
+        await api('/api/earn', { method: 'POST', body: JSON.stringify({ planId: selectedEarnPlan.id }) });
+        toast('Plan activated successfully!');
+        closeAllModals();
+        selectedEarnPlan = null;
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Activate Plan'; }
+    });
+
+    function switchEarnSubtab(sub) {
+      document.querySelectorAll('#page-earn .stake-subtab').forEach(b => b.classList.toggle('active', b.dataset.esub === sub));
+      document.getElementById('earnPlansGrid').style.display = sub === 'earn' ? '' : 'none';
+      document.getElementById('earnCategoryTabs').style.display = sub === 'earn' ? '' : 'none';
+      document.getElementById('earnRecordList').style.display = sub === 'record' ? '' : 'none';
+      if (sub === 'record') loadEarnRecord();
+    }
+
+    async function loadEarnRecord() {
+      try {
+        earnPositionsCache = await api('/api/earn/my');
+        renderEarnRecord();
+      } catch (e) { console.error(e); }
+    }
+
+    function renderEarnRecord() {
+      const el = document.getElementById('earnRecordList');
+      if (!earnPositionsCache.length) { el.innerHTML = '<div class="empty-state" style="padding:60px 20px;"><p>No earn history yet. Activate a plan to start earning.</p></div>'; return; }
+      el.innerHTML = earnPositionsCache.slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate)).map(pos => {
+        const daysLeft = Math.max(0, Math.ceil((new Date(pos.endDate) - new Date()) / (1000 * 60 * 60 * 24)));
+        const progress = Math.min(100, ((pos.days - daysLeft) / pos.days * 100)).toFixed(0);
+        return `
+        <div class="stake-item">
+          <div class="stake-item-top">
+            <div class="stake-icon" style="background:${pos.color}">${pos.icon}</div>
+            <div class="stake-info">
+              <div class="stake-name">${escapeHtml(pos.planName)}</div>
+              <div class="stake-detail">${escapeHtml(pos.categoryLabel)} &middot; ${pos.dailyRatePct}%/day &middot; ${fmtDate(pos.startDate)}</div>
+            </div>
+          </div>
+          <div class="stake-item-stats">
+            <div class="stake-item-stat"><div class="label">Amount</div><div class="val">${fmt(pos.amount)}</div></div>
+            <div class="stake-item-stat"><div class="label">Days Left</div><div class="val">${pos.status === 'active' ? daysLeft : '0'}</div></div>
+            <div class="stake-item-stat"><div class="label">Progress</div><div class="val">${pos.status === 'active' ? progress + '%' : '100%'}</div></div>
+          </div>
+          ${pos.status === 'active'
+            ? `<button class="stake-claim-btn" onclick="claimEarn('${pos.id}')">Claim Reward</button>`
+            : `<div style="text-align:center;"><span class="badge badge-completed">Completed &mdash; +${fmt(pos.income)} USDT</span></div>`}
+        </div>`;
+      }).join('');
+    }
+
+    async function claimEarn(id) {
+      try {
+        const r = await api('/api/earn/' + id + '/claim', { method: 'POST' });
+        toast('Claimed! Income: ' + fmt(r.income) + ' USDT');
+        loadEarnRecord();
+        updateHeaderBalance();
+      } catch (e) { toast(e.message, 'error'); }
     }
 
     // ---- RESERVE ----

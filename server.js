@@ -604,6 +604,100 @@ app.post('/api/stakes/:id/claim', authMiddleware, (req, res) => {
   res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
 });
 
+// ===================== EARN ROUTES =====================
+
+const EARN_PLANS = [
+  { id: 'earn-growth-1', category: 'growth', categoryLabel: 'Growth Finance', name: 'GrowthStarter', amount: 100, dailyRatePct: 2.0, days: 30, icon: '📈', color: '#7C3AED' },
+  { id: 'earn-growth-2', category: 'growth', categoryLabel: 'Growth Finance', name: 'GrowthPro', amount: 500, dailyRatePct: 2.5, days: 60, icon: '📈', color: '#7C3AED' },
+  { id: 'earn-growth-3', category: 'growth', categoryLabel: 'Growth Finance', name: 'GrowthElite', amount: 2000, dailyRatePct: 3.0, days: 90, icon: '📈', color: '#7C3AED' },
+  { id: 'earn-comp-1', category: 'comprehensive', categoryLabel: 'Comprehensive Finance', name: 'CompStarter', amount: 100, dailyRatePct: 2.2, days: 30, icon: '💎', color: '#4F46E5' },
+  { id: 'earn-comp-2', category: 'comprehensive', categoryLabel: 'Comprehensive Finance', name: 'CompPro', amount: 500, dailyRatePct: 2.6, days: 60, icon: '💎', color: '#4F46E5' },
+  { id: 'earn-comp-3', category: 'comprehensive', categoryLabel: 'Comprehensive Finance', name: 'CompElite', amount: 2000, dailyRatePct: 3.2, days: 90, icon: '💎', color: '#4F46E5' },
+  { id: 'earn-eco-1', category: 'ecology', categoryLabel: 'Ecology Finance', name: 'EcoStarter', amount: 100, dailyRatePct: 1.8, days: 30, icon: '🌿', color: '#14B8A6' },
+  { id: 'earn-eco-2', category: 'ecology', categoryLabel: 'Ecology Finance', name: 'EcoPro', amount: 500, dailyRatePct: 2.2, days: 60, icon: '🌿', color: '#14B8A6' },
+  { id: 'earn-eco-3', category: 'ecology', categoryLabel: 'Ecology Finance', name: 'EcoElite', amount: 2000, dailyRatePct: 2.8, days: 90, icon: '🌿', color: '#14B8A6' },
+  { id: 'earn-usdt-1', category: 'finance', categoryLabel: 'USDT Finance', name: 'USDTStarter', amount: 100, dailyRatePct: 1.5, days: 30, icon: '💵', color: '#F59E0B' },
+  { id: 'earn-usdt-2', category: 'finance', categoryLabel: 'USDT Finance', name: 'USDTPro', amount: 500, dailyRatePct: 1.9, days: 60, icon: '💵', color: '#F59E0B' },
+  { id: 'earn-usdt-3', category: 'finance', categoryLabel: 'USDT Finance', name: 'USDTElite', amount: 2000, dailyRatePct: 2.4, days: 90, icon: '💵', color: '#F59E0B' }
+];
+
+app.get('/api/earn/plans', authMiddleware, (req, res) => {
+  res.json(EARN_PLANS);
+});
+
+app.get('/api/earn/my', authMiddleware, (req, res) => {
+  const positions = readData('earn_positions.json');
+  res.json(positions.filter(p => p.userId === req.userId));
+});
+
+app.post('/api/earn', authMiddleware, (req, res) => {
+  const { planId } = req.body;
+  const plan = EARN_PLANS.find(p => p.id === planId);
+  if (!plan) return res.status(404).json({ error: 'Plan not found' });
+
+  let users = readData('users.json');
+  const userIdx = users.findIndex(u => u.id === req.userId);
+  if (userIdx === -1) return res.status(404).json({ error: 'User not found' });
+  if (users[userIdx].walletBalance < plan.amount) return res.status(400).json({ error: 'Insufficient balance' });
+
+  users[userIdx].walletBalance -= plan.amount;
+  writeData('users.json', users);
+
+  const expectedTotal = plan.amount * (plan.dailyRatePct / 100) * plan.days;
+
+  let positions = readData('earn_positions.json');
+  const position = {
+    id: generateId(),
+    userId: req.userId,
+    planId: plan.id,
+    planName: plan.name,
+    category: plan.category,
+    categoryLabel: plan.categoryLabel,
+    color: plan.color,
+    icon: plan.icon,
+    amount: plan.amount,
+    dailyRatePct: plan.dailyRatePct,
+    days: plan.days,
+    startDate: new Date().toISOString(),
+    endDate: new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000).toISOString(),
+    income: 0,
+    expectedTotal,
+    status: 'active',
+    claimed: false
+  };
+  positions.push(position);
+  writeData('earn_positions.json', positions);
+
+  res.json(position);
+});
+
+app.post('/api/earn/:id/claim', authMiddleware, (req, res) => {
+  let positions = readData('earn_positions.json');
+  const idx = positions.findIndex(p => p.id === req.params.id && p.userId === req.userId);
+  if (idx === -1) return res.status(404).json({ error: 'Position not found' });
+  if (positions[idx].claimed) return res.status(400).json({ error: 'Already claimed' });
+
+  const now = new Date();
+  const start = new Date(positions[idx].startDate);
+  const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), positions[idx].days);
+  const income = positions[idx].amount * (positions[idx].dailyRatePct / 100) * daysElapsed;
+
+  positions[idx].income = parseFloat(income.toFixed(5));
+  positions[idx].claimed = true;
+  positions[idx].status = 'completed';
+  writeData('earn_positions.json', positions);
+
+  let users = readData('users.json');
+  const userIdx = users.findIndex(u => u.id === req.userId);
+  users[userIdx].walletBalance += positions[idx].amount + income;
+  users[userIdx].totalIncome += income;
+  const cat = positions[idx].category;
+  if (users[userIdx].dailyIncome[cat] !== undefined) users[userIdx].dailyIncome[cat] += income;
+  writeData('users.json', users);
+
+  res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
+});
+
 // ===================== RESERVE ROUTES =====================
 
 const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
