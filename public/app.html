@@ -2022,6 +2022,10 @@
     }
 
     let nftCatalogCache = [];
+    let platformInfoCache = { handlingFeeEnabled: false };
+    async function loadPlatformInfo() {
+      try { platformInfoCache = await fetch('/api/platform/info').then(r => r.json()); } catch (e) {}
+    }
 
     function switchStakeTab(tab) {
       document.querySelectorAll('.stake-subtab').forEach(t => t.classList.remove('active'));
@@ -2055,7 +2059,7 @@
           <div class="nft-card-details">
             <div class="nft-card-row"><span class="label">Price Range</span><span class="val">${formatPledgeRange(nft.pledgeRange)}</span></div>
             <div class="nft-card-row"><span class="label">Daily Income</span><span class="val income">${escapeHtml(nft.dailyIncome)}</span></div>
-            <div class="nft-card-row"><span class="label">Handling Fee</span><span class="val">${escapeHtml(nft.handlingFee || '1%')}</span></div>
+            <div class="nft-card-row"><span class="label">Handling Fee</span><span class="val">${platformInfoCache.handlingFeeEnabled ? escapeHtml(nft.handlingFee || '1%') : 'Free'}</span></div>
           </div>
           <button class="nft-card-go" onclick="openStakeModal('${escapeHtml(nft.id)}')">Stake Now</button>
         </div>`;
@@ -2113,7 +2117,7 @@
       document.getElementById('stakeDaily').textContent = nft.dailyIncome;
       document.getElementById('stakeDuration').textContent = nft.duration + ' days';
       document.getElementById('stakeRange').innerHTML = formatPledgeRange(nft.pledgeRange);
-      document.getElementById('stakeFee').textContent = nft.handlingFee || '1%';
+      document.getElementById('stakeFee').textContent = platformInfoCache.handlingFeeEnabled ? (nft.handlingFee || '1%') : 'Free';
       document.getElementById('stakeAmount').value = '';
       document.getElementById('stakeAmount').placeholder = nft.pledgeRange;
       document.getElementById('stakeTotalCharge').textContent = '—';
@@ -2124,7 +2128,7 @@
       const el = document.getElementById('stakeTotalCharge');
       const amount = parseFloat(document.getElementById('stakeAmount').value);
       if (!selectedNft || !amount) { el.textContent = '—'; return; }
-      const feePct = parseFloat(selectedNft.handlingFee) / 100 || 0;
+      const feePct = platformInfoCache.handlingFeeEnabled ? (parseFloat(selectedNft.handlingFee) / 100 || 0) : 0;
       const fee = amount * feePct;
       el.textContent = (amount + fee).toFixed(2) + ' USDT (' + amount + ' + ' + fee.toFixed(2) + ' fee)';
     });
@@ -3096,7 +3100,7 @@
       setTimeout(() => el.remove(), 400);
     }
     Promise.race([
-      Promise.all([loadStakes(), updateHeaderBalance()]),
+      Promise.all([loadStakes(), updateHeaderBalance(), loadPlatformInfo()]),
       new Promise(resolve => setTimeout(resolve, 4000)) // safety net so the loader never gets stuck on a slow/failed request
     ]).then(hideBootLoader);
   </script>

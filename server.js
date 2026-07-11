@@ -545,7 +545,8 @@ app.post('/api/stakes', authMiddleware, (req, res) => {
   const [min, max] = nft.pledgeRange.split(' - ').map(Number);
   if (amount < min || amount > max) return res.status(400).json({ error: `Amount must be between ${min} and ${max} USDT` });
 
-  const feePct = parseFloat(nft.handlingFee) / 100;
+  const feeEnabled = readConfig('platform_config.json').handlingFeeEnabled === true;
+  const feePct = feeEnabled ? parseFloat(nft.handlingFee) / 100 : 0;
   const fee = parseFloat((amount * feePct).toFixed(5));
   const totalCharge = amount + fee;
   if (users[userIdx].walletBalance < totalCharge) return res.status(400).json({ error: `Insufficient balance. You need ${totalCharge} USDT (${amount} + ${fee} handling fee)` });
@@ -1220,7 +1221,8 @@ app.get('/api/platform/info', (req, res) => {
     referralBonusPct: config.referralBonusPct !== undefined ? config.referralBonusPct : 15,
     referralBonusPctB: config.referralBonusPctB !== undefined ? config.referralBonusPctB : 8,
     referralBonusPctC: config.referralBonusPctC !== undefined ? config.referralBonusPctC : 3,
-    withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4
+    withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4,
+    handlingFeeEnabled: config.handlingFeeEnabled === true
   });
 });
 
@@ -1231,7 +1233,7 @@ app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
 
 app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   let config = readConfig('platform_config.json');
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled } = req.body;
   if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
   if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
   if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
@@ -1240,6 +1242,7 @@ app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
   if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
   if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
   if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
+  if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
   if (reserveWinRatePct !== undefined) {
     const rate = parseFloat(reserveWinRatePct);
     if (isNaN(rate) || rate < 0 || rate > 100) return res.status(400).json({ error: 'Reservation win rate must be between 0 and 100' });

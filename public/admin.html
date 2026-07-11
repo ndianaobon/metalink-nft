@@ -569,6 +569,14 @@
                     <input class="admin-form-input" id="cfgReserveWinRate" type="number" step="0.1" min="0" max="100" value="${config.reserveWinRatePct !== undefined ? config.reserveWinRatePct : 70}" placeholder="70">
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Chance a reservation draw wins (the rest lose, i.e. "Not Won")</p>
                   </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Stake Handling Fee</label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 0;cursor:pointer;">
+                      <input type="checkbox" id="cfgHandlingFeeEnabled" style="width:18px;height:18px;" ${config.handlingFeeEnabled === true ? 'checked' : ''}>
+                      <span style="font-size:0.9rem;">Charge the handling fee shown on each stake plan</span>
+                    </label>
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Off by default. When off, staking never charges a fee regardless of what's set per-plan.</p>
+                  </div>
                 </div>
                 <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.savePlatformSettings()">Save Settings</button>
               </div>
@@ -600,7 +608,8 @@
               referralBonusPctB: document.getElementById('cfgReferralPctB').value,
               referralBonusPctC: document.getElementById('cfgReferralPctC').value,
               withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value,
-              reserveWinRatePct: document.getElementById('cfgReserveWinRate').value
+              reserveWinRatePct: document.getElementById('cfgReserveWinRate').value,
+              handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked
             })
           });
           this.toast('Platform settings saved!', 'success');
