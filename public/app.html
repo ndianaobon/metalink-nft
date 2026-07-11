@@ -1875,7 +1875,7 @@
       if (tab === 'mystake') document.getElementById('stakeSubMystake').classList.add('active');
     }
 
-    let activeCategory = 'All';
+    let activeCategory = null;
 
     function nftCardHtml(nft, i) {
       return `
@@ -1902,7 +1902,8 @@
     }
 
     function renderCategoryTabs(catalog) {
-      const categories = ['All', ...new Set(catalog.map(n => n.collection).filter(Boolean))];
+      const categories = [...new Set(catalog.map(n => n.collection).filter(Boolean))];
+      if (!activeCategory || !categories.includes(activeCategory)) activeCategory = categories[0] || null;
       const el = document.getElementById('stakeCategoryTabs');
       el.innerHTML = categories.map(cat => `
         <button class="stake-category-tab ${cat === activeCategory ? 'active' : ''}" onclick="filterCatalogByCategory('${escapeHtml(cat)}')">${escapeHtml(cat)}</button>
@@ -1917,7 +1918,7 @@
 
     function renderCatalogGrid() {
       const el = document.getElementById('nftCatalog');
-      const filtered = activeCategory === 'All' ? nftCatalogCache : nftCatalogCache.filter(n => n.collection === activeCategory);
+      const filtered = nftCatalogCache.filter(n => n.collection === activeCategory);
       el.innerHTML = filtered.map((nft, i) => nftCardHtml(nft, i)).join('');
     }
 

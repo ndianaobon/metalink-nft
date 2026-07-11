@@ -1,8 +1,8 @@
 [
   {
     "id": "nft1",
-    "name": "CoolAPE",
-    "collection": "CryptoPunks",
+    "name": "Exclusive Stake1",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-1.jpg",
     "pledgeRange": "50 - 500",
     "dailyIncome": "1.5%",
@@ -13,8 +13,8 @@
   },
   {
     "id": "nft2",
-    "name": "PixelDog",
-    "collection": "PolygonNFT",
+    "name": "Exclusive Stake2",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-2.jpg",
     "pledgeRange": "100 - 1000",
     "dailyIncome": "1.8%",
@@ -25,8 +25,8 @@
   },
   {
     "id": "nft3",
-    "name": "MetaMonkey",
-    "collection": "Art",
+    "name": "Exclusive Stake3",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-3.jpg",
     "pledgeRange": "200 - 2000",
     "dailyIncome": "2.1%",
@@ -37,8 +37,8 @@
   },
   {
     "id": "nft4",
-    "name": "CyberCat",
-    "collection": "Collectibles",
+    "name": "Exclusive Stake4",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-4.png",
     "pledgeRange": "500 - 5000",
     "dailyIncome": "2.5%",
@@ -49,8 +49,8 @@
   },
   {
     "id": "nft5",
-    "name": "NeonBear",
-    "collection": "CryptoPunks",
+    "name": "Exclusive Stake5",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-5.png",
     "pledgeRange": "1000 - 10000",
     "dailyIncome": "3.0%",
@@ -61,8 +61,8 @@
   },
   {
     "id": "nft6",
-    "name": "GoldEagle",
-    "collection": "Art",
+    "name": "Exclusive Stake6",
+    "collection": "Stake",
     "image": "/assets/images/nfts/stake-6.png",
     "pledgeRange": "1500 - 6000",
     "dailyIncome": "3.5%",

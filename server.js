@@ -161,12 +161,12 @@ function initStakes() {
   let stakes = readData('nft_catalog.json');
   if (stakes.length === 0) {
     stakes = [
-      { id: 'nft1', name: 'CoolAPE', collection: 'CryptoPunks', image: '/assets/images/nfts/stake-1.jpg', pledgeRange: '50 - 500', dailyIncome: '1.8%', duration: 7, color: '#7C3AED' },
-      { id: 'nft2', name: 'PixelDog', collection: 'PolygonNFT', image: '/assets/images/nfts/stake-2.jpg', pledgeRange: '100 - 1000', dailyIncome: '2.1%', duration: 14, color: '#4F46E5' },
-      { id: 'nft3', name: 'MetaMonkey', collection: 'Art', image: '/assets/images/nfts/stake-3.jpg', pledgeRange: '200 - 2000', dailyIncome: '2.5%', duration: 30, color: '#14B8A6' },
-      { id: 'nft4', name: 'CyberCat', collection: 'Collectibles', image: '/assets/images/nfts/stake-4.png', pledgeRange: '500 - 5000', dailyIncome: '3.0%', duration: 60, color: '#3B82F6' },
-      { id: 'nft5', name: 'NeonBear', collection: 'CryptoPunks', image: '/assets/images/nfts/stake-5.png', pledgeRange: '1000 - 10000', dailyIncome: '3.5%', duration: 90, color: '#EF4444' },
-      { id: 'nft6', name: 'GoldEagle', collection: 'Art', image: '/assets/images/nfts/stake-6.png', pledgeRange: '50 - 2000', dailyIncome: '1.5%', duration: 7, color: '#F59E0B' },
+      { id: 'nft1', name: 'Exclusive Stake1', collection: 'Stake', image: '/assets/images/nfts/stake-1.jpg', pledgeRange: '50 - 500', dailyIncome: '1.5%', handlingFee: '1%', duration: 7, color: '#7C3AED', levelReq: 'LV1-LV8' },
+      { id: 'nft2', name: 'Exclusive Stake2', collection: 'Stake', image: '/assets/images/nfts/stake-2.jpg', pledgeRange: '100 - 1000', dailyIncome: '1.8%', handlingFee: '1%', duration: 14, color: '#4F46E5', levelReq: 'LV2-LV8' },
+      { id: 'nft3', name: 'Exclusive Stake3', collection: 'Stake', image: '/assets/images/nfts/stake-3.jpg', pledgeRange: '200 - 2000', dailyIncome: '2.1%', handlingFee: '1%', duration: 30, color: '#14B8A6', levelReq: 'LV2-LV8' },
+      { id: 'nft4', name: 'Exclusive Stake4', collection: 'Stake', image: '/assets/images/nfts/stake-4.png', pledgeRange: '500 - 5000', dailyIncome: '2.5%', handlingFee: '1%', duration: 60, color: '#3B82F6', levelReq: 'LV2-LV8' },
+      { id: 'nft5', name: 'Exclusive Stake5', collection: 'Stake', image: '/assets/images/nfts/stake-5.png', pledgeRange: '1000 - 10000', dailyIncome: '3.0%', handlingFee: '1%', duration: 90, color: '#EF4444', levelReq: 'LV2-LV5' },
+      { id: 'nft6', name: 'Exclusive Stake6', collection: 'Stake', image: '/assets/images/nfts/stake-6.png', pledgeRange: '1500 - 6000', dailyIncome: '3.5%', handlingFee: '1%', duration: 90, color: '#F59E0B', levelReq: 'LV2-LV8' },
     ];
     writeData('nft_catalog.json', stakes);
   }
