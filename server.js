@@ -111,11 +111,15 @@ async function verifyPassword(pw, storedHash) {
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ADMIN_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // admin sessions are idle-timeout, not fixed -- see adminMiddleware
+const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
+const ACTIVITY_WRITE_THROTTLE_MS = 60 * 1000; // avoid a disk write on every single request
 const sessions = {};
 
 function createSession(subjectId, role) {
   const token = crypto.randomBytes(32).toString('hex');
-  sessions[token] = { userId: subjectId, role, expiresAt: Date.now() + SESSION_TTL_MS };
+  const ttl = role === 'admin' ? ADMIN_SESSION_TTL_MS : SESSION_TTL_MS;
+  sessions[token] = { userId: subjectId, role, expiresAt: Date.now() + ttl };
   return token;
 }
 
@@ -127,6 +131,16 @@ function authMiddleware(req, res, next) {
   req.token = token;
   req.userId = session.userId;
   req.userRole = session.role || 'user';
+
+  // Throttled "last active" tracking, used to show users as online/offline in the admin panel.
+  const now = Date.now();
+  if (!session.lastActivityWrite || now - session.lastActivityWrite > ACTIVITY_WRITE_THROTTLE_MS) {
+    session.lastActivityWrite = now;
+    let users = readData('users.json');
+    const idx = users.findIndex(u => u.id === session.userId);
+    if (idx !== -1) { users[idx].lastActiveAt = new Date().toISOString(); writeData('users.json', users); }
+  }
+
   next();
 }
 
@@ -135,6 +149,7 @@ function adminMiddleware(req, res, next) {
   const session = token && sessions[token];
   if (!session || session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
   if (session.expiresAt < Date.now()) { delete sessions[token]; return res.status(403).json({ error: 'Session expired' }); }
+  session.expiresAt = Date.now() + ADMIN_SESSION_TTL_MS; // sliding window: stays alive while actively used, expires 2h after the last request
   req.token = token;
   req.userId = session.userId;
   req.userRole = 'admin';
@@ -436,6 +451,30 @@ app.post('/api/user/change-password', authLimiter, authMiddleware, async (req, r
   // Invalidate other sessions but keep this one alive so the user isn't logged out mid-flow.
   Object.keys(sessions).forEach(token => {
     if (sessions[token].userId === req.userId && token !== req.token) delete sessions[token];
+  });
+
+  res.json({ message: 'Password changed successfully' });
+});
+
+app.post('/api/admin/change-password', authLimiter, adminMiddleware, async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  if (!currentPassword || !newPassword || !confirmPassword) return res.status(400).json({ error: 'All fields are required' });
+  if (newPassword !== confirmPassword) return res.status(400).json({ error: 'New passwords do not match' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+
+  let admins = readData('admins.json');
+  const idx = admins.findIndex(a => a.id === req.userId);
+  if (idx === -1) return res.status(404).json({ error: 'Admin not found' });
+
+  if (!(await verifyPassword(currentPassword, admins[idx].password))) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+
+  admins[idx].password = await hashPassword(newPassword);
+  writeData('admins.json', admins);
+
+  Object.keys(sessions).forEach(token => {
+    if (sessions[token].userId === req.userId && sessions[token].role === 'admin' && token !== req.token) delete sessions[token];
   });
 
   res.json({ message: 'Password changed successfully' });
@@ -979,7 +1018,8 @@ app.get('/api/admin/stats', adminMiddleware, (req, res) => {
 app.get('/api/admin/users', adminMiddleware, (req, res) => {
   const users = readData('users.json').map(u => {
     const { password, secondPassword, ...rest } = u;
-    return rest;
+    const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
+    return { ...rest, online };
   });
   res.json(users);
 });
