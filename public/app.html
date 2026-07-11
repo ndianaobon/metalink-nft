@@ -1092,13 +1092,17 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
           Home
         </button>
-        <button class="app-menu-item" onclick="menuUnavailable('Telegram')">
+        <button class="app-menu-item" onclick="openExternal('https://t.me/MetaLinkNFT_Admin')">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
           Telegram
         </button>
         <button class="app-menu-item" onclick="menuUnavailable('Download')">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download
+        </button>
+        <button class="app-menu-item" onclick="openExternal('https://t.me/+pOKs2lnyBXM5NjI9')">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
+          Group
         </button>
       </div>
     </div>
@@ -2582,6 +2586,11 @@
 
     function menuUnavailable(name) {
       toast(name + ' is not available yet', 'error');
+      closeHeaderDropdowns();
+    }
+
+    function openExternal(url) {
+      window.open(url, '_blank', 'noopener');
       closeHeaderDropdowns();
     }
 
