@@ -10,6 +10,30 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/assets/styles.css">
   <link rel="stylesheet" href="/assets/auth.css">
+  <style>
+    .freeze-modal-overlay {
+      position: fixed; inset: 0; z-index: 500; display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.6); padding: 20px;
+    }
+    .freeze-modal {
+      position: relative; background: var(--surface, #161626); border-radius: 20px;
+      padding: 36px 28px 28px; width: 100%; max-width: 360px; text-align: center;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+    }
+    .freeze-modal-close {
+      position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border-radius: 10px;
+      background: var(--bg, #0A0A12); border: 1px solid var(--border, rgba(255,255,255,0.08));
+      color: var(--text-secondary, #9B9BB4); display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .freeze-modal-icon {
+      width: 72px; height: 72px; border-radius: 50%; margin: 0 auto 20px;
+      background: linear-gradient(135deg, #EF4444, #DC2626);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 0 8px rgba(239,68,68,0.1);
+    }
+    .freeze-modal h2 { font-size: 1.2rem; font-weight: 800; margin-bottom: 12px; color: var(--text, #F4F4FA); }
+    .freeze-modal p { font-size: 0.9rem; color: #EF4444; font-weight: 600; line-height: 1.5; margin-bottom: 22px; }
+  </style>
 </head>
 <body>
   <div class="brand-loader-overlay" id="redirectLoader" style="display:none;">
@@ -18,6 +42,22 @@
       <img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo">
     </div>
   </div>
+
+  <div class="freeze-modal-overlay" id="freezeModalOverlay" style="display:none;">
+    <div class="freeze-modal">
+      <button class="freeze-modal-close" onclick="closeFreezeModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <div class="freeze-modal-icon">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+      <h2>Validation Error</h2>
+      <p id="freezeModalMessage"></p>
+      <button class="btn btn-primary btn-block btn-lg" onclick="closeFreezeModal()">Confirm</button>
+      <button class="btn btn-outline btn-block" style="margin-top:10px;" onclick="closeFreezeModal()">Cancel</button>
+    </div>
+  </div>
+
   <div class="auth-page">
     <div class="auth-container">
       <a href="/" class="auth-back">&larr; Back to Home</a>
@@ -113,6 +153,10 @@
     // Auto-fill referral code from a shared invite link (?ref=UID)
     const refFromLink = new URLSearchParams(window.location.search).get('ref');
     if (refFromLink) document.getElementById('signupReferral').value = refFromLink;
+
+    // Show the freeze notice if we were just redirected here because an active session got frozen
+    const frozenParam = new URLSearchParams(window.location.search).get('frozen');
+    if (frozenParam) showFreezeModal(frozenParam);
 
     const COUNTRY_CODES = [
       ['Pakistan','+92'],['Afghanistan','+93'],['Albania','+355'],['Algeria','+213'],['Andorra','+376'],
@@ -283,6 +327,16 @@
       document.getElementById('redirectLoader').style.display = 'flex';
     }
 
+    function showFreezeModal(frozenUntilIso) {
+      const d = new Date(frozenUntilIso);
+      document.getElementById('freezeModalMessage').textContent = 'Your account is temporarily frozen until ' + d.toLocaleDateString() + ', ' + d.toLocaleTimeString() + '.';
+      document.getElementById('freezeModalOverlay').style.display = 'flex';
+    }
+
+    function closeFreezeModal() {
+      document.getElementById('freezeModalOverlay').style.display = 'none';
+    }
+
     document.getElementById('signupForm').addEventListener('submit', async (e) => {
       e.preventDefault();
       const hash = window.location.hash;
@@ -328,7 +382,10 @@
             body: JSON.stringify({ email, password })
           });
           const data = await res.json();
-          if (!res.ok) throw new Error(data.error);
+          if (!res.ok) {
+            if (res.status === 403 && data.frozenUntil) { showFreezeModal(data.frozenUntil); return; }
+            throw new Error(data.error);
+          }
           localStorage.setItem('mlk_token', data.token);
           localStorage.setItem('mlk_user', JSON.stringify(data.user));
           showRedirectLoader();

@@ -24,6 +24,12 @@
       return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    function toDatetimeLocal(isoString) {
+      const d = new Date(isoString);
+      const pad = n => String(n).padStart(2, '0');
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     const Admin = {
       token: localStorage.getItem('mlk_admin_token'),
       currentPage: 'dashboard',
@@ -167,9 +173,14 @@
                 <table class="admin-table">
                   <thead><tr><th>Status</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Wallet TRC20</th><th>Joined</th><th>Actions</th></tr></thead>
                   <tbody>
-                    ${users.map(u => `
+                    ${users.map(u => {
+                      const frozen = u.frozenUntil && new Date(u.frozenUntil).getTime() > Date.now();
+                      const statusBadge = frozen
+                        ? `<span class="admin-badge admin-badge-rejected" title="Frozen until ${new Date(u.frozenUntil).toLocaleString()}">&#10060; Frozen</span>`
+                        : `<span class="admin-badge ${u.online ? 'admin-badge-approved' : 'admin-badge-pending'}">${u.online ? '&#9679; Online' : '&#9675; Offline'}</span>`;
+                      return `
                       <tr>
-                        <td><span class="admin-badge ${u.online ? 'admin-badge-approved' : 'admin-badge-pending'}">${u.online ? '&#9679; Online' : '&#9675; Offline'}</span></td>
+                        <td>${statusBadge}</td>
                         <td><strong>${escapeHtml(u.uid)}</strong></td>
                         <td>${escapeHtml(u.username)}</td>
                         <td>${escapeHtml(u.email)}</td>
@@ -181,7 +192,8 @@
                           <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(u.id)}')">Edit</button>
                           <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${escapeHtml(u.id)}','${escapeHtml(u.username)}')">+ Balance</button>
                         </td>
-                      </tr>`).join('')}
+                      </tr>`;
+                    }).join('')}
                   </tbody>
                 </table>
               </div>
@@ -206,6 +218,11 @@
               <div class="admin-form-group"><label class="admin-form-label">Points</label><input class="admin-form-input" id="editPoints" type="number" value="${user.points}"></div>
               <div class="admin-form-group"><label class="admin-form-label">TRC20 Wallet</label><input class="admin-form-input" id="editTrc20" value="${escapeHtml(user.walletAddress?.trc20)}"></div>
               <div class="admin-form-group"><label class="admin-form-label">BEP-20 Wallet</label><input class="admin-form-input" id="editBep20" value="${escapeHtml(user.walletAddress?.bep20 || user.walletAddress?.erc20)}"></div>
+              <div class="admin-form-group" style="border-top:1px solid #eee;padding-top:14px;">
+                <label class="admin-form-label">Freeze Account Until</label>
+                <input class="admin-form-input" id="editFrozenUntil" type="datetime-local" value="${user.frozenUntil ? toDatetimeLocal(user.frozenUntil) : ''}">
+                <p style="font-size:0.75rem;color:#888;margin-top:4px;">${user.frozenUntil && new Date(user.frozenUntil).getTime() > Date.now() ? `Currently frozen until ${new Date(user.frozenUntil).toLocaleString()}.` : 'Not currently frozen.'} Leave blank and save to unfreeze.</p>
+              </div>
               <div style="display:flex;gap:10px;">
                 <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
                 <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveUser('${escapeHtml(id)}')">Save</button>
@@ -217,11 +234,13 @@
 
       async saveUser(id) {
         try {
+          const frozenInput = document.getElementById('editFrozenUntil').value;
           const data = {
             username: document.getElementById('editUsername').value,
             walletBalance: parseFloat(document.getElementById('editBalance').value),
             level: parseInt(document.getElementById('editLevel').value),
             points: parseFloat(document.getElementById('editPoints').value),
+            frozenUntil: frozenInput ? new Date(frozenInput).toISOString() : null
           };
           await this.api(`/admin/users/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 

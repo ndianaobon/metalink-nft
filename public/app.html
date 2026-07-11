@@ -1988,6 +1988,12 @@
       }).then(async r => {
         const d = await r.json();
         if (r.status === 401) { logout(); throw new Error('Session expired'); }
+        if (r.status === 403 && d.frozenUntil) {
+          localStorage.removeItem('mlk_token');
+          localStorage.removeItem('mlk_user');
+          window.location.href = '/signup.html?frozen=' + encodeURIComponent(d.frozenUntil) + '#login';
+          throw new Error('Account frozen');
+        }
         if (!r.ok) throw new Error(d.error || 'Request failed');
         return d;
       });

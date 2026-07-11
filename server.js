@@ -110,6 +110,10 @@ async function verifyPassword(pw, storedHash) {
   return legacyHash(pw) === storedHash;
 }
 
+function isFrozen(user) {
+  return !!user.frozenUntil && new Date(user.frozenUntil).getTime() > Date.now();
+}
+
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // admin sessions are idle-timeout, not fixed -- see adminMiddleware
 const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
@@ -132,13 +136,21 @@ function authMiddleware(req, res, next) {
   req.userId = session.userId;
   req.userRole = session.role || 'user';
 
-  // Throttled "last active" tracking, used to show users as online/offline in the admin panel.
+  // Throttled "last active" tracking (also doubles as the freeze check, so a freeze takes
+  // effect for an active session within ~1 minute rather than needing a fresh login).
   const now = Date.now();
   if (!session.lastActivityWrite || now - session.lastActivityWrite > ACTIVITY_WRITE_THROTTLE_MS) {
     session.lastActivityWrite = now;
     let users = readData('users.json');
     const idx = users.findIndex(u => u.id === session.userId);
-    if (idx !== -1) { users[idx].lastActiveAt = new Date().toISOString(); writeData('users.json', users); }
+    if (idx !== -1) {
+      if (isFrozen(users[idx])) {
+        delete sessions[token];
+        return res.status(403).json({ error: 'Account frozen', frozenUntil: users[idx].frozenUntil });
+      }
+      users[idx].lastActiveAt = new Date().toISOString();
+      writeData('users.json', users);
+    }
   }
 
   next();
@@ -332,6 +344,10 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     writeData('users.json', users);
   }
   const user = users[idx];
+
+  if (isFrozen(user)) {
+    return res.status(403).json({ error: 'Account frozen', frozenUntil: user.frozenUntil });
+  }
 
   const token = createSession(user.id, 'user');
 
@@ -1029,11 +1045,20 @@ app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
   const idx = users.findIndex(u => u.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'User not found' });
 
-  const { walletBalance, level, points, username } = req.body;
+  const { walletBalance, level, points, username, frozenUntil } = req.body;
   if (walletBalance !== undefined) users[idx].walletBalance = parseFloat(walletBalance);
   if (level !== undefined) users[idx].level = parseInt(level);
   if (points !== undefined) users[idx].points = parseFloat(points);
   if (username !== undefined) users[idx].username = username;
+  if (frozenUntil !== undefined) {
+    if (frozenUntil === null || frozenUntil === '') {
+      users[idx].frozenUntil = null;
+    } else {
+      const d = new Date(frozenUntil);
+      if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid freeze date' });
+      users[idx].frozenUntil = d.toISOString();
+    }
+  }
   writeData('users.json', users);
 
   const { password, secondPassword, ...profile } = users[idx];
