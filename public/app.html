@@ -120,6 +120,23 @@
     .app-notif-title { font-size: 0.85rem; font-weight: 600; }
     .app-notif-date { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
 
+    .lang-item {
+      display: flex; align-items: center; gap: 14px; width: 100%; padding: 14px 12px;
+      background: none; border: none; border-radius: 12px; cursor: pointer; text-align: left;
+      font-family: var(--font); transition: background var(--transition); margin-bottom: 4px;
+    }
+    .lang-item:hover { background: var(--surface-hover); }
+    .lang-item.active { background: rgba(79,70,229,0.1); }
+    .lang-flag {
+      flex-shrink: 0; width: 38px; height: 38px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.72rem; font-weight: 800; color: #fff; letter-spacing: 0.3px;
+    }
+    .lang-info { flex: 1; min-width: 0; }
+    .lang-native { font-size: 0.92rem; font-weight: 700; color: var(--text); }
+    .lang-english { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
+    .lang-check { flex-shrink: 0; color: var(--primary); }
+
     .app-body {
       padding: 56px 0 var(--bottom-nav);
       min-height: 100vh;
@@ -1071,18 +1088,9 @@
         <div id="notifList"><div class="app-notif-item" style="text-align:center;color:var(--text-muted);">Loading...</div></div>
       </div>
 
-      <button class="app-header-icon-btn" onclick="toggleHeaderDropdown('langDropdown')" title="Language">
+      <button class="app-header-icon-btn" onclick="openLanguageModal()" title="Language">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
       </button>
-      <div class="app-header-dropdown" id="langDropdown">
-        <button class="app-menu-item" onclick="selectLanguage('English')">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-          English
-          <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
-        </button>
-        <button class="app-menu-item disabled" disabled>中文 (Coming soon)</button>
-        <button class="app-menu-item disabled" disabled>Español (Coming soon)</button>
-      </div>
 
       <button class="app-header-icon-btn" onclick="toggleHeaderDropdown('appMenuDropdown')" title="Menu">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
@@ -1184,6 +1192,10 @@
           <label>Amount (USDT)</label>
           <input type="number" id="stakeAmount" placeholder="Enter amount">
         </div>
+        <div class="stat-row">
+          <span class="stat-label">Total Charge (Amount + Fee)</span>
+          <span class="stat-value" id="stakeTotalCharge">&mdash;</span>
+        </div>
         <button class="btn btn-primary" id="stakeBtn">Confirm Stake</button>
         <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
       </div>
@@ -1216,6 +1228,26 @@
         </div>
         <button class="btn btn-primary" id="earnPlanBtn" style="margin-top:16px;">Activate Plan</button>
         <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Language Modal -->
+    <div class="modal-overlay" id="languageModal">
+      <div class="modal-sheet">
+        <div class="modal-handle"></div>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+          <div>
+            <div class="modal-title" style="margin-bottom:4px;" id="langModalTitle">Choose your language</div>
+            <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;" id="langModalSubtitle">The display language updates across the whole app.</p>
+          </div>
+          <button class="app-header-icon-btn" style="flex-shrink:0;" onclick="closeAllModals()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="form-field">
+          <input type="text" id="langSearchInput" placeholder="Search languages..." oninput="renderLanguageList()">
+        </div>
+        <div id="langList" style="max-height:340px;overflow-y:auto;"></div>
       </div>
     </div>
 
@@ -1908,6 +1940,13 @@
       return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
+    const TETHER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:3px;flex-shrink:0;"><circle cx="12" cy="12" r="12" fill="#26A17B"/><path d="M13.5 8.5V10.7C15.7 10.9 17.4 11.5 17.4 12.3C17.4 13.1 15.7 13.7 13.5 13.9V17H10.5V13.9C8.3 13.7 6.6 13.1 6.6 12.3C6.6 11.5 8.3 10.9 10.5 10.7V8.5H7V6.5H17V8.5H13.5Z" fill="#fff"/></svg>';
+
+    function formatPledgeRange(range) {
+      const [min, max] = String(range).split(' - ');
+      return TETHER_ICON + escapeHtml(min) + '~' + escapeHtml(max);
+    }
+
     const TOKEN = localStorage.getItem('mlk_token');
     const USER = JSON.parse(localStorage.getItem('mlk_user') || '{}');
 
@@ -2014,7 +2053,7 @@
             <span class="nft-card-level">${nft.duration} Days</span>
           </div>
           <div class="nft-card-details">
-            <div class="nft-card-row"><span class="label">Price Range</span><span class="val">${escapeHtml(nft.pledgeRange)} USDT</span></div>
+            <div class="nft-card-row"><span class="label">Price Range</span><span class="val">${formatPledgeRange(nft.pledgeRange)}</span></div>
             <div class="nft-card-row"><span class="label">Daily Income</span><span class="val income">${escapeHtml(nft.dailyIncome)}</span></div>
             <div class="nft-card-row"><span class="label">Handling Fee</span><span class="val">${escapeHtml(nft.handlingFee || '1%')}</span></div>
           </div>
@@ -2073,12 +2112,22 @@
       document.getElementById('stakeNftName').textContent = nft.name;
       document.getElementById('stakeDaily').textContent = nft.dailyIncome;
       document.getElementById('stakeDuration').textContent = nft.duration + ' days';
-      document.getElementById('stakeRange').textContent = nft.pledgeRange + ' USDT';
+      document.getElementById('stakeRange').innerHTML = formatPledgeRange(nft.pledgeRange);
       document.getElementById('stakeFee').textContent = nft.handlingFee || '1%';
       document.getElementById('stakeAmount').value = '';
       document.getElementById('stakeAmount').placeholder = nft.pledgeRange;
+      document.getElementById('stakeTotalCharge').textContent = '—';
       openModal('stakeModal');
     }
+
+    document.getElementById('stakeAmount').addEventListener('input', () => {
+      const el = document.getElementById('stakeTotalCharge');
+      const amount = parseFloat(document.getElementById('stakeAmount').value);
+      if (!selectedNft || !amount) { el.textContent = '—'; return; }
+      const feePct = parseFloat(selectedNft.handlingFee) / 100 || 0;
+      const fee = amount * feePct;
+      el.textContent = (amount + fee).toFixed(2) + ' USDT (' + amount + ' + ' + fee.toFixed(2) + ' fee)';
+    });
 
     document.getElementById('stakeBtn').addEventListener('click', async () => {
       if (!selectedNft) return;
@@ -2562,7 +2611,7 @@
     }
 
     // ---- Header dropdowns (notifications / language / menu) ----
-    const HEADER_DROPDOWN_IDS = ['notifDropdown', 'langDropdown', 'appMenuDropdown'];
+    const HEADER_DROPDOWN_IDS = ['notifDropdown', 'appMenuDropdown'];
 
     function closeHeaderDropdowns(except) {
       HEADER_DROPDOWN_IDS.forEach(id => { if (id !== except) document.getElementById(id).classList.remove('active'); });
@@ -2594,10 +2643,94 @@
       closeHeaderDropdowns();
     }
 
-    function selectLanguage(lang) {
-      toast('Language set to ' + lang);
-      closeHeaderDropdowns();
+    // ---- Language ----
+    // Translations cover the persistent app chrome (nav + tab titles + this
+    // picker's own UI) -- not every string in the app. Machine-drafted, not
+    // reviewed by a native speaker; treat as a starting point, not final copy.
+    const LANGUAGES = [
+      { code: 'en', flag: 'US', flagColor: '#3C3B6E', native: 'English', english: 'English', rtl: false },
+      { code: 'ur', flag: 'PK', flagColor: '#01411C', native: 'اردو', english: 'Urdu', rtl: true },
+      { code: 'ar', flag: 'SA', flagColor: '#006C35', native: 'العربية', english: 'Arabic', rtl: true },
+      { code: 'hi', flag: 'IN', flagColor: '#FF9933', native: 'हिन्दी', english: 'Hindi', rtl: false },
+      { code: 'zh', flag: 'CN', flagColor: '#DE2910', native: '中文', english: 'Chinese', rtl: false },
+      { code: 'es', flag: 'ES', flagColor: '#AA151B', native: 'Español', english: 'Spanish', rtl: false }
+    ];
+
+    const TRANSLATIONS = {
+      en: { navStake: 'Stake', navEarn: 'Earn', navReserve: 'Reserve', navAssets: 'Assets', navMy: 'My',
+        titleStake: 'Stake', titleEarn: 'Earn', titleReserve: 'Reserve', titleAssets: 'Assets(USDT)',
+        chooseLanguage: 'Choose your language', languageSubtitle: 'The display language updates across the whole app.', searchLanguages: 'Search languages...' },
+      ur: { navStake: 'اسٹیک', navEarn: 'کمائیں', navReserve: 'ریزرو', navAssets: 'اثاثے', navMy: 'میرا',
+        titleStake: 'اسٹیک', titleEarn: 'کمائیں', titleReserve: 'ریزرو', titleAssets: 'اثاثے (USDT)',
+        chooseLanguage: 'اپنی زبان منتخب کریں', languageSubtitle: 'ڈسپلے کی زبان پوری ایپ میں اپڈیٹ ہوتی ہے۔', searchLanguages: 'زبانیں تلاش کریں...' },
+      ar: { navStake: 'ستيك', navEarn: 'اربح', navReserve: 'احجز', navAssets: 'الأصول', navMy: 'حسابي',
+        titleStake: 'ستيك', titleEarn: 'اربح', titleReserve: 'احجز', titleAssets: 'الأصول (USDT)',
+        chooseLanguage: 'اختر لغتك', languageSubtitle: 'تُحدَّث لغة العرض في جميع أنحاء التطبيق.', searchLanguages: 'ابحث عن اللغات...' },
+      hi: { navStake: 'स्टेक', navEarn: 'कमाएं', navReserve: 'रिज़र्व', navAssets: 'संपत्ति', navMy: 'मेरा',
+        titleStake: 'स्टेक', titleEarn: 'कमाएं', titleReserve: 'रिज़र्व', titleAssets: 'संपत्ति (USDT)',
+        chooseLanguage: 'अपनी भाषा चुनें', languageSubtitle: 'डिस्प्ले भाषा पूरे ऐप में अपडेट होती है।', searchLanguages: 'भाषाएं खोजें...' },
+      zh: { navStake: '质押', navEarn: '赚取', navReserve: '预定', navAssets: '资产', navMy: '我的',
+        titleStake: '质押', titleEarn: '赚取', titleReserve: '预定', titleAssets: '资产 (USDT)',
+        chooseLanguage: '选择您的语言', languageSubtitle: '显示语言将应用于整个应用。', searchLanguages: '搜索语言...' },
+      es: { navStake: 'Stake', navEarn: 'Ganar', navReserve: 'Reservar', navAssets: 'Activos', navMy: 'Mi',
+        titleStake: 'Stake', titleEarn: 'Ganar', titleReserve: 'Reservar', titleAssets: 'Activos (USDT)',
+        chooseLanguage: 'Elige tu idioma', languageSubtitle: 'El idioma de la pantalla se actualiza en toda la app.', searchLanguages: 'Buscar idiomas...' }
+    };
+
+    function getCurrentLang() { return localStorage.getItem('mlk_lang') || 'en'; }
+
+    function applyLanguage(code) {
+      const t = TRANSLATIONS[code] || TRANSLATIONS.en;
+      const lang = LANGUAGES.find(l => l.code === code) || LANGUAGES[0];
+      document.querySelectorAll('.nav-tab[data-tab="stake"]').forEach(el => { el.lastChild.textContent = t.navStake; });
+      document.querySelectorAll('.nav-tab[data-tab="earn"]').forEach(el => { el.lastChild.textContent = t.navEarn; });
+      document.querySelectorAll('.nav-tab[data-tab="reserve"]').forEach(el => { el.lastChild.textContent = t.navReserve; });
+      document.querySelectorAll('.nav-tab[data-tab="assets"]').forEach(el => { el.lastChild.textContent = t.navAssets; });
+      document.querySelectorAll('.nav-tab[data-tab="my"]').forEach(el => { el.lastChild.textContent = t.navMy; });
+      const earnTitle = document.querySelector('#page-earn .page-title'); if (earnTitle) earnTitle.textContent = t.titleEarn;
+      const reserveTitle = document.querySelector('#page-reserve .page-title'); if (reserveTitle) reserveTitle.textContent = t.titleReserve;
+      const assetsTitle = document.querySelector('#page-assets .page-title'); if (assetsTitle) assetsTitle.textContent = t.titleAssets;
+      document.getElementById('langModalTitle').textContent = t.chooseLanguage;
+      document.getElementById('langModalSubtitle').textContent = t.languageSubtitle;
+      document.getElementById('langSearchInput').placeholder = t.searchLanguages;
+      document.documentElement.setAttribute('dir', lang.rtl ? 'rtl' : 'ltr');
     }
+
+    function selectLanguage(code) {
+      localStorage.setItem('mlk_lang', code);
+      applyLanguage(code);
+      renderLanguageList();
+      const lang = LANGUAGES.find(l => l.code === code);
+      toast('Language set to ' + (lang ? lang.english : code));
+      closeAllModals();
+    }
+
+    function openLanguageModal() {
+      document.getElementById('langSearchInput').value = '';
+      renderLanguageList();
+      closeHeaderDropdowns();
+      openModal('languageModal');
+    }
+
+    function renderLanguageList() {
+      const query = document.getElementById('langSearchInput').value.trim().toLowerCase();
+      const current = getCurrentLang();
+      const filtered = LANGUAGES.filter(l => !query || l.native.toLowerCase().includes(query) || l.english.toLowerCase().includes(query));
+      const el = document.getElementById('langList');
+      if (!filtered.length) { el.innerHTML = '<div class="empty-state"><p>No languages found</p></div>'; return; }
+      el.innerHTML = filtered.map(l => `
+        <button class="lang-item ${l.code === current ? 'active' : ''}" onclick="selectLanguage('${l.code}')">
+          <div class="lang-flag" style="background:${l.flagColor}">${l.flag}</div>
+          <div class="lang-info">
+            <div class="lang-native">${escapeHtml(l.native)}</div>
+            <div class="lang-english">${escapeHtml(l.english)}</div>
+          </div>
+          ${l.code === current ? '<svg class="lang-check" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
+        </button>
+      `).join('');
+    }
+
+    applyLanguage(getCurrentLang());
 
     async function loadNotifications() {
       const el = document.getElementById('notifList');
