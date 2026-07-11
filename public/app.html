@@ -660,6 +660,15 @@
     .settings-row-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
     .settings-row-chevron { flex-shrink: 0; color: var(--text-muted); }
 
+    /* ---- Announcement Detail Page (full page) ---- */
+    .announcement-page { display: none; padding: 20px 16px 24px; animation: fadeUp 0.3s ease; }
+    .announcement-page.active { display: block; }
+    .announcement-page-title { font-size: 1.3rem; font-weight: 800; text-align: center; margin-bottom: 20px; line-height: 1.4; }
+    .announcement-page-image { width: 100%; border-radius: var(--radius); margin-bottom: 20px; display: block; }
+    .announcement-page-meta { font-size: 0.78rem; color: var(--text-muted); text-align: center; margin-bottom: 20px; }
+    .announcement-page-content { font-size: 0.92rem; line-height: 1.8; color: var(--text-secondary); }
+    .announcement-page-content p { margin-bottom: 14px; white-space: pre-wrap; }
+
     /* ---- Team Page (full page, replaces modal) ---- */
     .team-page { display: none; padding: 20px 16px 24px; animation: fadeUp 0.3s ease; }
     .team-page.active { display: block; }
@@ -1043,6 +1052,7 @@
       .team-page { max-width: 600px; margin: 0 auto; }
       .invite-page { max-width: 600px; margin: 0 auto; }
       .settings-page { max-width: 600px; margin: 0 auto; }
+      .announcement-page { max-width: 600px; margin: 0 auto; }
       .income-grid { grid-template-columns: repeat(4, 1fr); }
       .nft-card-banner { height: 180px; }
     }
@@ -1051,6 +1061,7 @@
       .team-page { max-width: 720px; }
       .invite-page { max-width: 720px; }
       .settings-page { max-width: 720px; }
+      .announcement-page { max-width: 720px; }
       #page-stake { max-width: 960px; }
       .nft-catalog { grid-template-columns: repeat(2, 1fr); gap: 20px; }
       #page-reserve { max-width: 960px; }
@@ -1766,6 +1777,18 @@
             <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
         </div>
+      </div>
+
+      <!-- Announcement Detail Full Page View -->
+      <div class="announcement-page" id="announcementPageView">
+        <button class="team-back-btn" onclick="closeAnnouncementPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back
+        </button>
+        <div class="announcement-page-title" id="annPageTitle"></div>
+        <img class="announcement-page-image" id="annPageImage" style="display:none;" alt="">
+        <div class="announcement-page-meta" id="annPageMeta"></div>
+        <div class="announcement-page-content" id="annPageContent"></div>
       </div>
     </div>
   </main>
@@ -2743,7 +2766,7 @@
         const items = await res.json();
         if (!items.length) { el.innerHTML = '<div class="app-notif-item" style="text-align:center;color:var(--text-muted);">No notifications yet</div>'; return; }
         el.innerHTML = items.slice(0, 10).map(a => `
-          <div class="app-notif-item">
+          <div class="app-notif-item" style="cursor:pointer;" onclick="openAnnouncementPage('${escapeHtml(a.id)}')">
             <div class="app-notif-title">${escapeHtml(a.title)}</div>
             <div class="app-notif-date">${fmtDate(a.date)}</div>
           </div>
@@ -2751,6 +2774,43 @@
       } catch (e) {
         el.innerHTML = '<div class="app-notif-item" style="text-align:center;color:var(--text-muted);">Failed to load notifications</div>';
       }
+    }
+
+    async function openAnnouncementPage(id) {
+      closeHeaderDropdowns();
+      switchTab('my');
+      document.getElementById('myMainView').style.display = 'none';
+      document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('settingsPageView').classList.remove('active');
+      document.getElementById('announcementPageView').classList.add('active');
+      document.getElementById('annPageTitle').textContent = 'Loading...';
+      document.getElementById('annPageMeta').textContent = '';
+      document.getElementById('annPageContent').innerHTML = '';
+      document.getElementById('annPageImage').style.display = 'none';
+      try {
+        const res = await fetch('/api/announcements/' + id);
+        if (!res.ok) throw new Error('Not found');
+        const a = await res.json();
+        document.getElementById('annPageTitle').textContent = a.title;
+        document.getElementById('annPageMeta').textContent = (a.category ? a.category + ' · ' : '') + fmtDate(a.date);
+        if (a.image) {
+          const img = document.getElementById('annPageImage');
+          img.src = a.image;
+          img.alt = a.title;
+          img.style.display = 'block';
+        }
+        const paragraphs = String(a.content || '').split(/\n\s*\n/).filter(p => p.trim());
+        document.getElementById('annPageContent').innerHTML = paragraphs.map(p => `<p>${escapeHtml(p.trim())}</p>`).join('');
+      } catch (e) {
+        document.getElementById('annPageTitle').textContent = 'Not found';
+        document.getElementById('annPageContent').innerHTML = '<p>This announcement could not be loaded.</p>';
+      }
+    }
+
+    function closeAnnouncementPage() {
+      document.getElementById('announcementPageView').classList.remove('active');
+      document.getElementById('myMainView').style.display = '';
     }
 
     async function checkNotificationBadge() {
