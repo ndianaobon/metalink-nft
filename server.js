@@ -60,28 +60,90 @@ function generateOrderNumber() { return Date.now().toString() + Math.floor(Math.
 
 function generateVerificationCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
 
+const EMAIL_LOGO_URL = 'https://metalinknft.com/assets/images/MetaLink-NFT-horizontal-light.png';
+
+function emailWrapper(bodyHtml) {
+  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;background:#ffffff;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <img src="${EMAIL_LOGO_URL}" alt="MetaLinkNFT" style="height:36px;">
+    </div>
+    ${bodyHtml}
+    <p style="margin-top:32px;font-size:0.8rem;color:#888;">Best regards,<br>MetaLink NFT Team</p>
+  </div>`;
+}
+
 function verificationEmailHtml(code) {
-  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
+  return emailWrapper(`
     <p>Hello,</p>
     <p>Thank you for signing up with MetaLink NFT.</p>
     <p>To complete your email verification and activate your account, please use the verification code below:</p>
     <p style="font-size:28px;font-weight:700;letter-spacing:6px;text-align:center;padding:16px;background:#f4f4fa;border-radius:8px;">${code}</p>
     <p>This code will expire shortly for your security. If you did not request this verification code, please ignore this email or contact our support team.</p>
-    <p>Thank you for choosing MetaLink NFT.</p>
-    <p>Best regards,<br>MetaLink NFT Team</p>
-  </div>`;
+    <p>Thank you for choosing MetaLink NFT.</p>`);
 }
 
 function passwordResetEmailHtml(code) {
-  return `<div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#222;">
+  return emailWrapper(`
     <p>Hello,</p>
     <p>We received a request to reset your MetaLink NFT password.</p>
     <p>Use the verification code below to confirm this request and set a new password:</p>
     <p style="font-size:28px;font-weight:700;letter-spacing:6px;text-align:center;padding:16px;background:#f4f4fa;border-radius:8px;">${code}</p>
-    <p>This code will expire shortly for your security. If you did not request a password reset, please ignore this email &mdash; your password will not be changed.</p>
-    <p>Best regards,<br>MetaLink NFT Team</p>
-  </div>`;
+    <p>This code will expire shortly for your security. If you did not request a password reset, please ignore this email &mdash; your password will not be changed.</p>`);
 }
+
+function welcomeEmailHtml(username, uid) {
+  return emailWrapper(`
+    <p>Hi ${username},</p>
+    <p>Welcome to MetaLink NFT! Your account has been created successfully and you're ready to start exploring.</p>
+    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;font-family:'Courier New',monospace;font-weight:700;letter-spacing:1px;">UID: ${uid}</p>
+    <p>Here's what you can do next:</p>
+    <ul style="padding-left:20px;line-height:1.8;">
+      <li><strong>Stake</strong> &mdash; put your balance to work in our Exclusive Zone NFT stakes</li>
+      <li><strong>Earn</strong> &mdash; explore Growth, Comprehensive, Ecology and USDT Finance plans</li>
+      <li><strong>Reserve</strong> &mdash; try a daily reservation draw for a chance at bonus rewards</li>
+      <li><strong>Invite friends</strong> &mdash; earn team commission when the people you refer make deposits</li>
+    </ul>
+    <p>If you have any questions, our team is always here to help.</p>`);
+}
+
+function levelUpgradeEmailHtml(username, level, balance) {
+  return emailWrapper(`
+    <p>Hi ${username},</p>
+    <p style="text-align:center;font-size:22px;font-weight:800;color:#4F46E5;margin:20px 0;">&#127881; Congratulations! You've reached Level ${level}</p>
+    <p>Your wallet balance has crossed the threshold for Level ${level}, and your account has been automatically upgraded.</p>
+    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">Current Balance: <strong>${fmtMoney(balance)} USDT</strong></p>
+    <p>Higher levels can unlock better rewards across the platform. Keep growing your balance to reach the next one.</p>`);
+}
+
+function depositConfirmedEmailHtml(username, amount, newBalance) {
+  return emailWrapper(`
+    <p>Hi ${username},</p>
+    <p>Your deposit has been confirmed and credited to your account.</p>
+    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">
+      Amount Deposited: <strong>${fmtMoney(amount)} USDT</strong><br>
+      New Balance: <strong>${fmtMoney(newBalance)} USDT</strong>
+    </p>
+    <p>Thank you for using MetaLink NFT.</p>`);
+}
+
+function withdrawalStatusEmailHtml(username, amount, netAmount, status) {
+  if (status === 'Approved') {
+    return emailWrapper(`
+      <p>Hi ${username},</p>
+      <p>Your withdrawal request has been processed.</p>
+      <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">
+        Requested Amount: <strong>${fmtMoney(amount)} USDT</strong><br>
+        Net Amount Sent: <strong>${fmtMoney(netAmount)} USDT</strong>
+      </p>
+      <p>Please allow some time for the transaction to reflect on your wallet, depending on network conditions.</p>`);
+  }
+  return emailWrapper(`
+    <p>Hi ${username},</p>
+    <p>Your withdrawal request for <strong>${fmtMoney(amount)} USDT</strong> was not approved, and the amount has been returned to your wallet balance.</p>
+    <p>If you believe this is a mistake, please contact our support team.</p>`);
+}
+
+function fmtMoney(n) { return parseFloat(n || 0).toFixed(2); }
 
 async function sendEmail(to, subject, html) {
   if (!process.env.RESEND_API_KEY) throw new Error('Email service not configured');
@@ -112,6 +174,26 @@ async function verifyPassword(pw, storedHash) {
 
 function isFrozen(user) {
   return !!user.frozenUntil && new Date(user.frozenUntil).getTime() > Date.now();
+}
+
+const DEFAULT_LEVEL_THRESHOLDS = { 1: 100, 2: 500, 3: 1000, 4: 5000, 5: 10000, 6: 50000 };
+
+// Mutates users[userIdx] in place if the user's balance now qualifies for a higher level;
+// caller is still responsible for writeData('users.json', users) afterward. Fires the
+// upgrade email in the background (not awaited) so a slow/failed send never blocks the
+// balance-changing request that triggered this check.
+function checkAndApplyLevelUpgrade(users, userIdx) {
+  const user = users[userIdx];
+  const config = readConfig('platform_config.json');
+  let newLevel = user.level || 0;
+  for (let lv = 1; lv <= 6; lv++) {
+    const threshold = config['levelThreshold' + lv] !== undefined ? parseFloat(config['levelThreshold' + lv]) : DEFAULT_LEVEL_THRESHOLDS[lv];
+    if (user.walletBalance >= threshold && lv > newLevel) newLevel = lv;
+  }
+  if (newLevel > (user.level || 0)) {
+    user.level = newLevel;
+    sendEmail(user.email, `Congratulations! You've reached Level ${newLevel}`, levelUpgradeEmailHtml(user.username, newLevel, user.walletBalance)).catch(() => {});
+  }
 }
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -310,6 +392,7 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
 
   users.push(user);
   writeData('users.json', users);
+  sendEmail(user.email, 'Welcome to MetaLink NFT!', welcomeEmailHtml(user.username, user.uid)).catch(() => {});
 
   if (user.referredBy) {
     let teams = readData('teams.json');
@@ -660,6 +743,7 @@ app.post('/api/stakes/:id/claim', authMiddleware, (req, res) => {
   users[userIdx].walletBalance += stakes[idx].pledgeValue + income;
   users[userIdx].totalIncome += income;
   users[userIdx].dailyIncome.stake += income;
+  checkAndApplyLevelUpgrade(users, userIdx);
   writeData('users.json', users);
 
   res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
@@ -754,6 +838,7 @@ app.post('/api/earn/:id/claim', authMiddleware, (req, res) => {
   users[userIdx].totalIncome += income;
   const cat = positions[idx].category;
   if (users[userIdx].dailyIncome[cat] !== undefined) users[userIdx].dailyIncome[cat] += income;
+  checkAndApplyLevelUpgrade(users, userIdx);
   writeData('users.json', users);
 
   res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
@@ -856,6 +941,7 @@ app.post('/api/reserve/orders', authMiddleware, (req, res) => {
   } else {
     users[userIdx].walletBalance += amount;
   }
+  checkAndApplyLevelUpgrade(users, userIdx);
   writeData('users.json', users);
 
   res.json(order);
@@ -1101,6 +1187,7 @@ app.put('/api/admin/users/:id/balance', adminMiddleware, (req, res) => {
   } else if (action === 'set') {
     users[idx].walletBalance = parseFloat(amount);
   }
+  checkAndApplyLevelUpgrade(users, idx);
   writeData('users.json', users);
 
   const { password, secondPassword, ...profile } = users[idx];
@@ -1131,6 +1218,14 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, (req, res) => {
     }
   }
 
+  if (status === 'Approved' || status === 'Rejected') {
+    sendEmail(
+      withdrawals[idx].email,
+      status === 'Approved' ? 'Your withdrawal has been processed' : 'Your withdrawal request was not approved',
+      withdrawalStatusEmailHtml(withdrawals[idx].username, withdrawals[idx].amount, withdrawals[idx].netAmount, status)
+    ).catch(() => {});
+  }
+
   writeData('withdrawals.json', withdrawals);
   res.json(withdrawals[idx]);
 });
@@ -1154,6 +1249,8 @@ app.put('/api/admin/deposits/:id', adminMiddleware, (req, res) => {
     const userIdx = users.findIndex(u => u.id === deposits[idx].userId);
     if (userIdx !== -1) {
       users[userIdx].walletBalance += deposits[idx].amount;
+      checkAndApplyLevelUpgrade(users, userIdx);
+      sendEmail(users[userIdx].email, 'Your deposit has been confirmed', depositConfirmedEmailHtml(users[userIdx].username, deposits[idx].amount, users[userIdx].walletBalance)).catch(() => {});
 
       if (!deposits[idx].referralPaid) {
         const cfg = readConfig('platform_config.json');
@@ -1171,6 +1268,7 @@ app.put('/api/admin/deposits/:id', adminMiddleware, (req, res) => {
           users[referrerIdx].walletBalance += bonus;
           users[referrerIdx].totalIncome += bonus;
           users[referrerIdx].dailyIncome.team += bonus;
+          checkAndApplyLevelUpgrade(users, referrerIdx);
           payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
           currentReferrerId = users[referrerIdx].referredBy;
         }
@@ -1312,6 +1410,14 @@ app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
     const rate = parseFloat(reserveWinRatePct);
     if (isNaN(rate) || rate < 0 || rate > 100) return res.status(400).json({ error: 'Reservation win rate must be between 0 and 100' });
     config.reserveWinRatePct = rate;
+  }
+  for (let lv = 1; lv <= 6; lv++) {
+    const key = 'levelThreshold' + lv;
+    if (req.body[key] !== undefined) {
+      const val = parseFloat(req.body[key]);
+      if (isNaN(val) || val < 0) return res.status(400).json({ error: `Level ${lv} threshold must be a non-negative number` });
+      config[key] = val;
+    }
   }
   writeConfig('platform_config.json', config);
   res.json(config);

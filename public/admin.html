@@ -603,6 +603,22 @@
             </div>
 
             <div class="admin-table-card" style="margin-top:24px;">
+              <div class="admin-table-header"><h3>Level Upgrade Thresholds</h3></div>
+              <div style="padding:24px;">
+                <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">A user is automatically upgraded (and emailed) the moment their wallet balance reaches the threshold for the next level. Levels can also be set manually per-user from the Users tab.</p>
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+                  ${[1, 2, 3, 4, 5, 6].map(lv => `
+                    <div class="admin-form-group">
+                      <label class="admin-form-label">Level ${lv} ($)</label>
+                      <input class="admin-form-input" id="cfgLevelThreshold${lv}" type="number" step="1" min="0" value="${config['levelThreshold' + lv] !== undefined ? config['levelThreshold' + lv] : [100, 500, 1000, 5000, 10000, 50000][lv - 1]}">
+                    </div>
+                  `).join('')}
+                </div>
+                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.saveLevelThresholds()">Save Thresholds</button>
+              </div>
+            </div>
+
+            <div class="admin-table-card" style="margin-top:24px;">
               <div class="admin-table-header"><h3>Change Admin Password</h3></div>
               <div style="padding:24px;max-width:400px;">
                 <div class="admin-form-group">
@@ -670,6 +686,15 @@
             })
           });
           this.toast('Platform settings saved!', 'success');
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async saveLevelThresholds() {
+        try {
+          const body = {};
+          for (let lv = 1; lv <= 6; lv++) body['levelThreshold' + lv] = document.getElementById('cfgLevelThreshold' + lv).value;
+          await this.api('/admin/platform-config', { method: 'PUT', body: JSON.stringify(body) });
+          this.toast('Level thresholds saved!', 'success');
         } catch (e) { this.toast(e.message); }
       },
 
