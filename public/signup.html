@@ -138,6 +138,22 @@
           </div>
         </div>
 
+        <div id="twoFaLoginStep" style="display:none;">
+          <div class="auth-header" style="margin-bottom:20px;">
+            <h1>Two-Factor Authentication</h1>
+            <p>Enter the 6-digit code from your authenticator app</p>
+          </div>
+          <div class="auth-field">
+            <label for="twoFaLoginCode">Authentication Code <span class="required">*</span></label>
+            <input type="text" id="twoFaLoginCode" placeholder="Enter 6-digit code" maxlength="6" inputmode="numeric" autocomplete="one-time-code">
+          </div>
+          <div id="twoFaLoginError" class="auth-error" style="display:none;"></div>
+          <button type="button" id="twoFaLoginSubmitBtn" class="btn btn-primary btn-block btn-lg">Verify &amp; Sign In</button>
+          <div class="auth-footer" style="margin-top:16px;">
+            <a href="#" id="twoFaLoginBackLink">&larr; Back to sign in</a>
+          </div>
+        </div>
+
         <div class="auth-footer" id="mainFooter">
           Already have an account? <a href="/signup.html#login">Sign In</a>
         </div>
@@ -386,6 +402,16 @@
             if (res.status === 403 && data.frozenUntil) { showFreezeModal(data.frozenUntil); return; }
             throw new Error(data.error);
           }
+          if (data.requires2FA) {
+            twoFaLoginTempToken = data.tempToken;
+            document.getElementById('signupForm').style.display = 'none';
+            document.getElementById('mainFooter').style.display = 'none';
+            document.getElementById('twoFaLoginStep').style.display = 'block';
+            const codeInput = document.getElementById('twoFaLoginCode');
+            codeInput.value = '';
+            codeInput.focus();
+            return;
+          }
           localStorage.setItem('mlk_token', data.token);
           localStorage.setItem('mlk_user', JSON.stringify(data.user));
           showRedirectLoader();
@@ -421,6 +447,53 @@
     });
 
     let pendingVerifyEmail = null;
+    let twoFaLoginTempToken = null;
+
+    function showTwoFaLoginError(msg) {
+      const el = document.getElementById('twoFaLoginError');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => el.style.display = 'none', 4000);
+    }
+
+    document.getElementById('twoFaLoginCode').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    document.getElementById('twoFaLoginSubmitBtn').addEventListener('click', async () => {
+      const btn = document.getElementById('twoFaLoginSubmitBtn');
+      const code = document.getElementById('twoFaLoginCode').value.trim();
+      if (!/^\d{6}$/.test(code)) { showTwoFaLoginError('Enter the 6-digit code'); return; }
+      btn.disabled = true;
+      btn.textContent = 'Verifying...';
+      try {
+        const res = await fetch('/api/auth/login/2fa', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tempToken: twoFaLoginTempToken, code })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        localStorage.setItem('mlk_token', data.token);
+        localStorage.setItem('mlk_user', JSON.stringify(data.user));
+        showRedirectLoader();
+        window.location.href = '/app.html';
+      } catch (err) {
+        showTwoFaLoginError(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Verify & Sign In';
+      }
+    });
+
+    document.getElementById('twoFaLoginBackLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      twoFaLoginTempToken = null;
+      document.getElementById('twoFaLoginStep').style.display = 'none';
+      document.getElementById('signupForm').style.display = '';
+      document.getElementById('mainFooter').style.display = '';
+      showMode();
+    });
 
     function showVerifyError(msg) {
       const el = document.getElementById('verifyError');

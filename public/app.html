@@ -660,6 +660,51 @@
     .settings-row-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
     .settings-row-chevron { flex-shrink: 0; color: var(--text-muted); }
 
+    /* ---- Google Authenticator (2FA) ---- */
+    .twofa-status-banner {
+      display: flex; align-items: flex-start; gap: 12px;
+      background: rgba(20,184,166,0.1); border: 1px solid rgba(20,184,166,0.3);
+      border-radius: var(--radius); padding: 16px; margin-bottom: 20px;
+    }
+    .twofa-status-icon {
+      flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+      background: var(--positive); color: #fff; display: flex; align-items: center;
+      justify-content: center; font-size: 0.95rem; font-weight: 800;
+    }
+    .twofa-status-title { font-size: 0.92rem; font-weight: 700; }
+    .twofa-status-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; line-height: 1.5; }
+    .twofa-step { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; font-size: 0.85rem; line-height: 1.5; }
+    .twofa-step-num {
+      flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: var(--primary);
+      color: #fff; font-size: 0.72rem; font-weight: 700; display: flex; align-items: center; justify-content: center;
+      margin-top: 1px;
+    }
+    .twofa-qr-wrap {
+      display: flex; justify-content: center; margin: 0 0 16px; padding: 16px;
+      background: #fff; border-radius: var(--radius); border: 1px solid var(--border);
+    }
+    .twofa-qr-wrap img { width: 168px; height: 168px; display: block; }
+    .twofa-qr-wrap.loading { min-height: 168px; align-items: center; }
+    .twofa-manual-entry { margin-bottom: 16px; }
+    .twofa-manual-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; }
+    .twofa-secret-row {
+      display: flex; align-items: center; gap: 8px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+    }
+    .twofa-secret-row code {
+      flex: 1; font-size: 0.82rem; letter-spacing: 0.5px; word-break: break-all;
+      font-family: 'SFMono-Regular', Consolas, monospace; color: var(--text);
+    }
+    .twofa-copy-btn {
+      flex-shrink: 0; background: var(--primary); color: #fff; border: none; border-radius: 8px;
+      padding: 6px 12px; font-size: 0.75rem; font-weight: 700; cursor: pointer; font-family: var(--font);
+    }
+    .twofa-copy-btn:hover { opacity: 0.9; }
+    .twofa-code-input {
+      text-align: center; font-size: 1.4rem; font-weight: 700; letter-spacing: 8px;
+      padding: 12px 10px 12px 20px;
+    }
+
     /* ---- Announcement Detail Page (full page) ---- */
     .announcement-page { display: none; padding: 20px 16px 24px; animation: fadeUp 0.3s ease; }
     .announcement-page.active { display: block; }
@@ -1744,11 +1789,11 @@
 
         <div class="settings-section-title">Account Settings</div>
         <div class="settings-list">
-          <button class="settings-row" onclick="toast('Google Authenticator is coming soon', 'error')">
-            <div class="settings-row-icon" style="background:rgba(245,158,11,0.12);">&#128274;</div>
+          <button class="settings-row" onclick="openTwoFaModal()">
+            <div class="settings-row-icon" id="twoFaRowIcon" style="background:rgba(245,158,11,0.12);">&#128274;</div>
             <div class="settings-row-info">
               <div class="settings-row-title">Google Authenticator</div>
-              <div class="settings-row-sub">Enable extra security protection &mdash; coming soon</div>
+              <div class="settings-row-sub" id="twoFaRowSub">Enable extra security protection</div>
             </div>
             <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -1953,6 +1998,60 @@
       </div>
       <button class="btn btn-primary" id="saveChangePasswordBtn">Update Password</button>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Google Authenticator (2FA) Modal -->
+  <div class="modal-overlay" id="twoFaModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title">Google Authenticator</div>
+
+      <div id="twoFaEnabledView" style="display:none;">
+        <div class="twofa-status-banner">
+          <div class="twofa-status-icon">&#10003;</div>
+          <div>
+            <div class="twofa-status-title">Two-Factor Authentication is ON</div>
+            <div class="twofa-status-sub">Your account is protected. You'll need a code from your authenticator app every time you log in.</div>
+          </div>
+        </div>
+        <div class="form-field">
+          <label>Enter your password to disable</label>
+          <input type="password" id="twoFaDisablePassword" placeholder="Your account password">
+        </div>
+        <button class="btn btn-primary" id="twoFaDisableBtn" style="background:var(--negative);">Disable Google Authenticator</button>
+        <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Close</button>
+      </div>
+
+      <div id="twoFaSetupView">
+        <div class="twofa-step">
+          <div class="twofa-step-num">1</div>
+          <div>Install <b>Google Authenticator</b> (or any TOTP app like Authy) on your phone.</div>
+        </div>
+        <div class="twofa-step">
+          <div class="twofa-step-num">2</div>
+          <div>Scan this QR code with the app.</div>
+        </div>
+        <div class="twofa-qr-wrap" id="twoFaQrWrap">
+          <img id="twoFaQrImg" src="" alt="2FA QR Code">
+        </div>
+        <div class="twofa-manual-entry">
+          <div class="twofa-manual-label">Can't scan? Enter this code manually in your app:</div>
+          <div class="twofa-secret-row">
+            <code id="twoFaSecretText">Loading&hellip;</code>
+            <button type="button" class="twofa-copy-btn" onclick="copyTwoFaSecret()">Copy</button>
+          </div>
+        </div>
+        <div class="twofa-step">
+          <div class="twofa-step-num">3</div>
+          <div>Enter the 6-digit code shown in the app.</div>
+        </div>
+        <div class="form-field">
+          <input type="text" id="twoFaCodeInput" placeholder="000000" maxlength="6" inputmode="numeric" autocomplete="one-time-code" class="twofa-code-input">
+        </div>
+        <button class="btn btn-primary" id="twoFaEnableBtn" disabled>Verify &amp; Enable</button>
+        <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+      </div>
     </div>
   </div>
 
@@ -3080,6 +3179,7 @@
       } else {
         avatarEl.textContent = (p.username || 'U').charAt(0).toUpperCase();
       }
+      updateTwoFaRow();
     }
 
     function closeSettingsPage() {
@@ -3132,6 +3232,95 @@
         closeAllModals();
       } catch (e) { toast(e.message, 'error'); }
       finally { btn.disabled = false; btn.textContent = 'Update Password'; }
+    });
+
+    // ---- Google Authenticator (2FA) ----
+    let twoFaSecretCache = '';
+
+    function updateTwoFaRow() {
+      const sub = document.getElementById('twoFaRowSub');
+      const icon = document.getElementById('twoFaRowIcon');
+      if (!sub || !icon) return;
+      if (profileData?.twoFactorEnabled) {
+        sub.textContent = 'Enabled — your account is protected';
+        icon.style.background = 'rgba(20,184,166,0.12)';
+      } else {
+        sub.textContent = 'Enable extra security protection';
+        icon.style.background = 'rgba(245,158,11,0.12)';
+      }
+    }
+
+    async function openTwoFaModal() {
+      if (!profileData) {
+        try { profileData = await api('/api/user/profile'); } catch (e) { toast('Load your profile first', 'error'); return; }
+      }
+
+      if (profileData.twoFactorEnabled) {
+        document.getElementById('twoFaEnabledView').style.display = '';
+        document.getElementById('twoFaSetupView').style.display = 'none';
+        document.getElementById('twoFaDisablePassword').value = '';
+        openModal('twoFaModal');
+        return;
+      }
+
+      document.getElementById('twoFaEnabledView').style.display = 'none';
+      document.getElementById('twoFaSetupView').style.display = '';
+      document.getElementById('twoFaCodeInput').value = '';
+      document.getElementById('twoFaQrImg').src = '';
+      document.getElementById('twoFaSecretText').textContent = 'Loading…';
+      const enableBtn = document.getElementById('twoFaEnableBtn');
+      enableBtn.disabled = true;
+      openModal('twoFaModal');
+
+      try {
+        const { secret, qrCodeDataUrl } = await api('/api/user/2fa/setup', { method: 'POST' });
+        twoFaSecretCache = secret;
+        document.getElementById('twoFaQrImg').src = qrCodeDataUrl;
+        document.getElementById('twoFaSecretText').textContent = secret;
+        enableBtn.disabled = false;
+      } catch (e) {
+        toast(e.message, 'error');
+        closeAllModals();
+      }
+    }
+
+    function copyTwoFaSecret() {
+      if (!twoFaSecretCache) return;
+      navigator.clipboard.writeText(twoFaSecretCache).then(() => toast('Secret copied!'));
+    }
+
+    document.getElementById('twoFaCodeInput').addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    document.getElementById('twoFaEnableBtn').addEventListener('click', async () => {
+      const code = document.getElementById('twoFaCodeInput').value.trim();
+      if (!/^\d{6}$/.test(code)) return toast('Enter the 6-digit code', 'error');
+      const btn = document.getElementById('twoFaEnableBtn');
+      btn.disabled = true; btn.textContent = 'Verifying...';
+      try {
+        await api('/api/user/2fa/verify', { method: 'POST', body: JSON.stringify({ code }) });
+        profileData.twoFactorEnabled = true;
+        toast('Google Authenticator enabled!', 'success');
+        closeAllModals();
+        updateTwoFaRow();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Verify & Enable'; }
+    });
+
+    document.getElementById('twoFaDisableBtn').addEventListener('click', async () => {
+      const password = document.getElementById('twoFaDisablePassword').value;
+      if (!password) return toast('Enter your password', 'error');
+      const btn = document.getElementById('twoFaDisableBtn');
+      btn.disabled = true; btn.textContent = 'Disabling...';
+      try {
+        await api('/api/user/2fa/disable', { method: 'POST', body: JSON.stringify({ password }) });
+        profileData.twoFactorEnabled = false;
+        toast('Google Authenticator disabled', 'success');
+        closeAllModals();
+        updateTwoFaRow();
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Disable Google Authenticator'; }
     });
 
     function copyInviteLink() {

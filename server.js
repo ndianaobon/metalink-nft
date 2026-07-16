@@ -7,6 +7,8 @@ const os = require('os');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { generateSecret: generateTotpSecret, generateURI: generateTotpURI, verify: verifyTotpCode } = require('otplib');
+const QRCode = require('qrcode');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -161,6 +163,11 @@ const VERIFICATION_TTL_MS = 10 * 60 * 1000;
 const pendingSignups = {};
 // Pending password resets, keyed by email. Same in-memory/short-lived rationale as pendingSignups.
 const passwordResets = {};
+// Pending 2FA setups (secret generated but not yet confirmed with a code), keyed by userId.
+const pending2FASetup = {};
+// Pending logins awaiting a 2FA code, keyed by a short-lived random token issued after password verification.
+const pendingLogins = {};
+const LOGIN_2FA_TTL_MS = 5 * 60 * 1000;
 
 // Legacy unsalted-SHA256 hash, kept only to verify passwords created before the bcrypt migration.
 function legacyHash(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
@@ -174,6 +181,13 @@ async function verifyPassword(pw, storedHash) {
 
 function isFrozen(user) {
   return !!user.frozenUntil && new Date(user.frozenUntil).getTime() > Date.now();
+}
+
+// epochTolerance: 30 accepts codes from one 30s step before/after the current one, to absorb minor clock drift between server and phone.
+async function isValidTotp(code, secret) {
+  if (!code || !secret) return false;
+  const result = await verifyTotpCode({ secret, token: String(code).trim(), epochTolerance: 30 });
+  return !!(result && result.valid);
 }
 
 const DEFAULT_LEVEL_THRESHOLDS = { 1: 100, 2: 500, 3: 1000, 4: 5000, 5: 10000, 6: 50000 };
@@ -432,6 +446,43 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     return res.status(403).json({ error: 'Account frozen', frozenUntil: user.frozenUntil });
   }
 
+  if (user.twoFactorEnabled) {
+    const tempToken = crypto.randomBytes(32).toString('hex');
+    pendingLogins[tempToken] = { userId: user.id, expiresAt: Date.now() + LOGIN_2FA_TTL_MS };
+    return res.json({ requires2FA: true, tempToken });
+  }
+
+  const token = createSession(user.id, 'user');
+
+  res.json({
+    token,
+    user: { id: user.id, email: user.email, username: user.username, uid: user.uid, level: user.level, points: user.points, avatar: user.avatar }
+  });
+});
+
+app.post('/api/auth/login/2fa', authLimiter, async (req, res) => {
+  const { tempToken, code } = req.body;
+  if (!tempToken || !code) return res.status(400).json({ error: 'Code is required' });
+
+  const pending = pendingLogins[tempToken];
+  if (!pending) return res.status(400).json({ error: 'Login session expired. Please log in again.' });
+  if (pending.expiresAt < Date.now()) {
+    delete pendingLogins[tempToken];
+    return res.status(400).json({ error: 'Login session expired. Please log in again.' });
+  }
+
+  const users = readData('users.json');
+  const user = users.find(u => u.id === pending.userId);
+  if (!user || !user.twoFactorSecret) {
+    delete pendingLogins[tempToken];
+    return res.status(400).json({ error: 'Login session invalid. Please log in again.' });
+  }
+
+  if (!(await isValidTotp(code, user.twoFactorSecret))) {
+    return res.status(401).json({ error: 'Invalid authentication code' });
+  }
+
+  delete pendingLogins[tempToken];
   const token = createSession(user.id, 'user');
 
   res.json({
@@ -553,6 +604,65 @@ app.post('/api/user/change-password', authLimiter, authMiddleware, async (req, r
   });
 
   res.json({ message: 'Password changed successfully' });
+});
+
+app.post('/api/user/2fa/setup', authLimiter, authMiddleware, async (req, res) => {
+  const users = readData('users.json');
+  const user = users.find(u => u.id === req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.twoFactorEnabled) return res.status(400).json({ error: 'Two-factor authentication is already enabled' });
+
+  const secret = generateTotpSecret();
+  pending2FASetup[req.userId] = { secret, expiresAt: Date.now() + VERIFICATION_TTL_MS };
+
+  const otpauth = generateTotpURI({ issuer: 'MetaLinkNFT', label: user.email, secret });
+  const qrCodeDataUrl = await QRCode.toDataURL(otpauth);
+
+  res.json({ secret, qrCodeDataUrl });
+});
+
+app.post('/api/user/2fa/verify', authLimiter, authMiddleware, async (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ error: 'Code is required' });
+
+  const pending = pending2FASetup[req.userId];
+  if (!pending) return res.status(400).json({ error: 'No pending 2FA setup found. Please start again.' });
+  if (pending.expiresAt < Date.now()) {
+    delete pending2FASetup[req.userId];
+    return res.status(400).json({ error: '2FA setup expired. Please start again.' });
+  }
+  if (!(await isValidTotp(code, pending.secret))) {
+    return res.status(400).json({ error: 'Invalid code. Please check your authenticator app and try again.' });
+  }
+
+  let users = readData('users.json');
+  const idx = users.findIndex(u => u.id === req.userId);
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  users[idx].twoFactorEnabled = true;
+  users[idx].twoFactorSecret = pending.secret;
+  writeData('users.json', users);
+  delete pending2FASetup[req.userId];
+
+  res.json({ message: 'Two-factor authentication enabled successfully' });
+});
+
+app.post('/api/user/2fa/disable', authLimiter, authMiddleware, async (req, res) => {
+  const { password } = req.body;
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+
+  let users = readData('users.json');
+  const idx = users.findIndex(u => u.id === req.userId);
+  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  if (!(await verifyPassword(password, users[idx].password))) {
+    return res.status(401).json({ error: 'Incorrect password' });
+  }
+
+  users[idx].twoFactorEnabled = false;
+  users[idx].twoFactorSecret = null;
+  writeData('users.json', users);
+  delete pending2FASetup[req.userId];
+
+  res.json({ message: 'Two-factor authentication disabled' });
 });
 
 app.post('/api/admin/change-password', authLimiter, adminMiddleware, async (req, res) => {
