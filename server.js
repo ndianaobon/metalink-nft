@@ -9,11 +9,62 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { generateSecret: generateTotpSecret, generateURI: generateTotpURI, verify: verifyTotpCode } = require('otplib');
 const QRCode = require('qrcode');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, 'data');
+
+// Hostinger wipes/re-clones the app directory on every git-based deploy, which destroys local JSON
+// data files regardless of git-tracking status. To survive that, every write is mirrored to Postgres
+// (Supabase) as a JSON blob keyed by filename, and the local files are restored from there on boot.
+const dbPool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
+
+const KV_FILES = [
+  'admins.json', 'announcements.json', 'deposits.json', 'earn_positions.json',
+  'nft_catalog.json', 'platform_config.json', 'reserve_orders.json', 'teams.json',
+  'user_stakes.json', 'users.json', 'wallet_submissions.json', 'withdrawals.json'
+];
+
+async function ensureKvTable() {
+  await dbPool.query(`
+    CREATE TABLE IF NOT EXISTS kv_store (
+      key text PRIMARY KEY,
+      value jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+async function hydrateDataFromDb() {
+  if (!dbPool) {
+    console.warn('[DB] DATABASE_URL not set — running on local disk only, data will NOT survive a deploy.');
+    return;
+  }
+  try {
+    await ensureKvTable();
+    for (const file of KV_FILES) {
+      const { rows } = await dbPool.query('SELECT value FROM kv_store WHERE key = $1', [file]);
+      if (rows.length > 0) {
+        fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(rows[0].value, null, 2));
+      }
+    }
+    console.log('[DB] Data restored from Supabase.');
+  } catch (e) {
+    console.error('[DB] Failed to hydrate from Supabase, falling back to local disk state:', e.message);
+  }
+}
+
+function syncFileToDb(file, data) {
+  if (!dbPool) return;
+  dbPool.query(
+    'INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now()) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()',
+    [file, JSON.stringify(data)]
+  ).catch(e => console.error('[DB] Failed to sync', file, '-', e.message));
+}
 
 app.use(helmet({
   contentSecurityPolicy: false // app relies on inline <script>/<style>; CSP would need a rewrite of every page to use nonces
@@ -44,6 +95,7 @@ function readData(file) {
 
 function writeData(file, data) {
   fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2));
+  syncFileToDb(file, data);
 }
 
 function readConfig(file) {
@@ -54,6 +106,7 @@ function readConfig(file) {
 
 function writeConfig(file, data) {
   fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2));
+  syncFileToDb(file, data);
 }
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
@@ -277,7 +330,6 @@ async function initAdmin() {
     writeData('admins.json', admins);
   }
 }
-initAdmin();
 
 // Initialize default NFT stakes catalog
 function initStakes() {
@@ -294,7 +346,6 @@ function initStakes() {
     writeData('nft_catalog.json', stakes);
   }
 }
-initStakes();
 
 // ===================== AUTH ROUTES =====================
 
@@ -1543,7 +1594,12 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, HOST, () => {
+async function startServer() {
+  await hydrateDataFromDb(); // restore data/*.json from Postgres before anything reads/seeds them
+  await initAdmin();
+  initStakes();
+
+  app.listen(PORT, HOST, () => {
   const nets = os.networkInterfaces();
   let localIP = 'unknown';
   for (const iface of Object.values(nets)) {
@@ -1559,4 +1615,7 @@ app.listen(PORT, HOST, () => {
   console.log(`  Local:   http://localhost:${PORT}`);
   console.log(`  Network: http://${localIP}:${PORT}`);
   console.log(`  Admin:   http://localhost:${PORT}/admin`);
-});
+  });
+}
+
+startServer();
