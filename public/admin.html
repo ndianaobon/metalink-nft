@@ -95,7 +95,8 @@
         const app = document.getElementById('adminApp');
         app.innerHTML = `
           <div class="admin-layout">
-            <aside class="admin-sidebar">
+            <div class="admin-sidebar-overlay" id="adminSidebarOverlay"></div>
+            <aside class="admin-sidebar" id="adminSidebar">
               <div class="admin-sidebar-logo">
                 <h2>MetaLinkNFT</h2>
                 <span>Admin Dashboard</span>
@@ -111,7 +112,12 @@
             </aside>
             <div class="admin-main">
               <header class="admin-header">
-                <h2 id="adminPageTitle">Dashboard</h2>
+                <div style="display:flex;align-items:center;gap:12px;">
+                  <button class="admin-hamburger-btn" id="adminHamburgerBtn" aria-label="Toggle menu">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                  </button>
+                  <h2 id="adminPageTitle">Dashboard</h2>
+                </div>
                 <div class="admin-header-actions">
                   <span style="font-size:0.85rem;color:#888;">Admin</span>
                 </div>
@@ -120,6 +126,15 @@
             </div>
           </div>`;
 
+        const sidebar = document.getElementById('adminSidebar');
+        const overlay = document.getElementById('adminSidebarOverlay');
+        const closeSidebar = () => { sidebar.classList.remove('open'); overlay.classList.remove('open'); };
+        document.getElementById('adminHamburgerBtn').addEventListener('click', () => {
+          sidebar.classList.toggle('open');
+          overlay.classList.toggle('open');
+        });
+        overlay.addEventListener('click', closeSidebar);
+
         document.querySelectorAll('[data-page]').forEach(btn => {
           btn.addEventListener('click', () => {
             document.querySelectorAll('[data-page]').forEach(b => b.classList.remove('active'));
@@ -127,6 +142,7 @@
             this.currentPage = btn.dataset.page;
             document.getElementById('adminPageTitle').textContent = btn.textContent.trim();
             this.loadPage();
+            closeSidebar();
           });
         });
 
@@ -553,7 +569,7 @@
             <div class="admin-table-card" style="margin-top:24px;">
               <div class="admin-table-header"><h3>Platform Settings</h3></div>
               <div style="padding:24px;">
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+                <div class="admin-settings-grid">
                   <div class="admin-form-group">
                     <label class="admin-form-label">Sign-up Bonus ($)</label>
                     <input class="admin-form-input" id="cfgSignupBonus" type="number" step="0.01" value="${config.signupBonus !== undefined ? config.signupBonus : 10}" placeholder="10">
@@ -606,7 +622,7 @@
               <div class="admin-table-header"><h3>Level Upgrade Thresholds</h3></div>
               <div style="padding:24px;">
                 <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">A user is automatically upgraded (and emailed) the moment their wallet balance reaches the threshold for the next level. Levels can also be set manually per-user from the Users tab.</p>
-                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;">
+                <div class="admin-level-grid">
                   ${[1, 2, 3, 4, 5, 6].map(lv => `
                     <div class="admin-form-group">
                       <label class="admin-form-label">Level ${lv} ($)</label>
