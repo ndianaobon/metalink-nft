@@ -148,15 +148,6 @@
     }
     .tab-page.active { display: block; }
 
-    /* The My tab packs far more small rounded-corner cards into a tight grid than any other
-       tab. Some Android GPUs corrupt the rasterized tiles when scrolling that many anti-aliased
-       corners at once; isolating this page as a single composited layer avoids it. */
-    #page-my {
-      transform: translateZ(0);
-      -webkit-transform: translateZ(0);
-      isolation: isolate;
-    }
-
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
@@ -279,7 +270,7 @@
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
       overflow: hidden; transition: all var(--transition);
     }
-    .nft-stake-card:hover { box-shadow: var(--shadow); transform: translateY(-3px); border-color: rgba(124,58,237,0.35); }
+    .nft-stake-card:hover { box-shadow: var(--shadow); border-color: rgba(124,58,237,0.35); }
     .nft-card-banner-wrap { position: relative; }
     .nft-card-banner {
       width: 100%; height: 170px; object-fit: cover; display: block;
@@ -330,7 +321,7 @@
       background: var(--gradient); background-size: 160% 160%;
       transition: all var(--transition);
     }
-    .nft-card-go:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(124,58,237,0.3); }
+    .nft-card-go:hover { opacity: 0.92; box-shadow: 0 6px 16px rgba(124,58,237,0.3); }
     .stake-collection-group { margin-bottom: 8px; }
     .stake-collection-group-title {
       font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); text-transform: uppercase;
@@ -448,7 +439,7 @@
       font-size: 0.82rem; font-weight: 500; color: var(--text);
       transition: all var(--transition);
     }
-    .assets-action-btn:hover { background: var(--surface-hover); transform: translateY(-2px); box-shadow: var(--shadow); }
+    .assets-action-btn:hover { background: var(--surface-hover); box-shadow: var(--shadow); }
 
     /* QR Code in deposit modal */
     .deposit-qr-wrap {
@@ -538,7 +529,7 @@
       background: var(--surface); border: 1px solid var(--border); cursor: pointer;
       transition: all var(--transition); color: var(--text); font-family: var(--font);
     }
-    .my-quick-btn:hover { border-color: var(--primary); transform: translateY(-2px); box-shadow: var(--shadow); }
+    .my-quick-btn:hover { border-color: var(--primary); box-shadow: var(--shadow); }
     .my-quick-icon {
       width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center;
     }
@@ -622,7 +613,7 @@
       background: var(--bg); border: 1px solid var(--border); cursor: pointer;
       transition: all var(--transition); color: var(--text); font-family: var(--font);
     }
-    .my-func-btn:hover { background: var(--surface-hover); border-color: var(--primary); transform: translateY(-1px); }
+    .my-func-btn:hover { background: var(--surface-hover); border-color: var(--primary); }
     .my-func-btn svg { color: var(--primary); }
     .my-func-btn span { font-size: 0.75rem; font-weight: 500; color: var(--text-secondary); }
 
@@ -951,7 +942,7 @@
       font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer;
       background: var(--gradient); transition: all var(--transition);
     }
-    .reserve-result-confirm-btn:hover { opacity: 0.92; transform: translateY(-1px); }
+    .reserve-result-confirm-btn:hover { opacity: 0.92; }
 
     /* ---- Reserve order draw cards ---- */
     .reserve-draw-card {
@@ -1124,6 +1115,19 @@
       #page-stake { max-width: 1240px; }
       .nft-catalog { grid-template-columns: repeat(3, 1fr); }
       #page-reserve { max-width: 1100px; }
+    }
+
+    /* Hover-lift effects only for real pointer devices (mouse/trackpad). On touchscreens,
+       :hover can get "stuck" active after a tap and its transform then repaints inconsistently
+       during scroll -- a known source of visual corruption on some Android/Chrome GPUs, most
+       visible on pages like My that pack many of these buttons close together. */
+    @media (hover: hover) and (pointer: fine) {
+      .nft-stake-card:hover { transform: translateY(-3px); }
+      .nft-card-go:hover { transform: translateY(-1px); }
+      .assets-action-btn:hover { transform: translateY(-2px); }
+      .my-quick-btn:hover { transform: translateY(-2px); }
+      .my-func-btn:hover { transform: translateY(-1px); }
+      .reserve-result-confirm-btn:hover { transform: translateY(-1px); }
     }
   </style>
 </head>
