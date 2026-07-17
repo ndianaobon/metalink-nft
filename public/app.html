@@ -148,6 +148,15 @@
     }
     .tab-page.active { display: block; }
 
+    /* The My tab packs far more small rounded-corner cards into a tight grid than any other
+       tab. Some Android GPUs corrupt the rasterized tiles when scrolling that many anti-aliased
+       corners at once; isolating this page as a single composited layer avoids it. */
+    #page-my {
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
+      isolation: isolate;
+    }
+
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(12px); }
       to { opacity: 1; transform: translateY(0); }
