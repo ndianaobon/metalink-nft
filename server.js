@@ -38,7 +38,7 @@ app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAg
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
 
 app.get('/uploads/:name', async (req, res) => {
-  const { rows } = await pool.query('SELECT content_type, bytes FROM uploads WHERE name = $1', [req.params.name]);
+  const { rows } = await pool.query('SELECT content_type, bytes FROM app.uploads WHERE name = $1', [req.params.name]);
   if (!rows.length) return res.status(404).end();
   // Upload names are server-generated and never reused, so the content behind a URL never changes.
   res.set('Cache-Control', 'public, max-age=31536000, immutable');
@@ -214,23 +214,23 @@ function hashToken(token) { return crypto.createHash('sha256').update(token).dig
 async function createSession(subjectId, role) {
   const token = crypto.randomBytes(32).toString('hex');
   const ttl = role === 'admin' ? ADMIN_SESSION_TTL_MS : SESSION_TTL_MS;
-  await pool.query('INSERT INTO sessions (token_hash, user_id, role, expires_at) VALUES ($1, $2, $3, $4)', [hashToken(token), subjectId, role, Date.now() + ttl]);
+  await pool.query('INSERT INTO app.sessions (token_hash, user_id, role, expires_at) VALUES ($1, $2, $3, $4)', [hashToken(token), subjectId, role, Date.now() + ttl]);
   return token;
 }
 
 function deleteSession(tokenHash) {
-  return pool.query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);
+  return pool.query('DELETE FROM app.sessions WHERE token_hash = $1', [tokenHash]);
 }
 
 function deleteSessionsFor(userId, role, exceptTokenHash = '') {
-  return pool.query('DELETE FROM sessions WHERE user_id = $1 AND role = $2 AND token_hash <> $3', [userId, role, exceptTokenHash]);
+  return pool.query('DELETE FROM app.sessions WHERE user_id = $1 AND role = $2 AND token_hash <> $3', [userId, role, exceptTokenHash]);
 }
 
 async function loadSession(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return null;
   const tokenHash = hashToken(token);
-  const { rows } = await pool.query('SELECT user_id, role, expires_at, last_activity_write FROM sessions WHERE token_hash = $1', [tokenHash]);
+  const { rows } = await pool.query('SELECT user_id, role, expires_at, last_activity_write FROM app.sessions WHERE token_hash = $1', [tokenHash]);
   if (!rows.length) return null;
   return { tokenHash, userId: rows[0].user_id, role: rows[0].role, expiresAt: Number(rows[0].expires_at), lastActivityWrite: Number(rows[0].last_activity_write) };
 }
@@ -250,8 +250,8 @@ async function authMiddleware(req, res, next) {
     // One round trip: claim the write slot (of several simultaneous requests only one wins), stamp
     // lastActiveAt, and read back the freeze date.
     const { rows } = await pool.query(`
-      WITH s AS (UPDATE sessions SET last_activity_write = $2 WHERE token_hash = $1 AND last_activity_write = $3 RETURNING user_id)
-      UPDATE users u SET data = u.data || jsonb_build_object('lastActiveAt', $4::text)
+      WITH s AS (UPDATE app.sessions SET last_activity_write = $2 WHERE token_hash = $1 AND last_activity_write = $3 RETURNING user_id)
+      UPDATE app.users u SET data = u.data || jsonb_build_object('lastActiveAt', $4::text)
       FROM s WHERE u.id = s.user_id
       RETURNING u.data->>'frozenUntil' AS frozen_until`,
       [session.tokenHash, now, session.lastActivityWrite, new Date(now).toISOString()]);
@@ -269,7 +269,7 @@ async function adminMiddleware(req, res, next) {
   if (!session || session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
   if (session.expiresAt < Date.now()) { await deleteSession(session.tokenHash); return res.status(403).json({ error: 'Session expired' }); }
   // sliding window: stays alive while actively used, expires 2h after the last request
-  await pool.query('UPDATE sessions SET expires_at = $2 WHERE token_hash = $1', [session.tokenHash, Date.now() + ADMIN_SESSION_TTL_MS]);
+  await pool.query('UPDATE app.sessions SET expires_at = $2 WHERE token_hash = $1', [session.tokenHash, Date.now() + ADMIN_SESSION_TTL_MS]);
   req.tokenHash = session.tokenHash;
   req.userId = session.userId;
   req.userRole = 'admin';
@@ -279,8 +279,8 @@ async function adminMiddleware(req, res, next) {
 // Initialize default admin
 async function initAdmin() {
   await tx(async c => {
-    await c.query('LOCK TABLE admins IN EXCLUSIVE MODE');
-    const { rows } = await c.query('SELECT 1 FROM admins LIMIT 1');
+    await c.query('LOCK TABLE app.admins IN EXCLUSIVE MODE');
+    const { rows } = await c.query('SELECT 1 FROM app.admins LIMIT 1');
     if (rows.length) return;
     await db.insertDoc(c, 'admins', {
       id: generateId(),
@@ -294,8 +294,8 @@ async function initAdmin() {
 // Initialize default NFT stakes catalog
 async function initStakes() {
   await tx(async c => {
-    await c.query('LOCK TABLE nft_catalog IN EXCLUSIVE MODE');
-    const { rows } = await c.query('SELECT 1 FROM nft_catalog LIMIT 1');
+    await c.query('LOCK TABLE app.nft_catalog IN EXCLUSIVE MODE');
+    const { rows } = await c.query('SELECT 1 FROM app.nft_catalog LIMIT 1');
     if (rows.length) return;
     const stakes = [
       { id: 'nft1', name: 'Exclusive Stake1', collection: 'Stake', image: '/assets/images/nfts/stake-1.jpg', pledgeRange: '199 - 1000', dailyIncome: '1.5%', handlingFee: '1%', duration: 7, color: '#7C3AED', levelReq: 'LV1-LV8' },
@@ -418,7 +418,7 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
     let currentReferrerId = user.referredBy;
     for (let i = 0; i < tiers.length && currentReferrerId; i++) {
       const entry = { userId: currentReferrerId, memberId: user.id, tier: tiers[i], joinedAt: new Date().toISOString() };
-      await c.query('INSERT INTO teams (id, user_id, member_id, data) VALUES ($1, $2, $3, $4)', [db.newId(), entry.userId, entry.memberId, JSON.stringify(entry)]);
+      await c.query('INSERT INTO app.teams (id, user_id, member_id, data) VALUES ($1, $2, $3, $4)', [db.newId(), entry.userId, entry.memberId, JSON.stringify(entry)]);
       const referrer = await db.getUser(c, currentReferrerId);
       currentReferrerId = referrer ? referrer.referredBy : null;
     }
@@ -719,8 +719,8 @@ app.get('/api/user/team', authMiddleware, async (req, res) => {
   // wallet balance alone isn't a reliable signal since every account starts with a signup bonus.
   const { rows } = await pool.query(`
     SELECT t.member_id, t.data->>'tier' AS tier, t.data->'joinedAt' AS joined_at, u.data->>'username' AS username,
-           EXISTS (SELECT 1 FROM deposits d WHERE d.user_id = t.member_id AND d.data->>'status' = 'Approved') AS is_valid
-    FROM teams t LEFT JOIN users u ON u.id = t.member_id
+           EXISTS (SELECT 1 FROM app.deposits d WHERE d.user_id = t.member_id AND d.data->>'status' = 'Approved') AS is_valid
+    FROM app.teams t LEFT JOIN app.users u ON u.id = t.member_id
     WHERE t.user_id = $1
     ORDER BY t.seq`, [req.userId]);
 
@@ -1168,7 +1168,7 @@ app.get('/api/announcements/:id', async (req, res) => {
 
 app.post('/api/admin/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
-  const { rows } = await pool.query("SELECT data FROM admins WHERE data->>'username' = $1 ORDER BY seq LIMIT 1", [username]);
+  const { rows } = await pool.query("SELECT data FROM app.admins WHERE data->>'username' = $1 ORDER BY seq LIMIT 1", [username]);
   const admin = rows.length ? rows[0].data : null;
   if (!admin || !(await verifyPassword(password, admin.password))) {
     return res.status(401).json({ error: 'Invalid admin credentials' });
@@ -1189,12 +1189,12 @@ app.post('/api/admin/logout', adminMiddleware, async (req, res) => {
 app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
   const num = field => `CASE WHEN jsonb_typeof(data->'${field}') = 'number' THEN (data->>'${field}')::float8 ELSE 0 END`;
   const { rows } = await pool.query(`SELECT
-    (SELECT count(*) FROM users) AS total_users,
-    (SELECT coalesce(sum(${num('amount')}), 0) FROM deposits) AS total_deposits,
-    (SELECT coalesce(sum(${num('amount')}), 0) FROM withdrawals WHERE data->>'status' = 'Approved') AS total_withdrawals,
-    (SELECT count(*) FROM withdrawals WHERE data->>'status' = 'Pending') AS pending_withdrawals,
-    (SELECT count(*) FROM user_stakes WHERE data->>'status' = 'active') AS active_stakes,
-    (SELECT coalesce(sum(${num('pledgeValue')}), 0) FROM user_stakes WHERE data->>'status' = 'active') AS total_stake_value`);
+    (SELECT count(*) FROM app.users) AS total_users,
+    (SELECT coalesce(sum(${num('amount')}), 0) FROM app.deposits) AS total_deposits,
+    (SELECT coalesce(sum(${num('amount')}), 0) FROM app.withdrawals WHERE data->>'status' = 'Approved') AS total_withdrawals,
+    (SELECT count(*) FROM app.withdrawals WHERE data->>'status' = 'Pending') AS pending_withdrawals,
+    (SELECT count(*) FROM app.user_stakes WHERE data->>'status' = 'active') AS active_stakes,
+    (SELECT coalesce(sum(${num('pledgeValue')}), 0) FROM app.user_stakes WHERE data->>'status' = 'active') AS total_stake_value`);
   const r = rows[0];
 
   res.json({
@@ -1464,7 +1464,7 @@ app.post('/api/admin/upload', adminMiddleware, async (req, res) => {
   // Filename is always server-generated — never derived from client input — to prevent path traversal.
   const fname = generateId() + '.' + ext;
 
-  await pool.query('INSERT INTO uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [fname, 'image/' + (ext === 'jpg' ? 'jpeg' : ext), Buffer.from(data, 'base64')]);
+  await pool.query('INSERT INTO app.uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [fname, 'image/' + (ext === 'jpg' ? 'jpeg' : ext), Buffer.from(data, 'base64')]);
   res.json({ url: '/uploads/' + fname });
 });
 

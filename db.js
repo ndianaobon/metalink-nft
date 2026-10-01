@@ -33,18 +33,21 @@ const DOC_TABLES = {
   withdrawals: 'withdrawals.json'
 };
 
+// All tables live in their own `app` schema: the public schema holds unrelated leftover tables
+// with the same names (users, sessions, ...) from an earlier attempt.
 async function createSchema(c) {
+  await c.query('CREATE SCHEMA IF NOT EXISTS app');
   for (const t of Object.keys(DOC_TABLES)) {
-    await c.query(`CREATE TABLE IF NOT EXISTS ${t} (
+    await c.query(`CREATE TABLE IF NOT EXISTS app.${t} (
       seq bigserial,
       id text PRIMARY KEY,
       user_id text,
       data jsonb NOT NULL
     )`);
-    await c.query(`CREATE INDEX IF NOT EXISTS ${t}_user_id_idx ON ${t} (user_id, seq)`);
-    await c.query(`CREATE INDEX IF NOT EXISTS ${t}_seq_idx ON ${t} (seq)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS ${t}_user_id_idx ON app.${t} (user_id, seq)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS ${t}_seq_idx ON app.${t} (seq)`);
   }
-  await c.query(`CREATE TABLE IF NOT EXISTS users (
+  await c.query(`CREATE TABLE IF NOT EXISTS app.users (
     seq bigserial,
     id text PRIMARY KEY,
     email text NOT NULL,
@@ -53,37 +56,37 @@ async function createSchema(c) {
     referred_by text,
     data jsonb NOT NULL
   )`);
-  await c.query('CREATE INDEX IF NOT EXISTS users_email_idx ON users (email)');
-  await c.query('CREATE INDEX IF NOT EXISTS users_username_lower_idx ON users (username_lower)');
-  await c.query('CREATE INDEX IF NOT EXISTS users_uid_idx ON users (uid)');
-  await c.query('CREATE INDEX IF NOT EXISTS users_seq_idx ON users (seq)');
-  await c.query(`CREATE TABLE IF NOT EXISTS teams (
+  await c.query('CREATE INDEX IF NOT EXISTS users_email_idx ON app.users (email)');
+  await c.query('CREATE INDEX IF NOT EXISTS users_username_lower_idx ON app.users (username_lower)');
+  await c.query('CREATE INDEX IF NOT EXISTS users_uid_idx ON app.users (uid)');
+  await c.query('CREATE INDEX IF NOT EXISTS users_seq_idx ON app.users (seq)');
+  await c.query(`CREATE TABLE IF NOT EXISTS app.teams (
     seq bigserial,
     id text PRIMARY KEY,
     user_id text NOT NULL,
     member_id text NOT NULL,
     data jsonb NOT NULL
   )`);
-  await c.query('CREATE INDEX IF NOT EXISTS teams_user_id_idx ON teams (user_id, seq)');
-  await c.query('CREATE TABLE IF NOT EXISTS settings (key text PRIMARY KEY, value jsonb NOT NULL)');
-  await c.query(`CREATE TABLE IF NOT EXISTS sessions (
+  await c.query('CREATE INDEX IF NOT EXISTS teams_user_id_idx ON app.teams (user_id, seq)');
+  await c.query('CREATE TABLE IF NOT EXISTS app.settings (key text PRIMARY KEY, value jsonb NOT NULL)');
+  await c.query(`CREATE TABLE IF NOT EXISTS app.sessions (
     token_hash text PRIMARY KEY,
     user_id text NOT NULL,
     role text NOT NULL,
     expires_at bigint NOT NULL,
     last_activity_write bigint NOT NULL DEFAULT 0
   )`);
-  await c.query('CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions (user_id)');
-  await c.query('CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at)');
+  await c.query('CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON app.sessions (user_id)');
+  await c.query('CREATE INDEX IF NOT EXISTS sessions_expires_idx ON app.sessions (expires_at)');
   // Short-lived state (pending signups, password resets, 2FA setups/logins) shared across processes.
-  await c.query(`CREATE TABLE IF NOT EXISTS ephemeral (
+  await c.query(`CREATE TABLE IF NOT EXISTS app.ephemeral (
     kind text NOT NULL,
     key text NOT NULL,
     data jsonb NOT NULL,
     expires_at bigint NOT NULL,
     PRIMARY KEY (kind, key)
   )`);
-  await c.query(`CREATE TABLE IF NOT EXISTS uploads (
+  await c.query(`CREATE TABLE IF NOT EXISTS app.uploads (
     name text PRIMARY KEY,
     content_type text NOT NULL,
     bytes bytea NOT NULL,
@@ -111,35 +114,35 @@ function newId() { return Date.now().toString(36) + crypto.randomBytes(6).toStri
 // ---------- generic documents ----------
 
 async function getDoc(c, table, id, { lock = false } = {}) {
-  const { rows } = await c.query(`SELECT data FROM ${table} WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [id]);
+  const { rows } = await c.query(`SELECT data FROM app.${table} WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [id]);
   return rows.length ? rows[0].data : null;
 }
 
 async function listDocs(c, table, { userId, order = 'ASC' } = {}) {
   const { rows } = userId !== undefined
-    ? await c.query(`SELECT data FROM ${table} WHERE user_id = $1 ORDER BY seq ${order}`, [userId])
-    : await c.query(`SELECT data FROM ${table} ORDER BY seq ${order}`);
+    ? await c.query(`SELECT data FROM app.${table} WHERE user_id = $1 ORDER BY seq ${order}`, [userId])
+    : await c.query(`SELECT data FROM app.${table} ORDER BY seq ${order}`);
   return rows.map(r => r.data);
 }
 
 async function insertDoc(c, table, doc) {
-  await c.query(`INSERT INTO ${table} (id, user_id, data) VALUES ($1, $2, $3)`, [doc.id, doc.userId || null, JSON.stringify(doc)]);
+  await c.query(`INSERT INTO app.${table} (id, user_id, data) VALUES ($1, $2, $3)`, [doc.id, doc.userId || null, JSON.stringify(doc)]);
   return doc;
 }
 
 async function saveDoc(c, table, doc) {
-  await c.query(`UPDATE ${table} SET data = $2 WHERE id = $1`, [doc.id, JSON.stringify(doc)]);
+  await c.query(`UPDATE app.${table} SET data = $2 WHERE id = $1`, [doc.id, JSON.stringify(doc)]);
   return doc;
 }
 
 // Merges fields into a record in one statement, so it can't clobber concurrent changes to other fields.
 // For users, only use this for fields that aren't mirrored into columns (email, username, uid, referredBy).
 async function patchDoc(c, table, id, patch) {
-  await c.query(`UPDATE ${table} SET data = data || $2::jsonb WHERE id = $1`, [id, JSON.stringify(patch)]);
+  await c.query(`UPDATE app.${table} SET data = data || $2::jsonb WHERE id = $1`, [id, JSON.stringify(patch)]);
 }
 
 async function deleteDoc(c, table, id) {
-  await c.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+  await c.query(`DELETE FROM app.${table} WHERE id = $1`, [id]);
 }
 
 // ---------- users ----------
@@ -151,17 +154,17 @@ function userColumns(u) {
 async function getUser(c, id, opts) { return getDoc(c, 'users', id, opts); }
 
 async function findUserBy(c, column, value) {
-  const { rows } = await c.query(`SELECT data FROM users WHERE ${column} = $1 ORDER BY seq LIMIT 1`, [value]);
+  const { rows } = await c.query(`SELECT data FROM app.users WHERE ${column} = $1 ORDER BY seq LIMIT 1`, [value]);
   return rows.length ? rows[0].data : null;
 }
 
 async function insertUser(c, u) {
-  await c.query('INSERT INTO users (id, email, username_lower, uid, referred_by, data) VALUES ($1, $2, $3, $4, $5, $6)', userColumns(u));
+  await c.query('INSERT INTO app.users (id, email, username_lower, uid, referred_by, data) VALUES ($1, $2, $3, $4, $5, $6)', userColumns(u));
   return u;
 }
 
 async function saveUser(c, u) {
-  await c.query('UPDATE users SET email = $2, username_lower = $3, uid = $4, referred_by = $5, data = $6 WHERE id = $1', userColumns(u));
+  await c.query('UPDATE app.users SET email = $2, username_lower = $3, uid = $4, referred_by = $5, data = $6 WHERE id = $1', userColumns(u));
   return u;
 }
 
@@ -169,7 +172,7 @@ async function saveUser(c, u) {
 async function lockUsers(c, ids) {
   const unique = [...new Set(ids.filter(Boolean))].sort();
   if (!unique.length) return {};
-  const { rows } = await c.query('SELECT id, data FROM users WHERE id = ANY($1) ORDER BY id FOR UPDATE', [unique]);
+  const { rows } = await c.query('SELECT id, data FROM app.users WHERE id = ANY($1) ORDER BY id FOR UPDATE', [unique]);
   const map = {};
   rows.forEach(r => { map[r.id] = r.data; });
   return map;
@@ -178,36 +181,36 @@ async function lockUsers(c, ids) {
 // ---------- settings ----------
 
 async function getSetting(c, key) {
-  const { rows } = await c.query('SELECT value FROM settings WHERE key = $1', [key]);
+  const { rows } = await c.query('SELECT value FROM app.settings WHERE key = $1', [key]);
   return rows.length ? rows[0].value : {};
 }
 
 async function setSetting(c, key, value) {
-  await c.query('INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', [key, JSON.stringify(value)]);
+  await c.query('INSERT INTO app.settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', [key, JSON.stringify(value)]);
 }
 
 // ---------- ephemeral ----------
 
 async function ephGet(kind, key) {
-  const { rows } = await pool.query('SELECT data FROM ephemeral WHERE kind = $1 AND key = $2', [kind, key]);
+  const { rows } = await pool.query('SELECT data FROM app.ephemeral WHERE kind = $1 AND key = $2', [kind, key]);
   return rows.length ? rows[0].data : null;
 }
 
 async function ephSet(kind, key, data) {
   await pool.query(
-    'INSERT INTO ephemeral (kind, key, data, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT (kind, key) DO UPDATE SET data = $3, expires_at = $4',
+    'INSERT INTO app.ephemeral (kind, key, data, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT (kind, key) DO UPDATE SET data = $3, expires_at = $4',
     [kind, key, JSON.stringify(data), data.expiresAt]
   );
 }
 
 async function ephDel(kind, key) {
-  await pool.query('DELETE FROM ephemeral WHERE kind = $1 AND key = $2', [kind, key]);
+  await pool.query('DELETE FROM app.ephemeral WHERE kind = $1 AND key = $2', [kind, key]);
 }
 
 // ---------- one-time import of the old JSON-blob storage ----------
 
 async function importLegacyData(c, dataDir) {
-  const done = await c.query("SELECT 1 FROM settings WHERE key = '_legacy_import_done'");
+  const done = await c.query("SELECT 1 FROM app.settings WHERE key = '_legacy_import_done'");
   if (done.rows.length) return;
 
   const hasKv = (await c.query("SELECT to_regclass('kv_store') AS t")).rows[0].t !== null;
@@ -235,7 +238,7 @@ async function importLegacyData(c, dataDir) {
   const users = await load('users.json');
   if (Array.isArray(users)) {
     for (const u of users) {
-      await insertRow('INSERT INTO users (id, email, username_lower, uid, referred_by, data) VALUES ($1, $2, $3, $4, $5, $6)', userColumns, u);
+      await insertRow('INSERT INTO app.users (id, email, username_lower, uid, referred_by, data) VALUES ($1, $2, $3, $4, $5, $6)', userColumns, u);
     }
     counts.users = users.length;
   }
@@ -243,14 +246,14 @@ async function importLegacyData(c, dataDir) {
     const docs = await load(file);
     if (!Array.isArray(docs)) continue;
     for (const d of docs) {
-      await insertRow(`INSERT INTO ${table} (id, user_id, data) VALUES ($1, $2, $3)`, x => [x.id, x.userId || null, JSON.stringify(x)], d);
+      await insertRow(`INSERT INTO app.${table} (id, user_id, data) VALUES ($1, $2, $3)`, x => [x.id, x.userId || null, JSON.stringify(x)], d);
     }
     counts[table] = docs.length;
   }
   const teams = await load('teams.json');
   if (Array.isArray(teams)) {
     for (const t of teams) {
-      await c.query('INSERT INTO teams (id, user_id, member_id, data) VALUES ($1, $2, $3, $4)', [newId(), t.userId, t.memberId, JSON.stringify(t)]);
+      await c.query('INSERT INTO app.teams (id, user_id, member_id, data) VALUES ($1, $2, $3, $4)', [newId(), t.userId, t.memberId, JSON.stringify(t)]);
     }
     counts.teams = teams.length;
   }
@@ -272,8 +275,8 @@ async function initDb(dataDir) {
 
 async function cleanupExpired() {
   const now = Date.now();
-  await pool.query('DELETE FROM sessions WHERE expires_at < $1', [now]);
-  await pool.query('DELETE FROM ephemeral WHERE expires_at < $1', [now]);
+  await pool.query('DELETE FROM app.sessions WHERE expires_at < $1', [now]);
+  await pool.query('DELETE FROM app.ephemeral WHERE expires_at < $1', [now]);
 }
 
 module.exports = {
