@@ -1,70 +1,23 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
+const cluster = require('cluster');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const { generateSecret: generateTotpSecret, generateURI: generateTotpURI, verify: verifyTotpCode } = require('otplib');
 const QRCode = require('qrcode');
-const { Pool } = require('pg');
+const db = require('./db');
+const { pool, tx } = db;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const HOST = '0.0.0.0';
 const DATA_DIR = path.join(__dirname, 'data');
-
-// Hostinger wipes/re-clones the app directory on every git-based deploy, which destroys local JSON
-// data files regardless of git-tracking status. To survive that, every write is mirrored to Postgres
-// (Supabase) as a JSON blob keyed by filename, and the local files are restored from there on boot.
-const dbPool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
-  : null;
-
-const KV_FILES = [
-  'admins.json', 'announcements.json', 'deposits.json', 'earn_positions.json',
-  'nft_catalog.json', 'platform_config.json', 'reserve_orders.json', 'teams.json',
-  'user_stakes.json', 'users.json', 'wallet_submissions.json', 'withdrawals.json'
-];
-
-async function ensureKvTable() {
-  await dbPool.query(`
-    CREATE TABLE IF NOT EXISTS kv_store (
-      key text PRIMARY KEY,
-      value jsonb NOT NULL,
-      updated_at timestamptz NOT NULL DEFAULT now()
-    )
-  `);
-}
-
-async function hydrateDataFromDb() {
-  if (!dbPool) {
-    console.warn('[DB] DATABASE_URL not set — running on local disk only, data will NOT survive a deploy.');
-    return;
-  }
-  try {
-    await ensureKvTable();
-    for (const file of KV_FILES) {
-      const { rows } = await dbPool.query('SELECT value FROM kv_store WHERE key = $1', [file]);
-      if (rows.length > 0) {
-        fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(rows[0].value, null, 2));
-      }
-    }
-    console.log('[DB] Data restored from Supabase.');
-  } catch (e) {
-    console.error('[DB] Failed to hydrate from Supabase, falling back to local disk state:', e.message);
-  }
-}
-
-function syncFileToDb(file, data) {
-  if (!dbPool) return;
-  dbPool.query(
-    'INSERT INTO kv_store (key, value, updated_at) VALUES ($1, $2, now()) ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()',
-    [file, JSON.stringify(data)]
-  ).catch(e => console.error('[DB] Failed to sync', file, '-', e.message));
-}
+// Number of worker processes. All state lives in Postgres, so any number of workers (or servers) can share the load.
+const WORKERS = Math.max(1, parseInt(process.env.WEB_CONCURRENCY || '1', 10));
 
 app.use(helmet({
   contentSecurityPolicy: false // app relies on inline <script>/<style>; CSP would need a rewrite of every page to use nonces
@@ -80,34 +33,19 @@ const authLimiter = rateLimit({
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
-app.use('/assets', express.static(path.join(__dirname, 'public/assets')));
-app.use('/uploads', express.static(path.join(__dirname, 'data/uploads')));
+app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAge: '1h' }));
+// Files uploaded before uploads moved into Postgres; anything not found here falls through to the DB route below.
+app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
 
-if (!fs.existsSync(path.join(DATA_DIR, 'uploads'))) {
-  fs.mkdirSync(path.join(DATA_DIR, 'uploads'), { recursive: true });
-}
+app.get('/uploads/:name', async (req, res) => {
+  const { rows } = await pool.query('SELECT content_type, bytes FROM uploads WHERE name = $1', [req.params.name]);
+  if (!rows.length) return res.status(404).end();
+  // Upload names are server-generated and never reused, so the content behind a URL never changes.
+  res.set('Cache-Control', 'public, max-age=31536000, immutable');
+  res.type(rows[0].content_type).send(rows[0].bytes);
+});
 
-function readData(file) {
-  const p = path.join(DATA_DIR, file);
-  if (!fs.existsSync(p)) return [];
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
-
-function writeData(file, data) {
-  fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2));
-  syncFileToDb(file, data);
-}
-
-function readConfig(file) {
-  const p = path.join(DATA_DIR, file);
-  if (!fs.existsSync(p)) return {};
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
-}
-
-function writeConfig(file, data) {
-  fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2));
-  syncFileToDb(file, data);
-}
+function getConfig(c = pool) { return db.getSetting(c, 'platform_config'); }
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
 function generateUID() { return 'MLK' + Math.random().toString(36).substr(2, 8).toUpperCase(); }
@@ -210,18 +148,6 @@ async function sendEmail(to, subject, html) {
   if (!resp.ok) throw new Error('Failed to send email: ' + (await resp.text()));
 }
 
-// Pending (unverified) signups, keyed by email. In-memory like sessions — acceptable for the
-// same reason: single-instance deployment. Entries are short-lived (10 min) so restart impact is minimal.
-const VERIFICATION_TTL_MS = 10 * 60 * 1000;
-const pendingSignups = {};
-// Pending password resets, keyed by email. Same in-memory/short-lived rationale as pendingSignups.
-const passwordResets = {};
-// Pending 2FA setups (secret generated but not yet confirmed with a code), keyed by userId.
-const pending2FASetup = {};
-// Pending logins awaiting a 2FA code, keyed by a short-lived random token issued after password verification.
-const pendingLogins = {};
-const LOGIN_2FA_TTL_MS = 5 * 60 * 1000;
-
 // Legacy unsalted-SHA256 hash, kept only to verify passwords created before the bcrypt migration.
 function legacyHash(pw) { return crypto.createHash('sha256').update(pw).digest('hex'); }
 function isBcryptHash(h) { return typeof h === 'string' && /^\$2[aby]?\$/.test(h); }
@@ -245,13 +171,10 @@ async function isValidTotp(code, secret) {
 
 const DEFAULT_LEVEL_THRESHOLDS = { 1: 100, 2: 500, 3: 1000, 4: 5000, 5: 10000, 6: 50000 };
 
-// Mutates users[userIdx] in place if the user's balance now qualifies for a higher level;
-// caller is still responsible for writeData('users.json', users) afterward. Fires the
-// upgrade email in the background (not awaited) so a slow/failed send never blocks the
-// balance-changing request that triggered this check.
-function checkAndApplyLevelUpgrade(users, userIdx) {
-  const user = users[userIdx];
-  const config = readConfig('platform_config.json');
+// Mutates `user` in place if the user's balance now qualifies for a higher level; the caller still
+// saves the user. The upgrade email is queued on `emails` and sent only after the transaction commits,
+// so a rolled-back change never produces an email (and a slow send never blocks the request).
+function checkAndApplyLevelUpgrade(user, config, emails) {
   let newLevel = user.level || 0;
   for (let lv = 1; lv <= 6; lv++) {
     const threshold = config['levelThreshold' + lv] !== undefined ? parseFloat(config['levelThreshold' + lv]) : DEFAULT_LEVEL_THRESHOLDS[lv];
@@ -259,59 +182,95 @@ function checkAndApplyLevelUpgrade(users, userIdx) {
   }
   if (newLevel > (user.level || 0)) {
     user.level = newLevel;
-    sendEmail(user.email, `Congratulations! You've reached Level ${newLevel}`, levelUpgradeEmailHtml(user.username, newLevel, user.walletBalance)).catch(() => {});
+    emails.push([user.email, `Congratulations! You've reached Level ${newLevel}`, levelUpgradeEmailHtml(user.username, newLevel, user.walletBalance)]);
   }
 }
+
+function sendQueuedEmails(emails) {
+  emails.forEach(([to, subject, html]) => sendEmail(to, subject, html).catch(() => {}));
+}
+
+function publicProfile(user) {
+  const { password, secondPassword, ...profile } = user;
+  return profile;
+}
+
+// Short-lived state shared by all worker processes (stored in Postgres, see db.ephemeral).
+const VERIFICATION_TTL_MS = 10 * 60 * 1000;
+const LOGIN_2FA_TTL_MS = 5 * 60 * 1000;
+const EPH_SIGNUP = 'signup';       // pending (unverified) signups, keyed by email
+const EPH_RESET = 'reset';         // pending password resets, keyed by email
+const EPH_2FA_SETUP = '2fa_setup'; // 2FA secret generated but not yet confirmed, keyed by userId
+const EPH_LOGIN = 'login_2fa';     // logins awaiting a 2FA code, keyed by a random token
 
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const ADMIN_SESSION_TTL_MS = 2 * 60 * 60 * 1000; // admin sessions are idle-timeout, not fixed -- see adminMiddleware
 const ONLINE_THRESHOLD_MS = 5 * 60 * 1000;
-const ACTIVITY_WRITE_THROTTLE_MS = 60 * 1000; // avoid a disk write on every single request
-const sessions = {};
+const ACTIVITY_WRITE_THROTTLE_MS = 60 * 1000; // avoid a DB write on every single request
 
-function createSession(subjectId, role) {
+// Only a hash of each token is stored, so a leaked sessions table can't be used to log in.
+function hashToken(token) { return crypto.createHash('sha256').update(token).digest('hex'); }
+
+async function createSession(subjectId, role) {
   const token = crypto.randomBytes(32).toString('hex');
   const ttl = role === 'admin' ? ADMIN_SESSION_TTL_MS : SESSION_TTL_MS;
-  sessions[token] = { userId: subjectId, role, expiresAt: Date.now() + ttl };
+  await pool.query('INSERT INTO sessions (token_hash, user_id, role, expires_at) VALUES ($1, $2, $3, $4)', [hashToken(token), subjectId, role, Date.now() + ttl]);
   return token;
 }
 
-function authMiddleware(req, res, next) {
+function deleteSession(tokenHash) {
+  return pool.query('DELETE FROM sessions WHERE token_hash = $1', [tokenHash]);
+}
+
+function deleteSessionsFor(userId, role, exceptTokenHash = '') {
+  return pool.query('DELETE FROM sessions WHERE user_id = $1 AND role = $2 AND token_hash <> $3', [userId, role, exceptTokenHash]);
+}
+
+async function loadSession(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
-  const session = token && sessions[token];
+  if (!token) return null;
+  const tokenHash = hashToken(token);
+  const { rows } = await pool.query('SELECT user_id, role, expires_at, last_activity_write FROM sessions WHERE token_hash = $1', [tokenHash]);
+  if (!rows.length) return null;
+  return { tokenHash, userId: rows[0].user_id, role: rows[0].role, expiresAt: Number(rows[0].expires_at), lastActivityWrite: Number(rows[0].last_activity_write) };
+}
+
+async function authMiddleware(req, res, next) {
+  const session = await loadSession(req);
   if (!session) return res.status(401).json({ error: 'Unauthorized' });
-  if (session.expiresAt < Date.now()) { delete sessions[token]; return res.status(401).json({ error: 'Session expired' }); }
-  req.token = token;
+  if (session.expiresAt < Date.now()) { await deleteSession(session.tokenHash); return res.status(401).json({ error: 'Session expired' }); }
+  req.tokenHash = session.tokenHash;
   req.userId = session.userId;
   req.userRole = session.role || 'user';
 
   // Throttled "last active" tracking (also doubles as the freeze check, so a freeze takes
   // effect for an active session within ~1 minute rather than needing a fresh login).
   const now = Date.now();
-  if (!session.lastActivityWrite || now - session.lastActivityWrite > ACTIVITY_WRITE_THROTTLE_MS) {
-    session.lastActivityWrite = now;
-    let users = readData('users.json');
-    const idx = users.findIndex(u => u.id === session.userId);
-    if (idx !== -1) {
-      if (isFrozen(users[idx])) {
-        delete sessions[token];
-        return res.status(403).json({ error: 'Account frozen', frozenUntil: users[idx].frozenUntil });
-      }
-      users[idx].lastActiveAt = new Date().toISOString();
-      writeData('users.json', users);
+  if (now - session.lastActivityWrite > ACTIVITY_WRITE_THROTTLE_MS) {
+    // One round trip: claim the write slot (of several simultaneous requests only one wins), stamp
+    // lastActiveAt, and read back the freeze date.
+    const { rows } = await pool.query(`
+      WITH s AS (UPDATE sessions SET last_activity_write = $2 WHERE token_hash = $1 AND last_activity_write = $3 RETURNING user_id)
+      UPDATE users u SET data = u.data || jsonb_build_object('lastActiveAt', $4::text)
+      FROM s WHERE u.id = s.user_id
+      RETURNING u.data->>'frozenUntil' AS frozen_until`,
+      [session.tokenHash, now, session.lastActivityWrite, new Date(now).toISOString()]);
+    if (rows.length && isFrozen({ frozenUntil: rows[0].frozen_until })) {
+      await deleteSession(session.tokenHash);
+      return res.status(403).json({ error: 'Account frozen', frozenUntil: rows[0].frozen_until });
     }
   }
 
   next();
 }
 
-function adminMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  const session = token && sessions[token];
+async function adminMiddleware(req, res, next) {
+  const session = await loadSession(req);
   if (!session || session.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
-  if (session.expiresAt < Date.now()) { delete sessions[token]; return res.status(403).json({ error: 'Session expired' }); }
-  session.expiresAt = Date.now() + ADMIN_SESSION_TTL_MS; // sliding window: stays alive while actively used, expires 2h after the last request
-  req.token = token;
+  if (session.expiresAt < Date.now()) { await deleteSession(session.tokenHash); return res.status(403).json({ error: 'Session expired' }); }
+  // sliding window: stays alive while actively used, expires 2h after the last request
+  await pool.query('UPDATE sessions SET expires_at = $2 WHERE token_hash = $1', [session.tokenHash, Date.now() + ADMIN_SESSION_TTL_MS]);
+  req.tokenHash = session.tokenHash;
   req.userId = session.userId;
   req.userRole = 'admin';
   next();
@@ -319,23 +278,26 @@ function adminMiddleware(req, res, next) {
 
 // Initialize default admin
 async function initAdmin() {
-  let admins = readData('admins.json');
-  if (admins.length === 0) {
-    admins.push({
+  await tx(async c => {
+    await c.query('LOCK TABLE admins IN EXCLUSIVE MODE');
+    const { rows } = await c.query('SELECT 1 FROM admins LIMIT 1');
+    if (rows.length) return;
+    await db.insertDoc(c, 'admins', {
       id: generateId(),
       username: 'admin',
       password: await hashPassword('admin123'),
       createdAt: new Date().toISOString()
     });
-    writeData('admins.json', admins);
-  }
+  });
 }
 
 // Initialize default NFT stakes catalog
-function initStakes() {
-  let stakes = readData('nft_catalog.json');
-  if (stakes.length === 0) {
-    stakes = [
+async function initStakes() {
+  await tx(async c => {
+    await c.query('LOCK TABLE nft_catalog IN EXCLUSIVE MODE');
+    const { rows } = await c.query('SELECT 1 FROM nft_catalog LIMIT 1');
+    if (rows.length) return;
+    const stakes = [
       { id: 'nft1', name: 'Exclusive Stake1', collection: 'Stake', image: '/assets/images/nfts/stake-1.jpg', pledgeRange: '199 - 1000', dailyIncome: '1.5%', handlingFee: '1%', duration: 7, color: '#7C3AED', levelReq: 'LV1-LV8' },
       { id: 'nft2', name: 'Exclusive Stake2', collection: 'Stake', image: '/assets/images/nfts/stake-2.jpg', pledgeRange: '499 - 2000', dailyIncome: '1.8%', handlingFee: '1%', duration: 14, color: '#4F46E5', levelReq: 'LV2-LV8' },
       { id: 'nft3', name: 'Exclusive Stake3', collection: 'Stake', image: '/assets/images/nfts/stake-3.jpg', pledgeRange: '799 - 3000', dailyIncome: '2.1%', handlingFee: '1%', duration: 30, color: '#14B8A6', levelReq: 'LV2-LV8' },
@@ -343,8 +305,8 @@ function initStakes() {
       { id: 'nft5', name: 'Exclusive Stake5', collection: 'Stake', image: '/assets/images/nfts/stake-5.png', pledgeRange: '1499 - 5000', dailyIncome: '3.0%', handlingFee: '1%', duration: 90, color: '#EF4444', levelReq: 'LV2-LV5' },
       { id: 'nft6', name: 'Exclusive Stake6', collection: 'Stake', image: '/assets/images/nfts/stake-6.png', pledgeRange: '1999 - 6000', dailyIncome: '3.5%', handlingFee: '1%', duration: 90, color: '#F59E0B', levelReq: 'LV2-LV8' },
     ];
-    writeData('nft_catalog.json', stakes);
-  }
+    for (const s of stakes) await db.insertDoc(c, 'nft_catalog', s);
+  });
 }
 
 // ===================== AUTH ROUTES =====================
@@ -357,19 +319,18 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (!phoneCountryCode || !phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
-  const users = readData('users.json');
-  if (users.find(u => u.email === email)) return res.status(400).json({ error: 'Email already registered' });
-  if (users.find(u => u.username.toLowerCase() === username.toLowerCase())) return res.status(400).json({ error: 'Username is already taken' });
+  if (await db.findUserBy(pool, 'email', email)) return res.status(400).json({ error: 'Email already registered' });
+  if (await db.findUserBy(pool, 'username_lower', username.toLowerCase())) return res.status(400).json({ error: 'Username is already taken' });
 
   let referredBy = null;
   if (referralCode) {
-    const referrer = users.find(u => u.uid === referralCode);
+    const referrer = await db.findUserBy(pool, 'uid', referralCode);
     if (!referrer) return res.status(400).json({ error: 'Invalid referral code' });
     referredBy = referrer.id;
   }
 
   const code = generateVerificationCode();
-  pendingSignups[email] = {
+  await db.ephSet(EPH_SIGNUP, email, {
     code,
     expiresAt: Date.now() + VERIFICATION_TTL_MS,
     passwordHash: await hashPassword(password),
@@ -377,12 +338,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     referredBy,
     phoneCountryCode,
     phoneNumber
-  };
+  });
 
   try {
     await sendEmail(email, 'Verify your MetaLinkNFT account', verificationEmailHtml(code));
   } catch (e) {
-    delete pendingSignups[email];
+    await db.ephDel(EPH_SIGNUP, email);
     return res.status(502).json({ error: 'Failed to send verification email. Please try again.' });
   }
 
@@ -391,11 +352,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 
 app.post('/api/auth/resend-code', authLimiter, async (req, res) => {
   const { email } = req.body;
-  const pending = pendingSignups[email];
+  const pending = email && await db.ephGet(EPH_SIGNUP, email);
   if (!pending) return res.status(404).json({ error: 'No pending signup found for this email. Please register again.' });
 
   pending.code = generateVerificationCode();
   pending.expiresAt = Date.now() + VERIFICATION_TTL_MS;
+  await db.ephSet(EPH_SIGNUP, email, pending);
 
   try {
     await sendEmail(email, 'Verify your MetaLinkNFT account', verificationEmailHtml(pending.code));
@@ -410,70 +372,65 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
   const { email, code } = req.body;
   if (!email || !code) return res.status(400).json({ error: 'Email and code are required' });
 
-  const pending = pendingSignups[email];
+  const pending = await db.ephGet(EPH_SIGNUP, email);
   if (!pending) return res.status(400).json({ error: 'No pending signup found. Please register again.' });
   if (pending.expiresAt < Date.now()) {
-    delete pendingSignups[email];
+    await db.ephDel(EPH_SIGNUP, email);
     return res.status(400).json({ error: 'Verification code expired. Please register again.' });
   }
   if (pending.code !== code) return res.status(400).json({ error: 'Invalid verification code' });
 
-  let users = readData('users.json');
-  if (users.find(u => u.email === email)) {
-    delete pendingSignups[email];
-    return res.status(400).json({ error: 'Email already registered' });
-  }
-  if (users.find(u => u.username.toLowerCase() === pending.username.toLowerCase())) {
-    delete pendingSignups[email];
-    return res.status(400).json({ error: 'Username is already taken. Please register again with a different one.' });
-  }
+  const result = await tx(async c => {
+    // Serializes account creation so two simultaneous signups can't claim the same email/username.
+    await c.query('SELECT pg_advisory_xact_lock(424243)');
+    if (await db.findUserBy(c, 'email', email)) return { error: 'Email already registered' };
+    if (await db.findUserBy(c, 'username_lower', pending.username.toLowerCase())) return { error: 'Username is already taken. Please register again with a different one.' };
 
-  const config = readConfig('platform_config.json');
-  const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
+    const config = await getConfig(c);
+    const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
 
-  const user = {
-    id: generateId(),
-    email,
-    password: pending.passwordHash,
-    secondPassword: pending.passwordHash,
-    username: pending.username,
-    uid: generateUID(),
-    phoneCountryCode: pending.phoneCountryCode,
-    phoneNumber: pending.phoneNumber,
-    level: 0,
-    points: 0,
-    walletBalance: signupBonus,
-    walletBalanceMLK: 0,
-    walletAddress: { trc20: '', erc20: '' },
-    walletAddressUpdatedAt: null,
-    avatar: '',
-    referralCode: null,
-    referredBy: pending.referredBy,
-    createdAt: new Date().toISOString(),
-    totalIncome: 0,
-    totalWithdrawn: 0,
-    dailyIncome: { comprehensive: 0, reserve: 0, team: 0, activity: 0, finance: 0, earn: 0, ecology: 0, growth: 0, stake: 0 }
-  };
+    const user = {
+      id: generateId(),
+      email,
+      password: pending.passwordHash,
+      secondPassword: pending.passwordHash,
+      username: pending.username,
+      uid: generateUID(),
+      phoneCountryCode: pending.phoneCountryCode,
+      phoneNumber: pending.phoneNumber,
+      level: 0,
+      points: 0,
+      walletBalance: signupBonus,
+      walletBalanceMLK: 0,
+      walletAddress: { trc20: '', erc20: '' },
+      walletAddressUpdatedAt: null,
+      avatar: '',
+      referralCode: null,
+      referredBy: pending.referredBy,
+      createdAt: new Date().toISOString(),
+      totalIncome: 0,
+      totalWithdrawn: 0,
+      dailyIncome: { comprehensive: 0, reserve: 0, team: 0, activity: 0, finance: 0, earn: 0, ecology: 0, growth: 0, stake: 0 }
+    };
+    await db.insertUser(c, user);
 
-  users.push(user);
-  writeData('users.json', users);
-  sendEmail(user.email, 'Welcome to MetaLink NFT!', welcomeEmailHtml(user.username, user.uid)).catch(() => {});
-
-  if (user.referredBy) {
-    let teams = readData('teams.json');
     const tiers = ['A', 'B', 'C'];
     let currentReferrerId = user.referredBy;
     for (let i = 0; i < tiers.length && currentReferrerId; i++) {
-      teams.push({ userId: currentReferrerId, memberId: user.id, tier: tiers[i], joinedAt: new Date().toISOString() });
-      const referrer = users.find(u => u.id === currentReferrerId);
+      const entry = { userId: currentReferrerId, memberId: user.id, tier: tiers[i], joinedAt: new Date().toISOString() };
+      await c.query('INSERT INTO teams (id, user_id, member_id, data) VALUES ($1, $2, $3, $4)', [db.newId(), entry.userId, entry.memberId, JSON.stringify(entry)]);
+      const referrer = await db.getUser(c, currentReferrerId);
       currentReferrerId = referrer ? referrer.referredBy : null;
     }
-    writeData('teams.json', teams);
-  }
+    return { user };
+  });
 
-  delete pendingSignups[email];
+  await db.ephDel(EPH_SIGNUP, email);
+  if (result.error) return res.status(400).json({ error: result.error });
 
-  const token = createSession(user.id, 'user');
+  const user = result.user;
+  sendEmail(user.email, 'Welcome to MetaLink NFT!', welcomeEmailHtml(user.username, user.uid)).catch(() => {});
+  const token = await createSession(user.id, 'user');
 
   res.json({ token, user: { id: user.id, email: user.email, username: user.username, uid: user.uid, level: user.level, points: user.points } });
 });
@@ -482,16 +439,13 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.email === email);
-  if (idx === -1 || !(await verifyPassword(password, users[idx].password))) {
+  const user = await db.findUserBy(pool, 'email', email);
+  if (!user || !(await verifyPassword(password, user.password))) {
     return res.status(401).json({ error: 'Account or password is incorrect' });
   }
-  if (!isBcryptHash(users[idx].password)) {
-    users[idx].password = await hashPassword(password);
-    writeData('users.json', users);
+  if (!isBcryptHash(user.password)) {
+    await db.patchDoc(pool, 'users', user.id, { password: await hashPassword(password) });
   }
-  const user = users[idx];
 
   if (isFrozen(user)) {
     return res.status(403).json({ error: 'Account frozen', frozenUntil: user.frozenUntil });
@@ -499,11 +453,11 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 
   if (user.twoFactorEnabled) {
     const tempToken = crypto.randomBytes(32).toString('hex');
-    pendingLogins[tempToken] = { userId: user.id, expiresAt: Date.now() + LOGIN_2FA_TTL_MS };
+    await db.ephSet(EPH_LOGIN, tempToken, { userId: user.id, expiresAt: Date.now() + LOGIN_2FA_TTL_MS });
     return res.json({ requires2FA: true, tempToken });
   }
 
-  const token = createSession(user.id, 'user');
+  const token = await createSession(user.id, 'user');
 
   res.json({
     token,
@@ -515,17 +469,16 @@ app.post('/api/auth/login/2fa', authLimiter, async (req, res) => {
   const { tempToken, code } = req.body;
   if (!tempToken || !code) return res.status(400).json({ error: 'Code is required' });
 
-  const pending = pendingLogins[tempToken];
+  const pending = await db.ephGet(EPH_LOGIN, tempToken);
   if (!pending) return res.status(400).json({ error: 'Login session expired. Please log in again.' });
   if (pending.expiresAt < Date.now()) {
-    delete pendingLogins[tempToken];
+    await db.ephDel(EPH_LOGIN, tempToken);
     return res.status(400).json({ error: 'Login session expired. Please log in again.' });
   }
 
-  const users = readData('users.json');
-  const user = users.find(u => u.id === pending.userId);
+  const user = await db.getUser(pool, pending.userId);
   if (!user || !user.twoFactorSecret) {
-    delete pendingLogins[tempToken];
+    await db.ephDel(EPH_LOGIN, tempToken);
     return res.status(400).json({ error: 'Login session invalid. Please log in again.' });
   }
 
@@ -533,8 +486,8 @@ app.post('/api/auth/login/2fa', authLimiter, async (req, res) => {
     return res.status(401).json({ error: 'Invalid authentication code' });
   }
 
-  delete pendingLogins[tempToken];
-  const token = createSession(user.id, 'user');
+  await db.ephDel(EPH_LOGIN, tempToken);
+  const token = await createSession(user.id, 'user');
 
   res.json({
     token,
@@ -546,17 +499,16 @@ app.post('/api/auth/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body;
   if (!email) return res.status(400).json({ error: 'Email is required' });
 
-  const users = readData('users.json');
-  const user = users.find(u => u.email === email);
+  const user = await db.findUserBy(pool, 'email', email);
 
   // Always respond the same way whether or not the account exists, so this endpoint can't be used to enumerate registered emails.
   if (user) {
     const code = generateVerificationCode();
-    passwordResets[email] = { code, expiresAt: Date.now() + VERIFICATION_TTL_MS };
+    await db.ephSet(EPH_RESET, email, { code, expiresAt: Date.now() + VERIFICATION_TTL_MS });
     try {
       await sendEmail(email, 'Reset your MetaLinkNFT password', passwordResetEmailHtml(code));
     } catch (e) {
-      delete passwordResets[email];
+      await db.ephDel(EPH_RESET, email);
       return res.status(502).json({ error: 'Failed to send reset email. Please try again.' });
     }
   }
@@ -570,66 +522,57 @@ app.post('/api/auth/reset-password', authLimiter, async (req, res) => {
   if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
-  const reset = passwordResets[email];
+  const reset = await db.ephGet(EPH_RESET, email);
   if (!reset) return res.status(400).json({ error: 'No password reset requested for this email. Please request a new code.' });
   if (reset.expiresAt < Date.now()) {
-    delete passwordResets[email];
+    await db.ephDel(EPH_RESET, email);
     return res.status(400).json({ error: 'Reset code expired. Please request a new one.' });
   }
   if (reset.code !== code) return res.status(400).json({ error: 'Invalid reset code' });
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.email === email);
-  if (idx === -1) { delete passwordResets[email]; return res.status(400).json({ error: 'Account not found' }); }
+  const user = await db.findUserBy(pool, 'email', email);
+  if (!user) { await db.ephDel(EPH_RESET, email); return res.status(400).json({ error: 'Account not found' }); }
 
-  users[idx].password = await hashPassword(password);
-  writeData('users.json', users);
-  delete passwordResets[email];
+  await db.patchDoc(pool, 'users', user.id, { password: await hashPassword(password) });
+  await db.ephDel(EPH_RESET, email);
 
   // Invalidate existing sessions so a token stolen before the reset stops working.
-  const resetUserId = users[idx].id;
-  Object.keys(sessions).forEach(token => { if (sessions[token].userId === resetUserId) delete sessions[token]; });
+  await deleteSessionsFor(user.id, 'user');
 
   res.json({ message: 'Password reset successfully' });
 });
 
-app.post('/api/auth/logout', authMiddleware, (req, res) => {
-  delete sessions[req.token];
+app.post('/api/auth/logout', authMiddleware, async (req, res) => {
+  await deleteSession(req.tokenHash);
   res.json({ message: 'Logged out' });
 });
 
 // ===================== USER ROUTES =====================
 
-app.get('/api/user/profile', authMiddleware, (req, res) => {
-  const users = readData('users.json');
-  const user = users.find(u => u.id === req.userId);
+app.get('/api/user/profile', authMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-
-  const { password, secondPassword, ...profile } = user;
-  res.json(profile);
+  res.json(publicProfile(user));
 });
 
 const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
 const AVATAR_RE = /^(\/uploads\/[A-Za-z0-9_-]+\.(png|jpe?g|gif|webp)|data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/]+=*)$/;
 
-app.put('/api/user/profile', authMiddleware, (req, res) => {
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-
+app.put('/api/user/profile', authMiddleware, async (req, res) => {
   const { username, avatar } = req.body;
-  if (username) {
-    if (!USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 3-20 characters: letters, numbers, - or _ only' });
-    users[idx].username = username;
-  }
-  if (avatar) {
-    if (!AVATAR_RE.test(avatar)) return res.status(400).json({ error: 'Invalid avatar format' });
-    users[idx].avatar = avatar;
-  }
-  writeData('users.json', users);
+  if (username && !USERNAME_RE.test(username)) return res.status(400).json({ error: 'Username must be 3-20 characters: letters, numbers, - or _ only' });
+  if (avatar && !AVATAR_RE.test(avatar)) return res.status(400).json({ error: 'Invalid avatar format' });
 
-  const { password, secondPassword, ...profile } = users[idx];
-  res.json(profile);
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.userId, { lock: true });
+    if (!u) return null;
+    if (username) u.username = username;
+    if (avatar) u.avatar = avatar;
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  res.json(publicProfile(user));
 });
 
 app.post('/api/user/change-password', authLimiter, authMiddleware, async (req, res) => {
@@ -638,33 +581,28 @@ app.post('/api/user/change-password', authLimiter, authMiddleware, async (req, r
   if (newPassword !== confirmPassword) return res.status(400).json({ error: 'New passwords do not match' });
   if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
+  const user = await db.getUser(pool, req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
 
-  if (!(await verifyPassword(currentPassword, users[idx].password))) {
+  if (!(await verifyPassword(currentPassword, user.password))) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
 
-  users[idx].password = await hashPassword(newPassword);
-  writeData('users.json', users);
+  await db.patchDoc(pool, 'users', user.id, { password: await hashPassword(newPassword) });
 
   // Invalidate other sessions but keep this one alive so the user isn't logged out mid-flow.
-  Object.keys(sessions).forEach(token => {
-    if (sessions[token].userId === req.userId && token !== req.token) delete sessions[token];
-  });
+  await deleteSessionsFor(req.userId, 'user', req.tokenHash);
 
   res.json({ message: 'Password changed successfully' });
 });
 
 app.post('/api/user/2fa/setup', authLimiter, authMiddleware, async (req, res) => {
-  const users = readData('users.json');
-  const user = users.find(u => u.id === req.userId);
+  const user = await db.getUser(pool, req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   if (user.twoFactorEnabled) return res.status(400).json({ error: 'Two-factor authentication is already enabled' });
 
   const secret = generateTotpSecret();
-  pending2FASetup[req.userId] = { secret, expiresAt: Date.now() + VERIFICATION_TTL_MS };
+  await db.ephSet(EPH_2FA_SETUP, req.userId, { secret, expiresAt: Date.now() + VERIFICATION_TTL_MS });
 
   const otpauth = generateTotpURI({ issuer: 'MetaLinkNFT', label: user.email, secret });
   const qrCodeDataUrl = await QRCode.toDataURL(otpauth);
@@ -676,23 +614,19 @@ app.post('/api/user/2fa/verify', authLimiter, authMiddleware, async (req, res) =
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Code is required' });
 
-  const pending = pending2FASetup[req.userId];
+  const pending = await db.ephGet(EPH_2FA_SETUP, req.userId);
   if (!pending) return res.status(400).json({ error: 'No pending 2FA setup found. Please start again.' });
   if (pending.expiresAt < Date.now()) {
-    delete pending2FASetup[req.userId];
+    await db.ephDel(EPH_2FA_SETUP, req.userId);
     return res.status(400).json({ error: '2FA setup expired. Please start again.' });
   }
   if (!(await isValidTotp(code, pending.secret))) {
     return res.status(400).json({ error: 'Invalid code. Please check your authenticator app and try again.' });
   }
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-  users[idx].twoFactorEnabled = true;
-  users[idx].twoFactorSecret = pending.secret;
-  writeData('users.json', users);
-  delete pending2FASetup[req.userId];
+  if (!(await db.getUser(pool, req.userId))) return res.status(404).json({ error: 'User not found' });
+  await db.patchDoc(pool, 'users', req.userId, { twoFactorEnabled: true, twoFactorSecret: pending.secret });
+  await db.ephDel(EPH_2FA_SETUP, req.userId);
 
   res.json({ message: 'Two-factor authentication enabled successfully' });
 });
@@ -701,17 +635,14 @@ app.post('/api/user/2fa/disable', authLimiter, authMiddleware, async (req, res) 
   const { password } = req.body;
   if (!password) return res.status(400).json({ error: 'Password is required' });
 
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-  if (!(await verifyPassword(password, users[idx].password))) {
+  const user = await db.getUser(pool, req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (!(await verifyPassword(password, user.password))) {
     return res.status(401).json({ error: 'Incorrect password' });
   }
 
-  users[idx].twoFactorEnabled = false;
-  users[idx].twoFactorSecret = null;
-  writeData('users.json', users);
-  delete pending2FASetup[req.userId];
+  await db.patchDoc(pool, 'users', req.userId, { twoFactorEnabled: false, twoFactorSecret: null });
+  await db.ephDel(EPH_2FA_SETUP, req.userId);
 
   res.json({ message: 'Two-factor authentication disabled' });
 });
@@ -722,90 +653,84 @@ app.post('/api/admin/change-password', authLimiter, adminMiddleware, async (req,
   if (newPassword !== confirmPassword) return res.status(400).json({ error: 'New passwords do not match' });
   if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
 
-  let admins = readData('admins.json');
-  const idx = admins.findIndex(a => a.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'Admin not found' });
+  const admin = await db.getDoc(pool, 'admins', req.userId);
+  if (!admin) return res.status(404).json({ error: 'Admin not found' });
 
-  if (!(await verifyPassword(currentPassword, admins[idx].password))) {
+  if (!(await verifyPassword(currentPassword, admin.password))) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
 
-  admins[idx].password = await hashPassword(newPassword);
-  writeData('admins.json', admins);
-
-  Object.keys(sessions).forEach(token => {
-    if (sessions[token].userId === req.userId && sessions[token].role === 'admin' && token !== req.token) delete sessions[token];
-  });
+  await db.patchDoc(pool, 'admins', admin.id, { password: await hashPassword(newPassword) });
+  await deleteSessionsFor(req.userId, 'admin', req.tokenHash);
 
   res.json({ message: 'Password changed successfully' });
 });
 
-app.put('/api/user/wallet', authMiddleware, (req, res) => {
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-
+app.put('/api/user/wallet', authMiddleware, async (req, res) => {
   const { trc20, bep20 } = req.body;
-  const now = new Date();
-  const lastUpdate = users[idx].walletAddressUpdatedAt ? new Date(users[idx].walletAddressUpdatedAt) : null;
 
-  if (lastUpdate) {
-    const hoursSince = (now - lastUpdate) / (1000 * 60 * 60);
-    if (hoursSince < 48) {
-      const remaining = 48 - hoursSince;
-      const days = Math.floor(remaining / 24);
-      const hours = Math.floor(remaining % 24);
-      const mins = Math.floor((remaining * 60) % 60);
-      return res.status(400).json({
-        error: `Withdrawal services will be suspended for ${days} days ${hours} hours ${mins} min after changing wallet address.`,
-        cooldown: true
-      });
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+
+    const now = new Date();
+    const lastUpdate = user.walletAddressUpdatedAt ? new Date(user.walletAddressUpdatedAt) : null;
+    if (lastUpdate) {
+      const hoursSince = (now - lastUpdate) / (1000 * 60 * 60);
+      if (hoursSince < 48) {
+        const remaining = 48 - hoursSince;
+        const days = Math.floor(remaining / 24);
+        const hours = Math.floor(remaining % 24);
+        const mins = Math.floor((remaining * 60) % 60);
+        return {
+          status: 400,
+          body: { error: `Withdrawal services will be suspended for ${days} days ${hours} hours ${mins} min after changing wallet address.`, cooldown: true }
+        };
+      }
     }
-  }
 
-  if (trc20 !== undefined) users[idx].walletAddress.trc20 = trc20;
-  if (bep20 !== undefined) users[idx].walletAddress.bep20 = bep20;
-  // Keep erc20 field in sync with bep20 for withdrawal compatibility
-  if (bep20 !== undefined) users[idx].walletAddress.erc20 = bep20;
-  users[idx].walletAddressUpdatedAt = now.toISOString();
-  writeData('users.json', users);
+    if (trc20 !== undefined) user.walletAddress.trc20 = trc20;
+    if (bep20 !== undefined) user.walletAddress.bep20 = bep20;
+    // Keep erc20 field in sync with bep20 for withdrawal compatibility
+    if (bep20 !== undefined) user.walletAddress.erc20 = bep20;
+    user.walletAddressUpdatedAt = now.toISOString();
+    await db.saveUser(c, user);
 
-  // Log wallet submission for admin review
-  let submissions = readData('wallet_submissions.json');
-  submissions.push({
-    id: generateId(),
-    userId: users[idx].id,
-    email: users[idx].email,
-    username: users[idx].username,
-    uid: users[idx].uid,
-    trc20: users[idx].walletAddress.trc20 || '',
-    bep20: users[idx].walletAddress.bep20 || users[idx].walletAddress.erc20 || '',
-    submittedAt: now.toISOString()
+    // Log wallet submission for admin review
+    await db.insertDoc(c, 'wallet_submissions', {
+      id: generateId(),
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+      uid: user.uid,
+      trc20: user.walletAddress.trc20 || '',
+      bep20: user.walletAddress.bep20 || user.walletAddress.erc20 || '',
+      submittedAt: now.toISOString()
+    });
+
+    return { status: 200, body: { message: 'Wallet address updated', walletAddress: { trc20: user.walletAddress.trc20, bep20: user.walletAddress.bep20 || user.walletAddress.erc20 } } };
   });
-  writeData('wallet_submissions.json', submissions);
 
-  res.json({ message: 'Wallet address updated', walletAddress: { trc20: users[idx].walletAddress.trc20, bep20: users[idx].walletAddress.bep20 || users[idx].walletAddress.erc20 } });
+  res.status(result.status).json(result.body);
 });
 
-app.get('/api/user/team', authMiddleware, (req, res) => {
-  const teams = readData('teams.json');
-  const users = readData('users.json');
-  const deposits = readData('deposits.json');
-  const depositedUserIds = new Set(deposits.filter(d => d.status === 'Approved').map(d => d.userId));
-  const myTeam = teams.filter(t => t.userId === req.userId);
+app.get('/api/user/team', authMiddleware, async (req, res) => {
+  // A member only counts as "valid" once they've made at least one approved deposit —
+  // wallet balance alone isn't a reliable signal since every account starts with a signup bonus.
+  const { rows } = await pool.query(`
+    SELECT t.member_id, t.data->>'tier' AS tier, t.data->'joinedAt' AS joined_at, u.data->>'username' AS username,
+           EXISTS (SELECT 1 FROM deposits d WHERE d.user_id = t.member_id AND d.data->>'status' = 'Approved') AS is_valid
+    FROM teams t LEFT JOIN users u ON u.id = t.member_id
+    WHERE t.user_id = $1
+    ORDER BY t.seq`, [req.userId]);
 
-  const members = myTeam.map(t => {
-    const member = users.find(u => u.id === t.memberId);
-    return {
-      id: t.memberId,
-      username: member?.username || 'Unknown',
-      tier: t.tier,
-      joinedAt: t.joinedAt,
-      // A member only counts as "valid" once they've made at least one approved deposit —
-      // wallet balance alone isn't a reliable signal since every account starts with a signup bonus.
-      isValid: depositedUserIds.has(t.memberId)
-    };
-  });
+  const members = rows.map(r => ({
+    id: r.member_id,
+    username: r.username || 'Unknown',
+    tier: r.tier,
+    joinedAt: r.joined_at,
+    isValid: r.is_valid
+  }));
 
   const stats = {
     totalRegistered: members.length,
@@ -820,94 +745,95 @@ app.get('/api/user/team', authMiddleware, (req, res) => {
 
 // ===================== STAKE ROUTES =====================
 
-app.get('/api/stakes/catalog', authMiddleware, (req, res) => {
-  const catalog = readData('nft_catalog.json');
-  res.json(catalog);
+app.get('/api/stakes/catalog', authMiddleware, async (req, res) => {
+  res.json(await db.listDocs(pool, 'nft_catalog'));
 });
 
-app.get('/api/stakes/my', authMiddleware, (req, res) => {
-  const stakes = readData('user_stakes.json');
-  const myStakes = stakes.filter(s => s.userId === req.userId);
-  res.json(myStakes);
+app.get('/api/stakes/my', authMiddleware, async (req, res) => {
+  res.json(await db.listDocs(pool, 'user_stakes', { userId: req.userId }));
 });
 
-app.post('/api/stakes', authMiddleware, (req, res) => {
+app.post('/api/stakes', authMiddleware, async (req, res) => {
   const { nftId, amount } = req.body;
-  const catalog = readData('nft_catalog.json');
-  const nft = catalog.find(n => n.id === nftId);
+  const nft = await db.getDoc(pool, 'nft_catalog', nftId);
   if (!nft) return res.status(404).json({ error: 'NFT not found' });
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  if (userIdx === -1) return res.status(404).json({ error: 'User not found' });
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
 
-  const [min, max] = nft.pledgeRange.split(' - ').map(Number);
-  if (amount < min || amount > max) return res.status(400).json({ error: `Amount must be between ${min} and ${max} USDT` });
+    const [min, max] = nft.pledgeRange.split(' - ').map(Number);
+    if (amount < min || amount > max) return { status: 400, body: { error: `Amount must be between ${min} and ${max} USDT` } };
 
-  const feeEnabled = readConfig('platform_config.json').handlingFeeEnabled === true;
-  const feePct = feeEnabled ? parseFloat(nft.handlingFee) / 100 : 0;
-  const fee = parseFloat((amount * feePct).toFixed(5));
-  const totalCharge = amount + fee;
-  if (users[userIdx].walletBalance < totalCharge) return res.status(400).json({ error: `Insufficient balance. You need ${totalCharge} USDT (${amount} + ${fee} handling fee)` });
+    const feeEnabled = (await getConfig(c)).handlingFeeEnabled === true;
+    const feePct = feeEnabled ? parseFloat(nft.handlingFee) / 100 : 0;
+    const fee = parseFloat((amount * feePct).toFixed(5));
+    const totalCharge = amount + fee;
+    if (user.walletBalance < totalCharge) return { status: 400, body: { error: `Insufficient balance. You need ${totalCharge} USDT (${amount} + ${fee} handling fee)` } };
 
-  users[userIdx].walletBalance -= totalCharge;
-  writeData('users.json', users);
+    user.walletBalance -= totalCharge;
+    await db.saveUser(c, user);
 
-  const dailyRate = parseFloat(nft.dailyIncome) / 100;
-  const expectedTotal = amount * dailyRate * nft.duration;
+    const dailyRate = parseFloat(nft.dailyIncome) / 100;
+    const expectedTotal = amount * dailyRate * nft.duration;
 
-  let stakes = readData('user_stakes.json');
-  const stake = {
-    id: generateId(),
-    userId: req.userId,
-    nftId: nft.id,
-    nftName: nft.name,
-    nftNumber: '#' + Math.floor(Math.random() * 9999),
-    collection: nft.collection,
-    color: nft.color,
-    pledgeValue: amount,
-    handlingFee: fee,
-    dailyIncome: nft.dailyIncome,
-    duration: nft.duration,
-    startDate: new Date().toISOString(),
-    endDate: new Date(Date.now() + nft.duration * 24 * 60 * 60 * 1000).toISOString(),
-    income: 0,
-    expectedTotal,
-    status: 'active',
-    claimed: false
-  };
-  stakes.push(stake);
-  writeData('user_stakes.json', stakes);
+    const stake = {
+      id: generateId(),
+      userId: req.userId,
+      nftId: nft.id,
+      nftName: nft.name,
+      nftNumber: '#' + Math.floor(Math.random() * 9999),
+      collection: nft.collection,
+      color: nft.color,
+      pledgeValue: amount,
+      handlingFee: fee,
+      dailyIncome: nft.dailyIncome,
+      duration: nft.duration,
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + nft.duration * 24 * 60 * 60 * 1000).toISOString(),
+      income: 0,
+      expectedTotal,
+      status: 'active',
+      claimed: false
+    };
+    await db.insertDoc(c, 'user_stakes', stake);
+    return { status: 200, body: stake };
+  });
 
-  res.json(stake);
+  res.status(result.status).json(result.body);
 });
 
-app.post('/api/stakes/:id/claim', authMiddleware, (req, res) => {
-  let stakes = readData('user_stakes.json');
-  const idx = stakes.findIndex(s => s.id === req.params.id && s.userId === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'Stake not found' });
-  if (stakes[idx].claimed) return res.status(400).json({ error: 'Already claimed' });
+app.post('/api/stakes/:id/claim', authMiddleware, async (req, res) => {
+  const emails = [];
+  const result = await tx(async c => {
+    // Lock the user before the stake (same order as every other balance change) to avoid deadlocks.
+    const user = await db.getUser(c, req.userId, { lock: true });
+    const stake = await db.getDoc(c, 'user_stakes', req.params.id, { lock: true });
+    if (!user || !stake || stake.userId !== req.userId) return { status: 404, body: { error: 'Stake not found' } };
+    if (stake.claimed) return { status: 400, body: { error: 'Already claimed' } };
 
-  const now = new Date();
-  const start = new Date(stakes[idx].startDate);
-  const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), stakes[idx].duration);
-  const dailyRate = parseFloat(stakes[idx].dailyIncome) / 100;
-  const income = stakes[idx].pledgeValue * dailyRate * daysElapsed;
+    const now = new Date();
+    const start = new Date(stake.startDate);
+    const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), stake.duration);
+    const dailyRate = parseFloat(stake.dailyIncome) / 100;
+    const income = stake.pledgeValue * dailyRate * daysElapsed;
 
-  stakes[idx].income = parseFloat(income.toFixed(5));
-  stakes[idx].claimed = true;
-  stakes[idx].status = 'completed';
-  writeData('user_stakes.json', stakes);
+    stake.income = parseFloat(income.toFixed(5));
+    stake.claimed = true;
+    stake.status = 'completed';
+    await db.saveDoc(c, 'user_stakes', stake);
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  users[userIdx].walletBalance += stakes[idx].pledgeValue + income;
-  users[userIdx].totalIncome += income;
-  users[userIdx].dailyIncome.stake += income;
-  checkAndApplyLevelUpgrade(users, userIdx);
-  writeData('users.json', users);
+    user.walletBalance += stake.pledgeValue + income;
+    user.totalIncome += income;
+    user.dailyIncome.stake += income;
+    checkAndApplyLevelUpgrade(user, await getConfig(c), emails);
+    await db.saveUser(c, user);
 
-  res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
+    return { status: 200, body: { message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) } };
+  });
+
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
 });
 
 // ===================== EARN ROUTES =====================
@@ -931,78 +857,80 @@ app.get('/api/earn/plans', authMiddleware, (req, res) => {
   res.json(EARN_PLANS);
 });
 
-app.get('/api/earn/my', authMiddleware, (req, res) => {
-  const positions = readData('earn_positions.json');
-  res.json(positions.filter(p => p.userId === req.userId));
+app.get('/api/earn/my', authMiddleware, async (req, res) => {
+  res.json(await db.listDocs(pool, 'earn_positions', { userId: req.userId }));
 });
 
-app.post('/api/earn', authMiddleware, (req, res) => {
+app.post('/api/earn', authMiddleware, async (req, res) => {
   const { planId } = req.body;
   const plan = EARN_PLANS.find(p => p.id === planId);
   if (!plan) return res.status(404).json({ error: 'Plan not found' });
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  if (userIdx === -1) return res.status(404).json({ error: 'User not found' });
-  if (users[userIdx].walletBalance < plan.amount) return res.status(400).json({ error: 'Insufficient balance' });
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    if (user.walletBalance < plan.amount) return { status: 400, body: { error: 'Insufficient balance' } };
 
-  users[userIdx].walletBalance -= plan.amount;
-  writeData('users.json', users);
+    user.walletBalance -= plan.amount;
+    await db.saveUser(c, user);
 
-  const expectedTotal = plan.amount * (plan.dailyRatePct / 100) * plan.days;
+    const expectedTotal = plan.amount * (plan.dailyRatePct / 100) * plan.days;
+    const position = {
+      id: generateId(),
+      userId: req.userId,
+      planId: plan.id,
+      planName: plan.name,
+      category: plan.category,
+      categoryLabel: plan.categoryLabel,
+      color: plan.color,
+      icon: plan.icon,
+      amount: plan.amount,
+      dailyRatePct: plan.dailyRatePct,
+      days: plan.days,
+      startDate: new Date().toISOString(),
+      endDate: new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000).toISOString(),
+      income: 0,
+      expectedTotal,
+      status: 'active',
+      claimed: false
+    };
+    await db.insertDoc(c, 'earn_positions', position);
+    return { status: 200, body: position };
+  });
 
-  let positions = readData('earn_positions.json');
-  const position = {
-    id: generateId(),
-    userId: req.userId,
-    planId: plan.id,
-    planName: plan.name,
-    category: plan.category,
-    categoryLabel: plan.categoryLabel,
-    color: plan.color,
-    icon: plan.icon,
-    amount: plan.amount,
-    dailyRatePct: plan.dailyRatePct,
-    days: plan.days,
-    startDate: new Date().toISOString(),
-    endDate: new Date(Date.now() + plan.days * 24 * 60 * 60 * 1000).toISOString(),
-    income: 0,
-    expectedTotal,
-    status: 'active',
-    claimed: false
-  };
-  positions.push(position);
-  writeData('earn_positions.json', positions);
-
-  res.json(position);
+  res.status(result.status).json(result.body);
 });
 
-app.post('/api/earn/:id/claim', authMiddleware, (req, res) => {
-  let positions = readData('earn_positions.json');
-  const idx = positions.findIndex(p => p.id === req.params.id && p.userId === req.userId);
-  if (idx === -1) return res.status(404).json({ error: 'Position not found' });
-  if (positions[idx].claimed) return res.status(400).json({ error: 'Already claimed' });
+app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
+  const emails = [];
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    const position = await db.getDoc(c, 'earn_positions', req.params.id, { lock: true });
+    if (!user || !position || position.userId !== req.userId) return { status: 404, body: { error: 'Position not found' } };
+    if (position.claimed) return { status: 400, body: { error: 'Already claimed' } };
 
-  const now = new Date();
-  const start = new Date(positions[idx].startDate);
-  const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), positions[idx].days);
-  const income = positions[idx].amount * (positions[idx].dailyRatePct / 100) * daysElapsed;
+    const now = new Date();
+    const start = new Date(position.startDate);
+    const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), position.days);
+    const income = position.amount * (position.dailyRatePct / 100) * daysElapsed;
 
-  positions[idx].income = parseFloat(income.toFixed(5));
-  positions[idx].claimed = true;
-  positions[idx].status = 'completed';
-  writeData('earn_positions.json', positions);
+    position.income = parseFloat(income.toFixed(5));
+    position.claimed = true;
+    position.status = 'completed';
+    await db.saveDoc(c, 'earn_positions', position);
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  users[userIdx].walletBalance += positions[idx].amount + income;
-  users[userIdx].totalIncome += income;
-  const cat = positions[idx].category;
-  if (users[userIdx].dailyIncome[cat] !== undefined) users[userIdx].dailyIncome[cat] += income;
-  checkAndApplyLevelUpgrade(users, userIdx);
-  writeData('users.json', users);
+    user.walletBalance += position.amount + income;
+    user.totalIncome += income;
+    const cat = position.category;
+    if (user.dailyIncome[cat] !== undefined) user.dailyIncome[cat] += income;
+    checkAndApplyLevelUpgrade(user, await getConfig(c), emails);
+    await db.saveUser(c, user);
 
-  res.json({ message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) });
+    return { status: 200, body: { message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) } };
+  });
+
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
 });
 
 // ===================== RESERVE ROUTES =====================
@@ -1025,11 +953,9 @@ const RESERVE_LEVELS = [
   { level: 6, min: 50000, max: 100000, rewardPct: 5.0, name: 'Collector Edition II', image: '/assets/images/nfts/col2.jpg' }
 ];
 
-app.get('/api/reserve/orders', authMiddleware, (req, res) => {
-  const orders = readData('reserve_orders.json');
-  const myOrders = orders.filter(o => o.userId === req.userId);
-  const users = readData('users.json');
-  const user = users.find(u => u.id === req.userId);
+app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
+  const myOrders = await db.listDocs(pool, 'reserve_orders', { userId: req.userId });
+  const user = await db.getUser(pool, req.userId);
 
   const todayEarnings = myOrders
     .filter(o => o.status === 'Won' && new Date(o.reservationDate).toDateString() === new Date().toDateString())
@@ -1051,72 +977,75 @@ app.get('/api/reserve/orders', authMiddleware, (req, res) => {
   });
 });
 
-app.post('/api/reserve/orders', authMiddleware, (req, res) => {
-  const existingOrders = readData('reserve_orders.json').filter(o => o.userId === req.userId);
-  const nextReservationAt = getNextReservationAt(existingOrders);
-  if (nextReservationAt) return res.status(400).json({ error: 'You can only reserve once every 24 hours', nextReservationAt });
+app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
+  const emails = [];
+  const result = await tx(async c => {
+    // Locking the user first also serializes the 24h cooldown check, so a double-click can't reserve twice.
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  const balance = users[userIdx].walletBalance;
+    const existingOrders = await db.listDocs(c, 'reserve_orders', { userId: req.userId });
+    const nextReservationAt = getNextReservationAt(existingOrders);
+    if (nextReservationAt) return { status: 400, body: { error: 'You can only reserve once every 24 hours', nextReservationAt } };
 
-  const affordableLevels = RESERVE_LEVELS.filter(lv => lv.min <= balance);
-  if (!affordableLevels.length) return res.status(400).json({ error: `Insufficient balance. Minimum reservation is ${RESERVE_LEVELS[0].min} USDT` });
+    const balance = user.walletBalance;
+    const affordableLevels = RESERVE_LEVELS.filter(lv => lv.min <= balance);
+    if (!affordableLevels.length) return { status: 400, body: { error: `Insufficient balance. Minimum reservation is ${RESERVE_LEVELS[0].min} USDT` } };
 
-  const level = affordableLevels[Math.floor(Math.random() * affordableLevels.length)];
-  const maxAmount = Math.min(level.max, balance);
-  const amount = parseFloat((level.min + Math.random() * (maxAmount - level.min)).toFixed(2));
+    const level = affordableLevels[Math.floor(Math.random() * affordableLevels.length)];
+    const maxAmount = Math.min(level.max, balance);
+    const amount = parseFloat((level.min + Math.random() * (maxAmount - level.min)).toFixed(2));
 
-  users[userIdx].walletBalance -= amount;
-  writeData('users.json', users);
+    user.walletBalance -= amount;
 
-  const cfg = readConfig('platform_config.json');
-  const winRatePct = cfg.reserveWinRatePct !== undefined ? parseFloat(cfg.reserveWinRatePct) : 70;
-  const won = Math.random() * 100 < winRatePct;
-  const reward = won ? amount * (level.rewardPct / 100) : 0;
+    const cfg = await getConfig(c);
+    const winRatePct = cfg.reserveWinRatePct !== undefined ? parseFloat(cfg.reserveWinRatePct) : 70;
+    const won = Math.random() * 100 < winRatePct;
+    const reward = won ? amount * (level.rewardPct / 100) : 0;
 
-  let orders = readData('reserve_orders.json');
-  const order = {
-    id: generateId(),
-    userId: req.userId,
-    orderNumber: generateOrderNumber(),
-    reservationDate: new Date().toISOString(),
-    reservationAmount: amount,
-    level: level.level,
-    rewardPct: level.rewardPct,
-    itemName: level.name,
-    itemImage: level.image,
-    itemPrice: amount,
-    estimatedMin: level.min,
-    estimatedMax: level.max,
-    status: won ? 'Won' : 'Not Won',
-    reward: parseFloat(reward.toFixed(2))
-  };
-  orders.push(order);
-  writeData('reserve_orders.json', orders);
+    const order = {
+      id: generateId(),
+      userId: req.userId,
+      orderNumber: generateOrderNumber(),
+      reservationDate: new Date().toISOString(),
+      reservationAmount: amount,
+      level: level.level,
+      rewardPct: level.rewardPct,
+      itemName: level.name,
+      itemImage: level.image,
+      itemPrice: amount,
+      estimatedMin: level.min,
+      estimatedMax: level.max,
+      status: won ? 'Won' : 'Not Won',
+      reward: parseFloat(reward.toFixed(2))
+    };
+    await db.insertDoc(c, 'reserve_orders', order);
 
-  if (won) {
-    users[userIdx].walletBalance += amount + reward;
-    users[userIdx].totalIncome += reward;
-    users[userIdx].dailyIncome.reserve += reward;
-  } else {
-    users[userIdx].walletBalance += amount;
-  }
-  checkAndApplyLevelUpgrade(users, userIdx);
-  writeData('users.json', users);
+    if (won) {
+      user.walletBalance += amount + reward;
+      user.totalIncome += reward;
+      user.dailyIncome.reserve += reward;
+    } else {
+      user.walletBalance += amount;
+    }
+    checkAndApplyLevelUpgrade(user, cfg, emails);
+    await db.saveUser(c, user);
 
-  res.json(order);
+    return { status: 200, body: order };
+  });
+
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
 });
 
 // ===================== ASSETS / WALLET ROUTES =====================
 
-app.get('/api/assets', authMiddleware, (req, res) => {
-  const users = readData('users.json');
-  const user = users.find(u => u.id === req.userId);
+app.get('/api/assets', authMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
 
-  const withdrawals = readData('withdrawals.json').filter(w => w.userId === req.userId);
-  const deposits = readData('deposits.json').filter(d => d.userId === req.userId);
+  const withdrawals = await db.listDocs(pool, 'withdrawals', { userId: req.userId });
+  const deposits = await db.listDocs(pool, 'deposits', { userId: req.userId });
 
   const totalWithdrawn = withdrawals.filter(w => w.status === 'Approved').reduce((s, w) => s + w.amount, 0);
   const notWithdrawn = user.totalIncome - totalWithdrawn;
@@ -1137,80 +1066,79 @@ app.get('/api/assets', authMiddleware, (req, res) => {
 
 // ===================== WITHDRAWAL ROUTES =====================
 
-app.post('/api/withdrawals', authMiddleware, (req, res) => {
+app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   const { amount, walletType } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
 
-  let users = readData('users.json');
-  const userIdx = users.findIndex(u => u.id === req.userId);
-  const user = users[userIdx];
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
 
-  if (user.walletBalance < amount) return res.status(400).json({ error: 'Insufficient balance' });
+    if (user.walletBalance < amount) return { status: 400, body: { error: 'Insufficient balance' } };
 
-  const walletAddr = (walletType === 'bep20' || walletType === 'erc20') ? (user.walletAddress.bep20 || user.walletAddress.erc20) : user.walletAddress.trc20;
-  if (!walletAddr) return res.status(400).json({ error: 'Please set your wallet address first' });
+    const walletAddr = (walletType === 'bep20' || walletType === 'erc20') ? (user.walletAddress.bep20 || user.walletAddress.erc20) : user.walletAddress.trc20;
+    if (!walletAddr) return { status: 400, body: { error: 'Please set your wallet address first' } };
 
-  if (user.walletAddressUpdatedAt) {
-    const hoursSince = (new Date() - new Date(user.walletAddressUpdatedAt)) / (1000 * 60 * 60);
-    if (hoursSince < 48) {
-      const remaining = 48 - hoursSince;
-      const days = Math.floor(remaining / 24);
-      const hours = Math.floor(remaining % 24);
-      const mins = Math.floor((remaining * 60) % 60);
-      return res.status(400).json({
-        error: `Withdrawal Failed. Due to a change in wallet settings, withdrawal services will be suspended for ${days} days ${hours} hours ${mins} min ${Math.floor((remaining * 3600) % 60)} s to protect your account.`
-      });
+    if (user.walletAddressUpdatedAt) {
+      const hoursSince = (new Date() - new Date(user.walletAddressUpdatedAt)) / (1000 * 60 * 60);
+      if (hoursSince < 48) {
+        const remaining = 48 - hoursSince;
+        const days = Math.floor(remaining / 24);
+        const hours = Math.floor(remaining % 24);
+        const mins = Math.floor((remaining * 60) % 60);
+        return {
+          status: 400,
+          body: { error: `Withdrawal Failed. Due to a change in wallet settings, withdrawal services will be suspended for ${days} days ${hours} hours ${mins} min ${Math.floor((remaining * 3600) % 60)} s to protect your account.` }
+        };
+      }
     }
-  }
 
-  const cfg = readConfig('platform_config.json');
-  const withdrawalFeePct = cfg.withdrawalFeePct !== undefined ? parseFloat(cfg.withdrawalFeePct) : 4;
-  const fee = parseFloat((amount * withdrawalFeePct / 100).toFixed(2));
-  const tax = 0;
-  const netAmount = parseFloat((amount - fee - tax).toFixed(2));
+    const cfg = await getConfig(c);
+    const withdrawalFeePct = cfg.withdrawalFeePct !== undefined ? parseFloat(cfg.withdrawalFeePct) : 4;
+    const fee = parseFloat((amount * withdrawalFeePct / 100).toFixed(2));
+    const tax = 0;
+    const netAmount = parseFloat((amount - fee - tax).toFixed(2));
 
-  users[userIdx].walletBalance -= amount;
-  users[userIdx].totalWithdrawn += amount;
-  writeData('users.json', users);
+    user.walletBalance -= amount;
+    user.totalWithdrawn += amount;
+    await db.saveUser(c, user);
 
-  let withdrawals = readData('withdrawals.json');
-  const withdrawal = {
-    id: generateId(),
-    userId: req.userId,
-    email: user.email,
-    username: user.username,
-    uid: user.uid,
-    amount,
-    fee,
-    tax,
-    netAmount,
-    walletType: walletType || 'trc20',
-    walletAddress: walletAddr,
-    status: 'Pending',
-    createdAt: new Date().toISOString()
-  };
-  withdrawals.push(withdrawal);
-  writeData('withdrawals.json', withdrawals);
+    const withdrawal = {
+      id: generateId(),
+      userId: req.userId,
+      email: user.email,
+      username: user.username,
+      uid: user.uid,
+      amount,
+      fee,
+      tax,
+      netAmount,
+      walletType: walletType || 'trc20',
+      walletAddress: walletAddr,
+      status: 'Pending',
+      createdAt: new Date().toISOString()
+    };
+    await db.insertDoc(c, 'withdrawals', withdrawal);
+    return { status: 200, body: withdrawal };
+  });
 
-  res.json(withdrawal);
+  res.status(result.status).json(result.body);
 });
 
-app.get('/api/withdrawals', authMiddleware, (req, res) => {
-  const withdrawals = readData('withdrawals.json').filter(w => w.userId === req.userId);
-  res.json(withdrawals);
+app.get('/api/withdrawals', authMiddleware, async (req, res) => {
+  res.json(await db.listDocs(pool, 'withdrawals', { userId: req.userId }));
 });
 
 // ===================== DEPOSIT ROUTES =====================
 
-app.post('/api/deposits', authMiddleware, (req, res) => {
+app.post('/api/deposits', authMiddleware, async (req, res) => {
   const { amount } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
 
-  const config = readConfig('platform_config.json');
+  const config = await getConfig();
   const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
   if (amount < minDeposit) return res.status(400).json({ error: `Minimum deposit is $${minDeposit}` });
 
-  let deposits = readData('deposits.json');
   const deposit = {
     id: generateId(),
     userId: req.userId,
@@ -1218,22 +1146,20 @@ app.post('/api/deposits', authMiddleware, (req, res) => {
     status: 'Pending',
     createdAt: new Date().toISOString()
   };
-  deposits.push(deposit);
-  writeData('deposits.json', deposits);
+  await db.insertDoc(pool, 'deposits', deposit);
 
   res.json(deposit);
 });
 
 // ===================== ANNOUNCEMENT ROUTES =====================
 
-app.get('/api/announcements', (req, res) => {
-  const announcements = readData('announcements.json');
+app.get('/api/announcements', async (req, res) => {
+  const announcements = await db.listDocs(pool, 'announcements');
   res.json(announcements.sort((a, b) => new Date(b.date) - new Date(a.date)));
 });
 
-app.get('/api/announcements/:id', (req, res) => {
-  const announcements = readData('announcements.json');
-  const ann = announcements.find(a => a.id === req.params.id);
+app.get('/api/announcements/:id', async (req, res) => {
+  const ann = await db.getDoc(pool, 'announcements', req.params.id);
   if (!ann) return res.status(404).json({ error: 'Announcement not found' });
   res.json(ann);
 });
@@ -1242,214 +1168,233 @@ app.get('/api/announcements/:id', (req, res) => {
 
 app.post('/api/admin/login', authLimiter, async (req, res) => {
   const { username, password } = req.body;
-  let admins = readData('admins.json');
-  const idx = admins.findIndex(a => a.username === username);
-  if (idx === -1 || !(await verifyPassword(password, admins[idx].password))) {
+  const { rows } = await pool.query("SELECT data FROM admins WHERE data->>'username' = $1 ORDER BY seq LIMIT 1", [username]);
+  const admin = rows.length ? rows[0].data : null;
+  if (!admin || !(await verifyPassword(password, admin.password))) {
     return res.status(401).json({ error: 'Invalid admin credentials' });
   }
-  if (!isBcryptHash(admins[idx].password)) {
-    admins[idx].password = await hashPassword(password);
-    writeData('admins.json', admins);
+  if (!isBcryptHash(admin.password)) {
+    await db.patchDoc(pool, 'admins', admin.id, { password: await hashPassword(password) });
   }
-  const admin = admins[idx];
 
-  const token = createSession(admin.id, 'admin');
+  const token = await createSession(admin.id, 'admin');
   res.json({ token, admin: { id: admin.id, username: admin.username } });
 });
 
-app.post('/api/admin/logout', adminMiddleware, (req, res) => {
-  delete sessions[req.token];
+app.post('/api/admin/logout', adminMiddleware, async (req, res) => {
+  await deleteSession(req.tokenHash);
   res.json({ message: 'Logged out' });
 });
 
-app.get('/api/admin/stats', adminMiddleware, (req, res) => {
-  const users = readData('users.json');
-  const withdrawals = readData('withdrawals.json');
-  const deposits = readData('deposits.json');
-  const stakes = readData('user_stakes.json');
+app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
+  const num = field => `CASE WHEN jsonb_typeof(data->'${field}') = 'number' THEN (data->>'${field}')::float8 ELSE 0 END`;
+  const { rows } = await pool.query(`SELECT
+    (SELECT count(*) FROM users) AS total_users,
+    (SELECT coalesce(sum(${num('amount')}), 0) FROM deposits) AS total_deposits,
+    (SELECT coalesce(sum(${num('amount')}), 0) FROM withdrawals WHERE data->>'status' = 'Approved') AS total_withdrawals,
+    (SELECT count(*) FROM withdrawals WHERE data->>'status' = 'Pending') AS pending_withdrawals,
+    (SELECT count(*) FROM user_stakes WHERE data->>'status' = 'active') AS active_stakes,
+    (SELECT coalesce(sum(${num('pledgeValue')}), 0) FROM user_stakes WHERE data->>'status' = 'active') AS total_stake_value`);
+  const r = rows[0];
 
   res.json({
-    totalUsers: users.length,
-    totalDeposits: deposits.reduce((s, d) => s + d.amount, 0),
-    totalWithdrawals: withdrawals.filter(w => w.status === 'Approved').reduce((s, w) => s + w.amount, 0),
-    pendingWithdrawals: withdrawals.filter(w => w.status === 'Pending').length,
-    activeStakes: stakes.filter(s => s.status === 'active').length,
-    totalStakeValue: stakes.filter(s => s.status === 'active').reduce((s, st) => s + st.pledgeValue, 0)
+    totalUsers: Number(r.total_users),
+    totalDeposits: Number(r.total_deposits),
+    totalWithdrawals: Number(r.total_withdrawals),
+    pendingWithdrawals: Number(r.pending_withdrawals),
+    activeStakes: Number(r.active_stakes),
+    totalStakeValue: Number(r.total_stake_value)
   });
 });
 
-app.get('/api/admin/users', adminMiddleware, (req, res) => {
-  const users = readData('users.json').map(u => {
-    const { password, secondPassword, ...rest } = u;
+app.get('/api/admin/users', adminMiddleware, async (req, res) => {
+  const users = (await db.listDocs(pool, 'users')).map(u => {
     const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
-    return { ...rest, online };
+    return { ...publicProfile(u), online };
   });
   res.json(users);
 });
 
-app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-
+app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
   const { walletBalance, level, points, username, frozenUntil } = req.body;
-  if (walletBalance !== undefined) users[idx].walletBalance = parseFloat(walletBalance);
-  if (level !== undefined) users[idx].level = parseInt(level);
-  if (points !== undefined) users[idx].points = parseFloat(points);
-  if (username !== undefined) users[idx].username = username;
-  if (frozenUntil !== undefined) {
-    if (frozenUntil === null || frozenUntil === '') {
-      users[idx].frozenUntil = null;
-    } else {
-      const d = new Date(frozenUntil);
-      if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid freeze date' });
-      users[idx].frozenUntil = d.toISOString();
+
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.params.id, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+
+    if (walletBalance !== undefined) user.walletBalance = parseFloat(walletBalance);
+    if (level !== undefined) user.level = parseInt(level);
+    if (points !== undefined) user.points = parseFloat(points);
+    if (username !== undefined) user.username = username;
+    if (frozenUntil !== undefined) {
+      if (frozenUntil === null || frozenUntil === '') {
+        user.frozenUntil = null;
+      } else {
+        const d = new Date(frozenUntil);
+        if (isNaN(d.getTime())) return { status: 400, body: { error: 'Invalid freeze date' } };
+        user.frozenUntil = d.toISOString();
+      }
     }
-  }
-  writeData('users.json', users);
+    await db.saveUser(c, user);
+    return { status: 200, body: publicProfile(user) };
+  });
 
-  const { password, secondPassword, ...profile } = users[idx];
-  res.json(profile);
+  res.status(result.status).json(result.body);
 });
 
-app.put('/api/admin/users/:id/wallet', adminMiddleware, (req, res) => {
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-
+app.put('/api/admin/users/:id/wallet', adminMiddleware, async (req, res) => {
   const { trc20, erc20 } = req.body;
-  if (trc20 !== undefined) users[idx].walletAddress.trc20 = trc20;
-  if (erc20 !== undefined) users[idx].walletAddress.erc20 = erc20;
-  writeData('users.json', users);
 
-  res.json({ message: 'Wallet updated', walletAddress: users[idx].walletAddress });
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+    if (trc20 !== undefined) u.walletAddress.trc20 = trc20;
+    if (erc20 !== undefined) u.walletAddress.erc20 = erc20;
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  res.json({ message: 'Wallet updated', walletAddress: user.walletAddress });
 });
 
-app.put('/api/admin/users/:id/balance', adminMiddleware, (req, res) => {
-  let users = readData('users.json');
-  const idx = users.findIndex(u => u.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'User not found' });
-
+app.put('/api/admin/users/:id/balance', adminMiddleware, async (req, res) => {
   const { amount, action } = req.body;
-  if (action === 'add') {
-    users[idx].walletBalance += parseFloat(amount);
-    let deposits = readData('deposits.json');
-    deposits.push({
-      id: generateId(),
-      userId: users[idx].id,
-      amount: parseFloat(amount),
-      status: 'Approved',
-      approvedBy: 'admin',
-      createdAt: new Date().toISOString()
-    });
-    writeData('deposits.json', deposits);
-  } else if (action === 'subtract') {
-    users[idx].walletBalance = Math.max(0, users[idx].walletBalance - parseFloat(amount));
-  } else if (action === 'set') {
-    users[idx].walletBalance = parseFloat(amount);
-  }
-  checkAndApplyLevelUpgrade(users, idx);
-  writeData('users.json', users);
+  const emails = [];
 
-  const { password, secondPassword, ...profile } = users[idx];
-  res.json(profile);
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+
+    if (action === 'add') {
+      u.walletBalance += parseFloat(amount);
+      await db.insertDoc(c, 'deposits', {
+        id: generateId(),
+        userId: u.id,
+        amount: parseFloat(amount),
+        status: 'Approved',
+        approvedBy: 'admin',
+        createdAt: new Date().toISOString()
+      });
+    } else if (action === 'subtract') {
+      u.walletBalance = Math.max(0, u.walletBalance - parseFloat(amount));
+    } else if (action === 'set') {
+      u.walletBalance = parseFloat(amount);
+    }
+    checkAndApplyLevelUpgrade(u, await getConfig(c), emails);
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  sendQueuedEmails(emails);
+  res.json(publicProfile(user));
 });
 
-app.get('/api/admin/withdrawals', adminMiddleware, (req, res) => {
-  const withdrawals = readData('withdrawals.json');
+app.get('/api/admin/withdrawals', adminMiddleware, async (req, res) => {
+  const withdrawals = await db.listDocs(pool, 'withdrawals');
   res.json(withdrawals.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
-app.put('/api/admin/withdrawals/:id', adminMiddleware, (req, res) => {
-  let withdrawals = readData('withdrawals.json');
-  const idx = withdrawals.findIndex(w => w.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Withdrawal not found' });
-
+app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
   const { status } = req.body;
-  withdrawals[idx].status = status;
-  withdrawals[idx].processedAt = new Date().toISOString();
 
-  if (status === 'Rejected') {
-    let users = readData('users.json');
-    const userIdx = users.findIndex(u => u.id === withdrawals[idx].userId);
-    if (userIdx !== -1) {
-      users[userIdx].walletBalance += withdrawals[idx].amount;
-      users[userIdx].totalWithdrawn -= withdrawals[idx].amount;
-      writeData('users.json', users);
+  const withdrawal = await tx(async c => {
+    const w = await db.getDoc(c, 'withdrawals', req.params.id, { lock: true });
+    if (!w) return null;
+
+    const previousStatus = w.status;
+    w.status = status;
+    w.processedAt = new Date().toISOString();
+
+    // Only refund on the transition into Rejected, so rejecting twice can't refund twice.
+    if (status === 'Rejected' && previousStatus !== 'Rejected') {
+      const user = await db.getUser(c, w.userId, { lock: true });
+      if (user) {
+        user.walletBalance += w.amount;
+        user.totalWithdrawn -= w.amount;
+        await db.saveUser(c, user);
+      }
     }
-  }
+
+    return db.saveDoc(c, 'withdrawals', w);
+  });
+  if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
 
   if (status === 'Approved' || status === 'Rejected') {
     sendEmail(
-      withdrawals[idx].email,
+      withdrawal.email,
       status === 'Approved' ? 'Your withdrawal has been processed' : 'Your withdrawal request was not approved',
-      withdrawalStatusEmailHtml(withdrawals[idx].username, withdrawals[idx].amount, withdrawals[idx].netAmount, status)
+      withdrawalStatusEmailHtml(withdrawal.username, withdrawal.amount, withdrawal.netAmount, status)
     ).catch(() => {});
   }
 
-  writeData('withdrawals.json', withdrawals);
-  res.json(withdrawals[idx]);
+  res.json(withdrawal);
 });
 
-app.get('/api/admin/deposits', adminMiddleware, (req, res) => {
-  const deposits = readData('deposits.json');
+app.get('/api/admin/deposits', adminMiddleware, async (req, res) => {
+  const deposits = await db.listDocs(pool, 'deposits');
   res.json(deposits.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
-app.put('/api/admin/deposits/:id', adminMiddleware, (req, res) => {
-  let deposits = readData('deposits.json');
-  const idx = deposits.findIndex(d => d.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Deposit not found' });
-
+app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
   const { status } = req.body;
-  deposits[idx].status = status;
-  deposits[idx].processedAt = new Date().toISOString();
+  const emails = [];
 
-  if (status === 'Approved') {
-    let users = readData('users.json');
-    const userIdx = users.findIndex(u => u.id === deposits[idx].userId);
-    if (userIdx !== -1) {
-      users[userIdx].walletBalance += deposits[idx].amount;
-      checkAndApplyLevelUpgrade(users, userIdx);
-      sendEmail(users[userIdx].email, 'Your deposit has been confirmed', depositConfirmedEmailHtml(users[userIdx].username, deposits[idx].amount, users[userIdx].walletBalance)).catch(() => {});
+  const deposit = await tx(async c => {
+    const d = await db.getDoc(c, 'deposits', req.params.id, { lock: true });
+    if (!d) return null;
 
-      if (!deposits[idx].referralPaid) {
-        const cfg = readConfig('platform_config.json');
-        const tiers = [
-          { tier: 'A', pct: cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15 },
-          { tier: 'B', pct: cfg.referralBonusPctB !== undefined ? parseFloat(cfg.referralBonusPctB) : 8 },
-          { tier: 'C', pct: cfg.referralBonusPctC !== undefined ? parseFloat(cfg.referralBonusPctC) : 3 }
-        ];
-        const payouts = [];
-        let currentReferrerId = users[userIdx].referredBy;
-        for (let i = 0; i < tiers.length && currentReferrerId; i++) {
-          const referrerIdx = users.findIndex(u => u.id === currentReferrerId);
-          if (referrerIdx === -1) break;
-          const bonus = parseFloat((deposits[idx].amount * tiers[i].pct / 100).toFixed(2));
-          users[referrerIdx].walletBalance += bonus;
-          users[referrerIdx].totalIncome += bonus;
-          users[referrerIdx].dailyIncome.team += bonus;
-          checkAndApplyLevelUpgrade(users, referrerIdx);
-          payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
-          currentReferrerId = users[referrerIdx].referredBy;
+    const previousStatus = d.status;
+    d.status = status;
+    d.processedAt = new Date().toISOString();
+
+    // Only credit on the transition into Approved, so approving twice can't credit twice.
+    if (status === 'Approved' && previousStatus !== 'Approved') {
+      const user = await db.getUser(c, d.userId, { lock: true });
+      if (user) {
+        const cfg = await getConfig(c);
+        user.walletBalance += d.amount;
+        checkAndApplyLevelUpgrade(user, cfg, emails);
+        emails.push([user.email, 'Your deposit has been confirmed', depositConfirmedEmailHtml(user.username, d.amount, user.walletBalance)]);
+        await db.saveUser(c, user);
+
+        if (!d.referralPaid) {
+          const tiers = [
+            { tier: 'A', pct: cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15 },
+            { tier: 'B', pct: cfg.referralBonusPctB !== undefined ? parseFloat(cfg.referralBonusPctB) : 8 },
+            { tier: 'C', pct: cfg.referralBonusPctC !== undefined ? parseFloat(cfg.referralBonusPctC) : 3 }
+          ];
+          const payouts = [];
+          let currentReferrerId = user.referredBy;
+          for (let i = 0; i < tiers.length && currentReferrerId; i++) {
+            const referrer = await db.getUser(c, currentReferrerId, { lock: true });
+            if (!referrer) break;
+            const bonus = parseFloat((d.amount * tiers[i].pct / 100).toFixed(2));
+            referrer.walletBalance += bonus;
+            referrer.totalIncome += bonus;
+            referrer.dailyIncome.team += bonus;
+            checkAndApplyLevelUpgrade(referrer, cfg, emails);
+            await db.saveUser(c, referrer);
+            payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
+            currentReferrerId = referrer.referredBy;
+          }
+          d.referralPaid = true;
+          d.referralPayouts = payouts;
         }
-        deposits[idx].referralPaid = true;
-        deposits[idx].referralPayouts = payouts;
       }
-
-      writeData('users.json', users);
     }
-  }
 
-  writeData('deposits.json', deposits);
-  res.json(deposits[idx]);
+    return db.saveDoc(c, 'deposits', d);
+  });
+  if (!deposit) return res.status(404).json({ error: 'Deposit not found' });
+
+  sendQueuedEmails(emails);
+  res.json(deposit);
 });
 
-app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
+app.post('/api/admin/announcements', adminMiddleware, async (req, res) => {
   const { title, date, category, content, image } = req.body;
   if (!title || !content) return res.status(400).json({ error: 'Title and content are required' });
 
-  let announcements = readData('announcements.json');
   const announcement = {
     id: generateId(),
     title,
@@ -1459,56 +1404,53 @@ app.post('/api/admin/announcements', adminMiddleware, (req, res) => {
     image: image || '',
     createdAt: new Date().toISOString()
   };
-  announcements.push(announcement);
-  writeData('announcements.json', announcements);
+  await db.insertDoc(pool, 'announcements', announcement);
   res.json(announcement);
 });
 
-app.put('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
-  let announcements = readData('announcements.json');
-  const idx = announcements.findIndex(a => a.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Announcement not found' });
-
+app.put('/api/admin/announcements/:id', adminMiddleware, async (req, res) => {
   const { title, date, category, content, image } = req.body;
-  if (title) announcements[idx].title = title;
-  if (date) announcements[idx].date = date;
-  if (category) announcements[idx].category = category;
-  if (content) announcements[idx].content = content;
-  if (image !== undefined) announcements[idx].image = image;
-  announcements[idx].updatedAt = new Date().toISOString();
 
-  writeData('announcements.json', announcements);
-  res.json(announcements[idx]);
+  const announcement = await tx(async c => {
+    const a = await db.getDoc(c, 'announcements', req.params.id, { lock: true });
+    if (!a) return null;
+    if (title) a.title = title;
+    if (date) a.date = date;
+    if (category) a.category = category;
+    if (content) a.content = content;
+    if (image !== undefined) a.image = image;
+    a.updatedAt = new Date().toISOString();
+    return db.saveDoc(c, 'announcements', a);
+  });
+  if (!announcement) return res.status(404).json({ error: 'Announcement not found' });
+
+  res.json(announcement);
 });
 
-app.delete('/api/admin/announcements/:id', adminMiddleware, (req, res) => {
-  let announcements = readData('announcements.json');
-  announcements = announcements.filter(a => a.id !== req.params.id);
-  writeData('announcements.json', announcements);
+app.delete('/api/admin/announcements/:id', adminMiddleware, async (req, res) => {
+  await db.deleteDoc(pool, 'announcements', req.params.id);
   res.json({ message: 'Deleted' });
 });
 
-app.get('/api/admin/announcements', adminMiddleware, (req, res) => {
-  const announcements = readData('announcements.json');
+app.get('/api/admin/announcements', adminMiddleware, async (req, res) => {
+  const announcements = await db.listDocs(pool, 'announcements');
   res.json(announcements.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
 // ===================== ADMIN WALLET SUBMISSIONS =====================
 
-app.get('/api/admin/wallet-submissions', adminMiddleware, (req, res) => {
-  const submissions = readData('wallet_submissions.json');
+app.get('/api/admin/wallet-submissions', adminMiddleware, async (req, res) => {
+  const submissions = await db.listDocs(pool, 'wallet_submissions');
   res.json(submissions.sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt)));
 });
 
-app.delete('/api/admin/wallet-submissions/:id', adminMiddleware, (req, res) => {
-  let submissions = readData('wallet_submissions.json');
-  submissions = submissions.filter(s => s.id !== req.params.id);
-  writeData('wallet_submissions.json', submissions);
+app.delete('/api/admin/wallet-submissions/:id', adminMiddleware, async (req, res) => {
+  await db.deleteDoc(pool, 'wallet_submissions', req.params.id);
   res.json({ message: 'Deleted' });
 });
 
-// Admin upload image (base64)
-app.post('/api/admin/upload', adminMiddleware, (req, res) => {
+// Admin upload image (base64). Stored in Postgres so uploads survive redeploys and are shared by every server process.
+app.post('/api/admin/upload', adminMiddleware, async (req, res) => {
   const { image } = req.body;
   if (!image) return res.status(400).json({ error: 'No image provided' });
 
@@ -1521,24 +1463,23 @@ app.post('/api/admin/upload', adminMiddleware, (req, res) => {
   const data = matches[2];
   // Filename is always server-generated — never derived from client input — to prevent path traversal.
   const fname = generateId() + '.' + ext;
-  const fpath = path.join(DATA_DIR, 'uploads', fname);
 
-  fs.writeFileSync(fpath, Buffer.from(data, 'base64'));
+  await pool.query('INSERT INTO uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [fname, 'image/' + (ext === 'jpg' ? 'jpeg' : ext), Buffer.from(data, 'base64')]);
   res.json({ url: '/uploads/' + fname });
 });
 
 // ===================== PLATFORM CONFIG ROUTES =====================
 
-app.get('/api/platform/deposit-addresses', (req, res) => {
-  const config = readConfig('platform_config.json');
+app.get('/api/platform/deposit-addresses', async (req, res) => {
+  const config = await getConfig();
   res.json({
     trc20: config.depositAddressTrc20 || '',
     bep20: config.depositAddressBep20 || ''
   });
 });
 
-app.get('/api/platform/info', (req, res) => {
-  const config = readConfig('platform_config.json');
+app.get('/api/platform/info', async (req, res) => {
+  const config = await getConfig();
   res.json({
     signupBonus: config.signupBonus !== undefined ? config.signupBonus : 10,
     minDeposit: config.minDeposit !== undefined ? config.minDeposit : 50,
@@ -1550,38 +1491,43 @@ app.get('/api/platform/info', (req, res) => {
   });
 });
 
-app.get('/api/admin/platform-config', adminMiddleware, (req, res) => {
-  const config = readConfig('platform_config.json');
-  res.json(config);
+app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
+  res.json(await getConfig());
 });
 
-app.put('/api/admin/platform-config', adminMiddleware, (req, res) => {
-  let config = readConfig('platform_config.json');
+app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
   const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled } = req.body;
-  if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
-  if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
-  if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
-  if (minDeposit !== undefined) config.minDeposit = parseFloat(minDeposit);
-  if (referralBonusPct !== undefined) config.referralBonusPct = parseFloat(referralBonusPct);
-  if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
-  if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
-  if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
-  if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
-  if (reserveWinRatePct !== undefined) {
-    const rate = parseFloat(reserveWinRatePct);
-    if (isNaN(rate) || rate < 0 || rate > 100) return res.status(400).json({ error: 'Reservation win rate must be between 0 and 100' });
-    config.reserveWinRatePct = rate;
-  }
-  for (let lv = 1; lv <= 6; lv++) {
-    const key = 'levelThreshold' + lv;
-    if (req.body[key] !== undefined) {
-      const val = parseFloat(req.body[key]);
-      if (isNaN(val) || val < 0) return res.status(400).json({ error: `Level ${lv} threshold must be a non-negative number` });
-      config[key] = val;
+
+  const result = await tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(424244)');
+    const config = await getConfig(c);
+    if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
+    if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
+    if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
+    if (minDeposit !== undefined) config.minDeposit = parseFloat(minDeposit);
+    if (referralBonusPct !== undefined) config.referralBonusPct = parseFloat(referralBonusPct);
+    if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
+    if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
+    if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
+    if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
+    if (reserveWinRatePct !== undefined) {
+      const rate = parseFloat(reserveWinRatePct);
+      if (isNaN(rate) || rate < 0 || rate > 100) return { status: 400, body: { error: 'Reservation win rate must be between 0 and 100' } };
+      config.reserveWinRatePct = rate;
     }
-  }
-  writeConfig('platform_config.json', config);
-  res.json(config);
+    for (let lv = 1; lv <= 6; lv++) {
+      const key = 'levelThreshold' + lv;
+      if (req.body[key] !== undefined) {
+        const val = parseFloat(req.body[key]);
+        if (isNaN(val) || val < 0) return { status: 400, body: { error: `Level ${lv} threshold must be a non-negative number` } };
+        config[key] = val;
+      }
+    }
+    await db.setSetting(c, 'platform_config', config);
+    return { status: 200, body: config };
+  });
+
+  res.status(result.status).json(result.body);
 });
 
 // Serve admin page
@@ -1594,28 +1540,56 @@ app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-async function startServer() {
-  await hydrateDataFromDb(); // restore data/*.json from Postgres before anything reads/seeds them
-  await initAdmin();
-  initStakes();
+// Express 5 forwards errors from async handlers here (e.g. the database being briefly unreachable).
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error(`[${req.method} ${req.path}]`, err);
+  res.status(status).json({ error: status >= 500 ? 'Something went wrong. Please try again.' : (err.expose ? err.message : 'Bad request') });
+});
 
+function listen() {
   app.listen(PORT, HOST, () => {
-  const nets = os.networkInterfaces();
-  let localIP = 'unknown';
-  for (const iface of Object.values(nets)) {
-    for (const addr of iface) {
-      if (addr.family === 'IPv4' && !addr.internal) {
-        localIP = addr.address;
-        break;
+    const nets = os.networkInterfaces();
+    let localIP = 'unknown';
+    for (const iface of Object.values(nets)) {
+      for (const addr of iface) {
+        if (addr.family === 'IPv4' && !addr.internal) {
+          localIP = addr.address;
+          break;
+        }
       }
+      if (localIP !== 'unknown') break;
     }
-    if (localIP !== 'unknown') break;
-  }
-  console.log(`MetaLinkNFT server running:`);
-  console.log(`  Local:   http://localhost:${PORT}`);
-  console.log(`  Network: http://${localIP}:${PORT}`);
-  console.log(`  Admin:   http://localhost:${PORT}/admin`);
+    if (cluster.isWorker && cluster.worker.id !== 1) return;
+    console.log(`MetaLinkNFT server running (${WORKERS} process${WORKERS > 1 ? 'es' : ''}):`);
+    console.log(`  Local:   http://localhost:${PORT}`);
+    console.log(`  Network: http://${localIP}:${PORT}`);
+    console.log(`  Admin:   http://localhost:${PORT}/admin`);
   });
 }
 
-startServer();
+async function startServer() {
+  if (cluster.isPrimary) {
+    // One-time setup runs once, in the primary, before any worker starts taking requests.
+    await db.initDb(DATA_DIR);
+    await initAdmin();
+    await initStakes();
+    setInterval(() => db.cleanupExpired().catch(e => console.error('[DB] cleanup failed:', e.message)), 10 * 60 * 1000).unref();
+
+    if (WORKERS > 1) {
+      for (let i = 0; i < WORKERS; i++) cluster.fork();
+      cluster.on('exit', (worker, code) => {
+        console.warn(`Worker ${worker.process.pid} exited (code ${code}); starting a replacement.`);
+        cluster.fork();
+      });
+      return;
+    }
+  }
+  listen();
+}
+
+startServer().catch(e => {
+  console.error('Failed to start server:', e);
+  process.exit(1);
+});
