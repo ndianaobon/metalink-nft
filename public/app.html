@@ -409,9 +409,19 @@
     .balance-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
 
     .history-item {
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
       padding: 12px 0; border-bottom: 1px solid var(--border);
     }
+    .history-item .h-icon {
+      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .history-item .h-icon.in { background: rgba(20,184,166,0.12); color: var(--positive); }
+    .history-item .h-icon.out { background: rgba(239,68,68,0.1); color: var(--negative); }
+    .history-item .h-icon.pending { background: rgba(245,158,11,0.12); color: var(--warning); }
+    .history-item .h-main { flex: 1; min-width: 0; }
+    .history-item .h-desc { font-size: 0.72rem; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .history-item .h-balance { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
     .history-item:last-child { border-bottom: none; }
     .history-item .h-type { font-size: 0.85rem; font-weight: 600; }
     .history-item .h-date { font-size: 0.72rem; color: var(--text-muted); }
@@ -1207,6 +1217,34 @@
     }
     .checkin-btn:disabled { background: var(--surface-hover); color: var(--text-muted); cursor: default; font-variant-numeric: tabular-nums; }
 
+    /* ---- Reward celebration card ---- */
+    .reward-overlay {
+      position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: rgba(5,5,15,0.82); backdrop-filter: blur(8px);
+      opacity: 0; pointer-events: none; transition: opacity 0.3s ease; overflow: hidden;
+    }
+    .reward-overlay.active { opacity: 1; pointer-events: all; }
+    .reward-box { position: relative; width: 100%; max-width: 380px; display: flex; flex-direction: column; align-items: center; }
+    .reward-card-img {
+      width: 100%; max-height: calc(100vh - 210px); object-fit: contain; border-radius: 22px;
+      box-shadow: 0 20px 60px rgba(124,58,237,0.45), 0 0 0 1px rgba(255,255,255,0.08);
+      transform: scale(0.85); opacity: 0; transition: transform 0.45s cubic-bezier(.2,1.4,.4,1), opacity 0.3s ease;
+    }
+    .reward-overlay.active .reward-card-img { transform: scale(1); opacity: 1; }
+    .reward-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 16px; }
+    .reward-actions .btn { padding: 13px; font-size: 0.9rem; }
+    .reward-share { background: var(--gradient); color: #fff; border: none; }
+    .reward-links { display: flex; justify-content: space-between; width: 100%; margin-top: 12px; }
+    .reward-links button { background: none; border: none; color: rgba(255,255,255,0.75); font-family: var(--font); font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 6px; }
+    .reward-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .reward-confetti i {
+      position: absolute; top: -20px; width: 9px; height: 15px; border-radius: 2px; opacity: 0.9;
+      animation: confettiFall linear forwards;
+    }
+    @keyframes confettiFall {
+      to { transform: translateY(110vh) rotate(720deg); opacity: 0.2; }
+    }
+
     /* ---- Responsive ---- */
     @media (max-width: 380px) {
       .checkin-card { flex-wrap: wrap; }
@@ -1610,6 +1648,7 @@
       </div>
 
       <div class="card-title">Account Activity</div>
+      <div class="stake-category-tabs" id="assetsHistoryTabs"></div>
       <div class="card" id="assetsHistory">
         <div class="empty-state"><p>No transactions yet</p></div>
       </div>
@@ -2253,6 +2292,28 @@
 
   <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/webp" style="display:none;">
 
+  <!-- Reward celebration card (shareable image) -->
+  <div class="reward-overlay" id="rewardOverlay" aria-hidden="true">
+    <div class="reward-confetti" id="rewardConfetti"></div>
+    <div class="reward-box">
+      <img class="reward-card-img" id="rewardCardImg" alt="Reward card">
+      <div class="reward-actions">
+        <button class="btn reward-share" id="rewardShareBtn" onclick="shareRewardCard()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share
+        </button>
+        <button class="btn btn-outline" style="color:#fff;border-color:rgba(255,255,255,0.3);" onclick="saveRewardCard()">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Save Image
+        </button>
+      </div>
+      <div class="reward-links">
+        <button onclick="openCommunityLink('group')">Open Telegram Group &rarr;</button>
+        <button onclick="closeRewardCard()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Profile picture options -->
   <div class="modal-overlay" id="avatarMenuModal">
     <div class="modal-sheet">
@@ -2522,9 +2583,11 @@
     async function claimStake(id) {
       try {
         const r = await api('/api/stakes/' + id + '/claim', { method: 'POST' });
-        toast('Claimed! Income: ' + fmt(r.income) + ' USDT');
+        if (r.income >= 0.01) showRewardCard({ kind: 'stake', amount: r.income, detail: `${r.name} · ${r.days}-day stake` });
+        else toast('Stake claimed — principal returned to your balance');
         loadStakes();
         updateHeaderBalance();
+        refreshLevel();
       } catch (e) { toast(e.message, 'error'); }
     }
 
@@ -2667,9 +2730,11 @@
     async function claimEarn(id) {
       try {
         const r = await api('/api/earn/' + id + '/claim', { method: 'POST' });
-        toast('Claimed! Income: ' + fmt(r.income) + ' USDT');
+        if (r.income >= 0.01) showRewardCard({ kind: 'earn', amount: r.income, detail: r.name });
+        else toast('Plan claimed — amount returned to your balance');
         loadEarnRecord();
         updateHeaderBalance();
+        refreshLevel();
       } catch (e) { toast(e.message, 'error'); }
     }
 
@@ -2801,6 +2866,13 @@
       btn.disabled = true; btn.textContent = 'Drawing...';
       try {
         const o = await api('/api/reserve/orders', { method: 'POST' });
+        if (o.status === 'Won' && o.reward >= 0.01) {
+          showRewardCard({ kind: 'reserve', amount: o.reward, detail: `${o.itemName} · Level ${o.level} · ${o.rewardPct}%` });
+          updateHeaderBalance();
+          refreshLevel();
+          loadReserve();
+          return;
+        }
         document.getElementById('reserveResultTitle').textContent = o.status === 'Won' ? 'Reservation Success' : 'Reservation Complete';
         document.getElementById('reserveResultImage').src = o.itemImage;
         document.getElementById('reserveResultImage').alt = o.itemName;
@@ -2829,21 +2901,64 @@
 
         loadAssetAddresses();
 
-        const el = document.getElementById('assetsHistory');
-        if (!d.history.length) { el.innerHTML = '<div class="empty-state"><p>No transactions yet</p></div>'; return; }
-        el.innerHTML = d.history.map(h => `
-          <div class="history-item">
-            <div>
-              <div class="h-type">${h.type}</div>
-              <div class="h-date">${fmtDate(h.date)}</div>
-            </div>
-            <div style="text-align:right">
-              <div class="h-amount ${h.amount >= 0 ? 'positive' : 'negative'}">${h.amount >= 0 ? '+' : ''}${fmt(h.amount)} USDT</div>
-              <span class="badge badge-${h.status.toLowerCase()}">${h.status}</span>
-            </div>
-          </div>
-        `).join('');
+        assetsHistoryCache = d.history;
+        renderAssetsHistory();
       } catch (e) { console.error(e); }
+    }
+
+    // ---- Account activity (every balance change) ----
+    let assetsHistoryCache = [];
+    let assetsHistoryFilter = 'all';
+    const HISTORY_FILTERS = {
+      all: { label: 'All', match: () => true },
+      income: { label: 'Income', match: h => ['signup_bonus', 'checkin', 'stake_income', 'earn_income', 'reserve_reward', 'team_commission', 'admin_credit'].includes(h.kind) },
+      deposit: { label: 'Deposits', match: h => h.kind === 'deposit' },
+      withdrawal: { label: 'Withdrawals', match: h => h.kind === 'withdrawal' || h.kind === 'withdrawal_refund' },
+      invest: { label: 'Stake & Earn', match: h => /^(stake|earn)/.test(h.kind) }
+    };
+    const HISTORY_ICONS = {
+      deposit: '<path d="M12 5v14M5 12l7 7 7-7"/>',
+      withdrawal: '<path d="M12 19V5M5 12l7-7 7 7"/>',
+      withdrawal_refund: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+      checkin: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
+      signup_bonus: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
+      team_commission: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>',
+      reserve_reward: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>',
+      stake: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+      earn: '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+      admin: '<circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2"/>'
+    };
+    function historyIcon(kind) {
+      const key = HISTORY_ICONS[kind] ? kind : /^stake/.test(kind) ? 'stake' : /^earn/.test(kind) ? 'earn' : /^admin/.test(kind) ? 'admin' : 'deposit';
+      return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${HISTORY_ICONS[key]}</svg>`;
+    }
+
+    function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
+
+    function renderAssetsHistory() {
+      document.getElementById('assetsHistoryTabs').innerHTML = Object.entries(HISTORY_FILTERS).map(([key, f]) =>
+        `<button class="stake-category-tab ${key === assetsHistoryFilter ? 'active' : ''}" onclick="filterAssetsHistory('${key}')">${f.label}</button>`).join('');
+      const el = document.getElementById('assetsHistory');
+      const items = assetsHistoryCache.filter(HISTORY_FILTERS[assetsHistoryFilter].match);
+      if (!items.length) { el.innerHTML = '<div class="empty-state"><p>No activity yet</p></div>'; return; }
+      el.innerHTML = items.map(h => {
+        const dir = h.pending ? 'pending' : h.amount >= 0 ? 'in' : 'out';
+        return `
+          <div class="history-item">
+            <div class="h-icon ${dir}">${historyIcon(h.kind)}</div>
+            <div class="h-main">
+              <div class="h-type">${escapeHtml(h.type)}</div>
+              ${h.description ? `<div class="h-desc">${escapeHtml(h.description)}</div>` : ''}
+              <div class="h-date">${new Date(h.date).toLocaleString()}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div class="h-amount ${dir === 'pending' ? '' : h.amount >= 0 ? 'positive' : 'negative'}">${h.amount >= 0 ? '+' : ''}${fmt(h.amount)} USDT</div>
+              ${h.status === 'Completed' && h.balanceAfter != null
+                ? `<div class="h-balance">Balance ${fmt(h.balanceAfter)}</div>`
+                : `<span class="badge badge-${h.status.toLowerCase()}">${escapeHtml(h.status)}</span>`}
+            </div>
+          </div>`;
+      }).join('');
     }
 
     // ---- MY ----
@@ -2854,6 +2969,7 @@
       try {
         profileData = await api('/api/user/profile');
         const p = profileData;
+        checkLevelUp(p);
         document.getElementById('profileName').textContent = p.username;
         document.getElementById('profileUid').textContent = 'UID: ' + p.uid;
         document.getElementById('profileBalance').textContent = '$' + fmt(p.walletBalance);
@@ -3598,6 +3714,237 @@
       finally { btn.disabled = false; btn.textContent = 'Disable Google Authenticator'; }
     });
 
+    // ---- Reward celebration card ----
+    // Drawn on a canvas so it's a real image users can share or save and post to Telegram.
+    const REWARD_KINDS = {
+      checkin: { icon: '🎁', title: "You've won today's reward!" },
+      stake: { icon: '💎', title: 'Stake reward claimed!' },
+      earn: { icon: '📈', title: 'Earn plan income claimed!' },
+      reserve: { icon: '🏆', title: 'You won the reservation draw!' },
+      level: { icon: '⭐', title: 'Your account has been upgraded' }
+    };
+    const rewardQueue = [];
+    let rewardCanvas = null;
+    let rewardShowing = false;
+
+    function seededRandom(seed) {
+      return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    }
+    function loadImage(src) {
+      return new Promise(resolve => { const img = new Image(); img.onload = () => resolve(img); img.onerror = () => resolve(null); img.src = src; });
+    }
+    // The dark logo has a solid #0B0B16 background rectangle baked in; strip it so the logo sits
+    // directly on the card's gradient.
+    let transparentLogo;
+    async function loadTransparentLogo() {
+      if (transparentLogo !== undefined) return transparentLogo;
+      try {
+        const svg = (await (await fetch('/assets/images/MetaLink-NFT-horizontal-dark.svg')).text())
+          .replace(/<rect[^>]*fill="#0B0B16"[^>]*\/>/i, '');
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        transparentLogo = await loadImage(url);
+      } catch (e) { transparentLogo = null; }
+      return transparentLogo;
+    }
+
+    function roundRectPath(ctx, x, y, w, h, r) {
+      ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+    }
+    function spacedText(ctx, text, x, y, spacing) {
+      // Centered text with letter spacing (canvas letterSpacing isn't supported everywhere).
+      const chars = [...text];
+      const total = chars.reduce((s, ch) => s + ctx.measureText(ch).width, 0) + spacing * (chars.length - 1);
+      let cx = x - total / 2;
+      ctx.textAlign = 'left';
+      chars.forEach(ch => { ctx.fillText(ch, cx, y); cx += ctx.measureText(ch).width + spacing; });
+      ctx.textAlign = 'center';
+    }
+    function fitFont(ctx, text, weight, size, maxWidth) {
+      while (size > 20) { ctx.font = `${weight} ${size}px Inter, Arial, sans-serif`; if (ctx.measureText(text).width <= maxWidth) break; size -= 4; }
+    }
+
+    async function drawRewardCard(r) {
+      const W = 1080, H = 1350;
+      const kind = REWARD_KINDS[r.kind] || REWARD_KINDS.checkin;
+      const user = profileData || USER || {};
+      try { await Promise.all([document.fonts.load('800 100px Inter'), document.fonts.load('600 40px Inter')]); } catch (e) {}
+      const logo = await loadTransparentLogo();
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+
+      // Background + glows
+      roundRectPath(ctx, 0, 0, W, H, 56); ctx.save(); ctx.clip();
+      const bg = ctx.createLinearGradient(0, 0, W, H);
+      bg.addColorStop(0, '#1b0d3d'); bg.addColorStop(0.55, '#0b0b1f'); bg.addColorStop(1, '#05302d');
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      [[180, 220, 560, 'rgba(124,58,237,0.55)'], [920, 1180, 560, 'rgba(20,184,166,0.45)'], [540, 470, 460, 'rgba(79,70,229,0.4)']].forEach(([x, y, rad, col]) => {
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rad); g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      });
+      // Light rays behind the badge
+      ctx.save(); ctx.translate(540, 420);
+      for (let i = 0; i < 18; i++) {
+        ctx.rotate(Math.PI * 2 / 18);
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-38, -640); ctx.lineTo(38, -640); ctx.closePath();
+        ctx.fillStyle = i % 2 ? 'rgba(255,255,255,0.035)' : 'rgba(253,230,138,0.05)'; ctx.fill();
+      }
+      ctx.restore();
+      // Confetti (seeded, so the same reward always draws identically)
+      const rand = seededRandom(Math.round((r.amount || r.level || 1) * 1000) + r.kind.length);
+      const colors = ['#7C3AED', '#4F46E5', '#14B8A6', '#F59E0B', '#F472B6', '#FDE68A', '#60A5FA'];
+      for (let i = 0; i < 90; i++) {
+        const x = rand() * W, y = rand() * H;
+        // Keep every text area clean: confetti only along the top and the side margins.
+        const inTop = y < 230 && (x < 340 || x > 740);
+        const inSides = (x < 190 || x > 890) && y < 1130;
+        if (!inTop && !inSides) continue;
+        ctx.save(); ctx.translate(x, y); ctx.rotate(rand() * Math.PI);
+        ctx.globalAlpha = 0.55 + rand() * 0.45; ctx.fillStyle = colors[i % colors.length];
+        if (i % 3 === 0) { ctx.beginPath(); ctx.arc(0, 0, 6 + rand() * 6, 0, Math.PI * 2); ctx.fill(); }
+        else ctx.fillRect(-7, -14, 14 + rand() * 8, 22 + rand() * 10);
+        ctx.restore();
+      }
+      ctx.restore();
+
+      // Gold frame
+      const frame = ctx.createLinearGradient(0, 0, W, H);
+      frame.addColorStop(0, 'rgba(253,230,138,0.9)'); frame.addColorStop(0.5, 'rgba(245,158,11,0.35)'); frame.addColorStop(1, 'rgba(20,184,166,0.8)');
+      ctx.lineWidth = 4; ctx.strokeStyle = frame; roundRectPath(ctx, 30, 30, W - 60, H - 60, 40); ctx.stroke();
+
+      // Logo
+      if (logo) { const lh = 62, lw = logo.width * (lh / logo.height); ctx.drawImage(logo, (W - lw) / 2, 82, lw, lh); }
+
+      // Badge
+      const glow = ctx.createRadialGradient(540, 420, 60, 540, 420, 220); glow.addColorStop(0, 'rgba(253,230,138,0.55)'); glow.addColorStop(1, 'rgba(253,230,138,0)');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(540, 420, 220, 0, Math.PI * 2); ctx.fill();
+      const gold = ctx.createLinearGradient(410, 290, 670, 550); gold.addColorStop(0, '#FEF3C7'); gold.addColorStop(0.45, '#F59E0B'); gold.addColorStop(1, '#B45309');
+      ctx.fillStyle = gold; ctx.beginPath(); ctx.arc(540, 420, 135, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.stroke();
+      ctx.fillStyle = '#1b0d3d'; ctx.beginPath(); ctx.arc(540, 420, 108, 0, Math.PI * 2); ctx.fill();
+      ctx.font = '120px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textBaseline = 'middle';
+      ctx.fillText(kind.icon, 540, 428); ctx.textBaseline = 'alphabetic';
+
+      // Headline
+      const goldText = ctx.createLinearGradient(300, 0, 780, 0); goldText.addColorStop(0, '#FDE68A'); goldText.addColorStop(0.5, '#FBBF24'); goldText.addColorStop(1, '#FDE68A');
+      ctx.fillStyle = goldText; ctx.font = '800 46px Inter, Arial, sans-serif';
+      spacedText(ctx, r.kind === 'level' ? 'LEVEL UP' : 'CONGRATULATIONS', 540, 650, 10);
+      ctx.fillStyle = '#ffffff'; fitFont(ctx, kind.title, 700, 56, 900); ctx.fillText(kind.title, 540, 735);
+
+      // Amount (or level)
+      const amountGrad = ctx.createLinearGradient(0, 760, 0, 960); amountGrad.addColorStop(0, '#FEF3C7'); amountGrad.addColorStop(1, '#F59E0B');
+      ctx.shadowColor = 'rgba(245,158,11,0.55)'; ctx.shadowBlur = 40; ctx.fillStyle = amountGrad;
+      if (r.kind === 'level') {
+        ctx.font = '800 180px Inter, Arial, sans-serif'; ctx.fillText('LV ' + r.level, 540, 940);
+      } else {
+        const amt = '+' + Number(r.amount).toFixed(2);
+        fitFont(ctx, amt, 800, 190, 820); ctx.fillText(amt, 540, 925);
+        ctx.shadowBlur = 0; ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '700 54px Inter, Arial, sans-serif'; ctx.fillText('USDT', 540, 1000);
+      }
+      ctx.shadowBlur = 0;
+
+      // Detail pill
+      if (r.detail) {
+        ctx.font = '600 36px Inter, Arial, sans-serif';
+        let detail = r.detail; while (ctx.measureText(detail).width > 820 && detail.length > 4) detail = detail.slice(0, -2);
+        if (detail !== r.detail) detail = detail.trim() + '…';
+        const pw = ctx.measureText(detail).width + 70, py = r.kind === 'level' ? 990 : 1040;
+        ctx.fillStyle = 'rgba(255,255,255,0.09)'; roundRectPath(ctx, 540 - pw / 2, py, pw, 66, 33); ctx.fill();
+        ctx.fillStyle = '#c7d2fe'; ctx.fillText(detail, 540, py + 45);
+      }
+
+      // Footer: who + when
+      ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.fillRect(90, 1150, W - 180, 2);
+      const initial = (user.username || 'U').charAt(0).toUpperCase();
+      const av = ctx.createLinearGradient(90, 1180, 180, 1270); av.addColorStop(0, '#7C3AED'); av.addColorStop(1, '#14B8A6');
+      ctx.fillStyle = av; ctx.beginPath(); ctx.arc(135, 1225, 45, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = '800 44px Inter, Arial, sans-serif'; ctx.fillText(initial, 135, 1241);
+      ctx.textAlign = 'left';
+      ctx.font = '700 40px Inter, Arial, sans-serif'; ctx.fillText(String(user.username || 'MetaLink user').slice(0, 18), 200, 1214);
+      ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '500 30px Inter, Arial, sans-serif'; ctx.fillText('UID: ' + (user.uid || '—'), 200, 1258);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = '600 30px Inter, Arial, sans-serif';
+      ctx.fillText(new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), W - 90, 1214);
+      ctx.fillStyle = '#2dd4bf'; ctx.font = '700 30px Inter, Arial, sans-serif'; ctx.fillText('metalinknft.com', W - 90, 1258);
+      ctx.textAlign = 'center';
+      return canvas;
+    }
+
+    // r: { kind: 'checkin'|'stake'|'earn'|'reserve'|'level', amount?, level?, detail? }
+    function showRewardCard(r) {
+      rewardQueue.push(r);
+      if (!rewardShowing) nextRewardCard();
+    }
+
+    async function nextRewardCard() {
+      const r = rewardQueue.shift();
+      if (!r) { rewardShowing = false; return; }
+      rewardShowing = true;
+      rewardCanvas = await drawRewardCard(r);
+      document.getElementById('rewardCardImg').src = rewardCanvas.toDataURL('image/png');
+      const overlay = document.getElementById('rewardOverlay');
+      overlay.classList.add('active');
+      overlay.setAttribute('aria-hidden', 'false');
+      burstConfetti();
+    }
+
+    function closeRewardCard() {
+      const overlay = document.getElementById('rewardOverlay');
+      overlay.classList.remove('active');
+      overlay.setAttribute('aria-hidden', 'true');
+      setTimeout(nextRewardCard, 350);
+    }
+
+    function burstConfetti() {
+      const el = document.getElementById('rewardConfetti');
+      const colors = ['#7C3AED', '#4F46E5', '#14B8A6', '#F59E0B', '#F472B6', '#FDE68A'];
+      el.innerHTML = Array.from({ length: 70 }, (_, i) =>
+        `<i style="left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-duration:${2.4 + Math.random() * 2.2}s;animation-delay:${Math.random() * 0.6}s;transform:rotate(${Math.random() * 360}deg);${i % 3 === 0 ? 'border-radius:50%;width:10px;height:10px;' : ''}"></i>`).join('');
+      setTimeout(() => { el.innerHTML = ''; }, 5500);
+    }
+
+    function rewardCardBlob() {
+      return new Promise(resolve => rewardCanvas.toBlob(resolve, 'image/png'));
+    }
+
+    async function shareRewardCard() {
+      if (!rewardCanvas) return;
+      const blob = await rewardCardBlob();
+      const file = new File([blob], 'metalink-reward.png', { type: 'image/png' });
+      const text = 'I just earned a reward on MetaLink NFT! 🎉 ' + getInviteLink();
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], text }); return; } catch (e) { if (e.name === 'AbortError') return; }
+      }
+      saveRewardCard();
+      toast('Image saved — post it in the Telegram group!');
+    }
+
+    function saveRewardCard() {
+      if (!rewardCanvas) return;
+      const a = document.createElement('a');
+      a.href = rewardCanvas.toDataURL('image/png');
+      a.download = 'metalink-reward-' + new Date().toISOString().slice(0, 10) + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+    }
+
+    // Level-ups can happen anywhere (claims, approved deposits, admin credits), so compare against the
+    // last level this device celebrated. The first visit just records the current level.
+    function checkLevelUp(p) {
+      if (!p || p.level == null || !p.uid) return;
+      const key = 'mlk_level_seen_' + p.uid;
+      let seen = null;
+      try { seen = localStorage.getItem(key); localStorage.setItem(key, String(p.level)); } catch (e) {}
+      if (seen !== null && Number(p.level) > Number(seen)) {
+        showRewardCard({ kind: 'level', level: p.level, detail: 'Higher levels unlock better rewards' });
+      }
+    }
+
+    async function refreshLevel() {
+      try { profileData = { ...(profileData || {}), ...(await api('/api/user/profile')) }; checkLevelUp(profileData); } catch (e) {}
+    }
+
     // ---- Profile picture ----
     function setAvatarEl(id, p) {
       const el = document.getElementById(id);
@@ -3700,9 +4047,10 @@
       try {
         const r = await api('/api/checkin', { method: 'POST' });
         checkinState = r;
-        toast('+' + fmt(r.claimed) + ' USDT added to your balance!');
+        showRewardCard({ kind: 'checkin', amount: r.claimed, detail: `Daily Check-in · Day ${r.streak} streak` });
         renderCheckin();
         updateHeaderBalance();
+        refreshLevel();
         if (document.getElementById('page-my').classList.contains('active')) loadProfile();
       } catch (e) {
         toast(e.message, 'error');
@@ -3742,7 +4090,7 @@
       setTimeout(() => el.remove(), 400);
     }
     Promise.race([
-      Promise.all([loadPlatformInfo().then(loadStakes), updateHeaderBalance(), loadCheckin()]),
+      Promise.all([loadPlatformInfo().then(loadStakes), updateHeaderBalance(), loadCheckin(), refreshLevel()]),
       new Promise(resolve => setTimeout(resolve, 4000)) // safety net so the loader never gets stuck on a slow/failed request
     ]).then(hideBootLoader);
   </script>

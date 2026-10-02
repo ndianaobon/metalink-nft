@@ -249,12 +249,33 @@ function withdrawalEmail(kind, withdrawal) {
 }
 
 function levelUpgradeEmailHtml(username, level, balance) {
-  return emailWrapper(`
-    <p>Hi ${username},</p>
-    <p style="text-align:center;font-size:22px;font-weight:800;color:#4F46E5;margin:20px 0;">&#127881; Congratulations! You've reached Level ${level}</p>
-    <p>Your wallet balance has crossed the threshold for Level ${level}, and your account has been automatically upgraded.</p>
-    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">Current Balance: <strong>${fmtMoney(balance)} USDT</strong></p>
-    <p>Higher levels can unlock better rewards across the platform. Keep growing your balance to reach the next one.</p>`);
+  // Celebration layout. Gradients have a solid background-color fallback for clients (Outlook) that drop them.
+  return `<div style="background:#f4f5f7;padding:24px 0;">
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;color:#1e2329;">
+    <div style="background-color:#4F46E5;background-image:linear-gradient(135deg,#7C3AED 0%,#4F46E5 55%,#14B8A6 100%);padding:36px 28px 32px;text-align:center;">
+      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 22px;"><tr><td style="background:#ffffff;border-radius:10px;padding:8px 14px;">
+        <img src="${EMAIL_LOGO_URL}" alt="MetaLink NFT" style="height:24px;display:block;">
+      </td></tr></table>
+      <div style="font-size:30px;line-height:1;letter-spacing:6px;margin-bottom:14px;">&#127881;&#127942;&#127881;</div>
+      <div style="font-size:14px;font-weight:700;letter-spacing:3px;color:#e0e7ff;text-transform:uppercase;">Congratulations</div>
+      <h1 style="margin:8px 0 22px;font-size:28px;line-height:1.25;color:#ffffff;">You've been upgraded!</h1>
+      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto;"><tr><td style="background:#ffffff;border-radius:999px;padding:12px 34px;">
+        <span style="font-size:13px;font-weight:700;letter-spacing:2px;color:#7C3AED;">LEVEL</span>
+        <span style="font-size:34px;font-weight:800;color:#1e2329;vertical-align:middle;margin-left:6px;">${level}</span>
+      </td></tr></table>
+    </div>
+    <div style="padding:28px 28px 8px;">
+      <p style="margin:0 0 14px;font-size:16px;line-height:1.6;">Hi <strong>${escHtml(username)}</strong>,</p>
+      <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#474d57;">Great news &mdash; your wallet balance has crossed the threshold for <strong>Level ${level}</strong>, and your MetaLink NFT account has been upgraded automatically.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4fa;border-radius:10px;margin:0 0 18px;">
+        <tr><td style="padding:14px 16px;font-size:13px;color:#707a8a;">New level</td><td style="padding:14px 16px;text-align:right;font-size:15px;font-weight:800;color:#7C3AED;">LV ${level}</td></tr>
+        <tr><td style="padding:0 16px 14px;font-size:13px;color:#707a8a;">Current balance</td><td style="padding:0 16px 14px;text-align:right;font-size:15px;font-weight:800;">${fmtMoney(balance)} USDT</td></tr>
+      </table>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#474d57;">Higher levels unlock better opportunities across the platform. Keep growing your balance to reach the next one &mdash; and share your win with the community!</p>
+      ${emailButton('Open My Account', SITE_URL + '/app.html')}
+    </div>
+    ${emailFooter()}
+  </div></div>`;
 }
 
 function fmtMoney(n) { return parseFloat(n || 0).toFixed(2); }
@@ -364,6 +385,41 @@ function checkAndApplyLevelUpgrade(user, config, emails) {
     user.level = newLevel;
     emails.push([user.email, `Congratulations! You've reached Level ${newLevel}`, levelUpgradeEmailHtml(user.username, newLevel, user.walletBalance)]);
   }
+}
+
+// Ledger: one row per balance change, shown to the user as Account Activity. Call it right after
+// changing user.walletBalance (inside the same transaction) so balanceAfter is accurate.
+const TX_LABELS = {
+  signup_bonus: 'Sign-up Bonus',
+  checkin: 'Daily Check-in Reward',
+  deposit: 'Deposit',
+  withdrawal: 'Withdrawal',
+  withdrawal_refund: 'Withdrawal Refund',
+  stake: 'Stake',
+  stake_return: 'Stake Principal Returned',
+  stake_income: 'Stake Income',
+  earn: 'Earn Plan',
+  earn_return: 'Earn Principal Returned',
+  earn_income: 'Earn Income',
+  reserve_reward: 'Reservation Reward',
+  team_commission: 'Team Commission',
+  admin_credit: 'Balance Credit',
+  admin_debit: 'Balance Deduction'
+};
+
+async function recordTx(c, user, type, amount, description = '', refId = null, createdAt = null) {
+  amount = parseFloat(Number(amount).toFixed(5));
+  if (!amount) return;
+  await db.insertDoc(c, 'transactions', {
+    id: generateId(),
+    userId: user.id,
+    type,
+    amount,
+    balanceAfter: user.walletBalance !== undefined ? parseFloat(Number(user.walletBalance).toFixed(5)) : null,
+    description,
+    refId,
+    createdAt: createdAt || new Date().toISOString()
+  });
 }
 
 function sendQueuedEmails(emails) {
@@ -607,6 +663,7 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
       dailyIncome: { comprehensive: 0, reserve: 0, team: 0, activity: 0, finance: 0, earn: 0, ecology: 0, growth: 0, stake: 0 }
     };
     await db.insertUser(c, user);
+    await recordTx(c, user, 'signup_bonus', signupBonus, 'Welcome bonus for creating your account');
     await recordUserIp(user.id, ip, c);
 
     const tiers = ['A', 'B', 'C'];
@@ -993,6 +1050,7 @@ app.post('/api/stakes', authMiddleware, async (req, res) => {
       claimed: false
     };
     await db.insertDoc(c, 'user_stakes', stake);
+    await recordTx(c, user, 'stake', -totalCharge, `${nft.name} ${stake.nftNumber}${fee ? ` (incl. ${fee} USDT fee)` : ''}`, stake.id);
     return { status: 200, body: stake };
   });
 
@@ -1012,20 +1070,24 @@ app.post('/api/stakes/:id/claim', authMiddleware, async (req, res) => {
     const start = new Date(stake.startDate);
     const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), stake.duration);
     const dailyRate = parseFloat(stake.dailyIncome) / 100;
-    const income = stake.pledgeValue * dailyRate * daysElapsed;
+    // Rounded once, so the recorded income is exactly what gets credited.
+    const income = parseFloat((stake.pledgeValue * dailyRate * daysElapsed).toFixed(5));
 
-    stake.income = parseFloat(income.toFixed(5));
+    stake.income = income;
     stake.claimed = true;
     stake.status = 'completed';
     await db.saveDoc(c, 'user_stakes', stake);
 
-    user.walletBalance += stake.pledgeValue + income;
+    user.walletBalance += stake.pledgeValue;
+    await recordTx(c, user, 'stake_return', stake.pledgeValue, `${stake.nftName} ${stake.nftNumber}`, stake.id);
+    user.walletBalance += income;
+    await recordTx(c, user, 'stake_income', income, `${stake.nftName} ${stake.nftNumber} · ${stake.dailyIncome}/day`, stake.id);
     user.totalIncome += income;
     user.dailyIncome.stake += income;
     checkAndApplyLevelUpgrade(user, await getConfig(c), emails);
     await db.saveUser(c, user);
 
-    return { status: 200, body: { message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) } };
+    return { status: 200, body: { message: 'Claimed successfully', income, name: `${stake.nftName} ${stake.nftNumber}`, days: stake.duration } };
   });
 
   sendQueuedEmails(emails);
@@ -1091,6 +1153,7 @@ app.post('/api/earn', authMiddleware, async (req, res) => {
       claimed: false
     };
     await db.insertDoc(c, 'earn_positions', position);
+    await recordTx(c, user, 'earn', -plan.amount, `${plan.categoryLabel} · ${plan.name}`, position.id);
     return { status: 200, body: position };
   });
 
@@ -1108,21 +1171,24 @@ app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
     const now = new Date();
     const start = new Date(position.startDate);
     const daysElapsed = Math.min((now - start) / (1000 * 60 * 60 * 24), position.days);
-    const income = position.amount * (position.dailyRatePct / 100) * daysElapsed;
+    const income = parseFloat((position.amount * (position.dailyRatePct / 100) * daysElapsed).toFixed(5));
 
-    position.income = parseFloat(income.toFixed(5));
+    position.income = income;
     position.claimed = true;
     position.status = 'completed';
     await db.saveDoc(c, 'earn_positions', position);
 
-    user.walletBalance += position.amount + income;
+    user.walletBalance += position.amount;
+    await recordTx(c, user, 'earn_return', position.amount, `${position.categoryLabel} · ${position.planName}`, position.id);
+    user.walletBalance += income;
+    await recordTx(c, user, 'earn_income', income, `${position.categoryLabel} · ${position.planName} · ${position.dailyRatePct}%/day`, position.id);
     user.totalIncome += income;
     const cat = position.category;
     if (user.dailyIncome[cat] !== undefined) user.dailyIncome[cat] += income;
     checkAndApplyLevelUpgrade(user, await getConfig(c), emails);
     await db.saveUser(c, user);
 
-    return { status: 200, body: { message: 'Claimed successfully', income: parseFloat(income.toFixed(5)) } };
+    return { status: 200, body: { message: 'Claimed successfully', income, name: `${position.categoryLabel} · ${position.planName}` } };
   });
 
   sendQueuedEmails(emails);
@@ -1224,7 +1290,8 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
     const cfg = await getConfig(c);
     const winRatePct = cfg.reserveWinRatePct !== undefined ? parseFloat(cfg.reserveWinRatePct) : 70;
     const won = Math.random() * 100 < winRatePct;
-    const reward = won ? amount * (level.rewardPct / 100) : 0;
+    // Rounded once, so the amount shown on the order is exactly what gets credited.
+    const reward = won ? parseFloat((amount * (level.rewardPct / 100)).toFixed(2)) : 0;
 
     const order = {
       id: generateId(),
@@ -1248,6 +1315,7 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
       user.walletBalance += amount + reward;
       user.totalIncome += reward;
       user.dailyIncome.reserve += reward;
+      await recordTx(c, user, 'reserve_reward', order.reward, `${level.name} · Level ${level.level} · Order ${order.orderNumber}`, order.id);
     } else {
       user.walletBalance += amount;
     }
@@ -1273,9 +1341,34 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
   const totalWithdrawn = withdrawals.filter(w => w.status === 'Approved').reduce((s, w) => s + w.amount, 0);
   const notWithdrawn = user.totalIncome - totalWithdrawn;
 
+  // Everything that changed the balance comes from the ledger. Deposits/withdrawals the ledger doesn't
+  // cover (still pending, rejected, or from before the ledger existed) come from their own records.
+  const txs = await db.listDocs(pool, 'transactions', { userId: req.userId });
+  const ledgerDeposits = new Set(txs.filter(t => t.type === 'deposit').map(t => t.refId));
+  const ledgerWithdrawals = new Set(txs.filter(t => t.type === 'withdrawal').map(t => t.refId));
+  const withdrawalById = Object.fromEntries(withdrawals.map(w => [w.id, w]));
+  const withdrawalStatus = w => !w ? 'Completed' : w.status === 'Approved' ? 'Completed' : w.status === 'Rejected' ? 'Rejected' : 'Processing';
+
   const history = [
-    ...withdrawals.map(w => ({ type: 'Withdraw', amount: -w.amount, date: w.createdAt, status: w.status === 'Approved' ? 'Deposited' : w.status === 'Rejected' ? 'Rejected' : 'Processing' })),
-    ...deposits.map(d => ({ type: 'Deposit', amount: d.amount, date: d.createdAt, status: d.status === 'Approved' ? 'Deposited' : d.status === 'Rejected' ? 'Rejected' : 'Processing' })),
+    ...txs.map(t => ({
+      kind: t.type,
+      type: TX_LABELS[t.type] || t.type,
+      description: t.description || '',
+      amount: t.amount,
+      balanceAfter: t.balanceAfter,
+      date: t.createdAt,
+      status: t.type === 'withdrawal' ? withdrawalStatus(withdrawalById[t.refId]) : 'Completed'
+    })),
+    ...withdrawals.filter(w => !ledgerWithdrawals.has(w.id)).map(w => ({
+      kind: 'withdrawal', type: TX_LABELS.withdrawal, description: '', amount: -w.amount, date: w.createdAt, status: withdrawalStatus(w)
+    })),
+    ...deposits.filter(d => !ledgerDeposits.has(d.id)).map(d => ({
+      kind: 'deposit', type: TX_LABELS.deposit,
+      description: d.status === 'Pending' ? 'Waiting for confirmation' : d.status === 'Rejected' ? 'Not credited' : '',
+      // Pending/rejected deposits haven't changed the balance.
+      amount: d.amount, pending: d.status !== 'Approved', date: d.createdAt,
+      status: d.status === 'Approved' ? 'Completed' : d.status === 'Rejected' ? 'Rejected' : 'Processing'
+    }))
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   res.json({
@@ -1342,6 +1435,7 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await db.insertDoc(c, 'withdrawals', withdrawal);
+    await recordTx(c, user, 'withdrawal', -amount, `To ${withdrawal.walletType.toUpperCase()} ${walletAddr.slice(0, 6)}…${walletAddr.slice(-4)} · fee ${fee} USDT`, withdrawal.id);
     return { status: 200, body: withdrawal };
   });
 
@@ -1454,6 +1548,7 @@ app.post('/api/checkin', authMiddleware, async (req, res) => {
     user.lastCheckinAt = new Date(now).toISOString();
     user.checkinTotal = parseFloat(((user.checkinTotal || 0) + status.reward).toFixed(2));
     user.walletBalance += status.reward;
+    await recordTx(c, user, 'checkin', status.reward, `Day ${user.checkinStreak} of your check-in streak`);
     user.totalIncome += status.reward;
     user.dailyIncome = user.dailyIncome || {};
     user.dailyIncome.activity = (user.dailyIncome.activity || 0) + status.reward;
@@ -1718,7 +1813,12 @@ app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
     const user = await db.getUser(c, req.params.id, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
 
-    if (walletBalance !== undefined) user.walletBalance = parseFloat(walletBalance);
+    if (walletBalance !== undefined) {
+      const before = user.walletBalance;
+      user.walletBalance = parseFloat(walletBalance);
+      const diff = user.walletBalance - before; // the edit form always sends the balance; only log real changes
+      if (Math.abs(diff) >= 0.000005) await recordTx(c, user, diff > 0 ? 'admin_credit' : 'admin_debit', diff, 'Adjusted by MetaLink support');
+    }
     if (level !== undefined) user.level = parseInt(level);
     if (points !== undefined) user.points = parseFloat(points);
     if (username !== undefined) user.username = username;
@@ -1773,12 +1873,14 @@ app.put('/api/admin/users/:id/balance', adminMiddleware, async (req, res) => {
         createdAt: new Date().toISOString()
       };
       await db.insertDoc(c, 'deposits', deposit);
+      await recordTx(c, u, 'deposit', deposit.amount, 'Credited by MetaLink support', deposit.id);
       const { subject, html } = depositEmail('approved', u.username, deposit, u.walletBalance);
       emails.push([u.email, subject, html]);
-    } else if (action === 'subtract') {
-      u.walletBalance = Math.max(0, u.walletBalance - parseFloat(amount));
-    } else if (action === 'set') {
-      u.walletBalance = parseFloat(amount);
+    } else if (action === 'subtract' || action === 'set') {
+      const before = u.walletBalance;
+      u.walletBalance = action === 'subtract' ? Math.max(0, u.walletBalance - parseFloat(amount)) : parseFloat(amount);
+      const diff = u.walletBalance - before;
+      await recordTx(c, u, diff > 0 ? 'admin_credit' : 'admin_debit', diff, 'Adjusted by MetaLink support');
     }
     checkAndApplyLevelUpgrade(u, await getConfig(c), emails);
     return db.saveUser(c, u);
@@ -1812,6 +1914,7 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
       if (user) {
         user.walletBalance += w.amount;
         user.totalWithdrawn -= w.amount;
+        await recordTx(c, user, 'withdrawal_refund', w.amount, 'Withdrawal request was not approved — amount returned', w.id);
         await db.saveUser(c, user);
       }
     }
@@ -1883,6 +1986,7 @@ app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
       if (user) {
         const cfg = await getConfig(c);
         user.walletBalance += d.amount;
+        await recordTx(c, user, 'deposit', d.amount, d.network ? `USDT · ${d.network === 'bep20' ? 'BEP20' : 'TRC20'}` : 'USDT', d.id);
         checkAndApplyLevelUpgrade(user, cfg, emails);
         const { subject, html } = depositEmail('approved', user.username, d, user.walletBalance);
         emails.push([user.email, subject, html]);
@@ -1901,6 +2005,7 @@ app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
             if (!referrer) break;
             const bonus = parseFloat((d.amount * tiers[i].pct / 100).toFixed(2));
             referrer.walletBalance += bonus;
+            await recordTx(c, referrer, 'team_commission', bonus, `Level ${tiers[i].tier} (${tiers[i].pct}%) from ${user.username}'s ${d.amount} USDT deposit`, d.id);
             referrer.totalIncome += bonus;
             referrer.dailyIncome.team += bonus;
             checkAndApplyLevelUpgrade(referrer, cfg, emails);
@@ -2134,10 +2239,53 @@ function listen() {
   });
 }
 
+// One-time: add ledger rows for earnings that happened before the ledger existed, using the dates
+// the original records carry. Stake/earn claim times weren't stored, so those use the plan's end date
+// (or the backfill time if the plan was claimed early). balanceAfter is unknown for these rows.
+async function backfillLedger() {
+  await tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(424245)');
+    const done = await c.query("SELECT 1 FROM app.settings WHERE key = '_ledger_backfill_done'");
+    if (done.rows.length) return;
+    const nowIso = new Date().toISOString();
+    const pastOrNow = iso => (iso && iso < nowIso ? iso : nowIso);
+    let n = 0;
+    const add = async (userId, type, amount, description, refId, createdAt) => {
+      if (!userId || !(amount > 0)) return;
+      await recordTx(c, { id: userId }, type, amount, description, refId, createdAt);
+      n++;
+    };
+
+    for (const o of await db.listDocs(c, 'reserve_orders')) {
+      if (o.status === 'Won') await add(o.userId, 'reserve_reward', o.reward, `${o.itemName || 'Reservation'} · Level ${o.level} · Order ${o.orderNumber}`, o.id, o.reservationDate);
+    }
+    for (const d of await db.listDocs(c, 'deposits')) {
+      for (const p of d.referralPayouts || []) {
+        await add(p.userId, 'team_commission', p.bonus, `Level ${p.tier} (${p.pct}%) from a ${d.amount} USDT team deposit`, d.id, d.processedAt || d.createdAt);
+      }
+    }
+    for (const s of await db.listDocs(c, 'user_stakes')) {
+      if (!s.claimed) continue;
+      const at = pastOrNow(s.endDate);
+      await add(s.userId, 'stake_return', s.pledgeValue, `${s.nftName} ${s.nftNumber || ''}`.trim(), s.id, at);
+      await add(s.userId, 'stake_income', s.income, `${s.nftName} ${s.nftNumber || ''} · ${s.dailyIncome}/day`.trim(), s.id, at);
+    }
+    for (const p of await db.listDocs(c, 'earn_positions')) {
+      if (!p.claimed) continue;
+      const at = pastOrNow(p.endDate);
+      await add(p.userId, 'earn_return', p.amount, `${p.categoryLabel} · ${p.planName}`, p.id, at);
+      await add(p.userId, 'earn_income', p.income, `${p.categoryLabel} · ${p.planName} · ${p.dailyRatePct}%/day`, p.id, at);
+    }
+    await db.setSetting(c, '_ledger_backfill_done', { at: nowIso, rows: n });
+    console.log(`[DB] Ledger backfill: added ${n} past activity rows.`);
+  });
+}
+
 async function startServer() {
   if (cluster.isPrimary) {
     // One-time setup runs once, in the primary, before any worker starts taking requests.
     await db.initDb(DATA_DIR);
+    await backfillLedger();
     await initAdmin();
     await initStakes();
     setInterval(() => db.cleanupExpired().catch(e => console.error('[DB] cleanup failed:', e.message)), 10 * 60 * 1000).unref();

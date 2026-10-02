@@ -30,7 +30,9 @@ const DOC_TABLES = {
   reserve_orders: 'reserve_orders.json',
   user_stakes: 'user_stakes.json',
   wallet_submissions: 'wallet_submissions.json',
-  withdrawals: 'withdrawals.json'
+  withdrawals: 'withdrawals.json',
+  // Ledger of every balance change (new; no legacy JSON file, so the import finds nothing).
+  transactions: 'transactions.json'
 };
 
 // All tables live in their own `app` schema: the public schema holds unrelated leftover tables
