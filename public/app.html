@@ -554,7 +554,7 @@
     }
     .my-section-link:hover { opacity: 0.8; }
 
-    .my-income-wrap { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+    .my-income-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0; }
     .my-income-col:first-child { padding-right: 14px; border-right: 1px solid var(--border); }
     .my-income-col:last-child { padding-left: 14px; }
     .my-income-col-title { font-size: 0.78rem; font-weight: 700; margin-bottom: 10px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.3px; }
@@ -1081,8 +1081,141 @@
     }
     .brand-loader-overlay.fade-out { opacity: 0; pointer-events: none; }
 
+    .badge-processing { background: rgba(245,158,11,0.15); color: var(--warning); }
+
+    /* ---- Deposit page (exchange-style, full screen) ---- */
+    .dep-page {
+      position: fixed; inset: 0; z-index: 210; background: var(--bg);
+      display: flex; flex-direction: column; transform: translateX(100%);
+      transition: transform 0.3s ease; visibility: hidden;
+    }
+    .dep-page.active { transform: translateX(0); visibility: visible; }
+    .dep-topbar {
+      flex-shrink: 0; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+    }
+    .dep-topbar h2 { flex: 1; font-size: 1.05rem; font-weight: 700; }
+    .dep-icon-btn {
+      width: 40px; height: 40px; border-radius: 10px; border: none; background: none; color: var(--text);
+      display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .dep-icon-btn:hover { background: var(--surface-hover); }
+    .dep-scroll { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    .dep-inner { max-width: 560px; margin: 0 auto; padding: 16px 16px 120px; }
+    .dep-coin {
+      display: flex; align-items: center; gap: 12px; padding: 14px 16px; margin-bottom: 20px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    }
+    .dep-coin-name { font-weight: 800; font-size: 1rem; }
+    .dep-coin-sub { font-size: 0.78rem; color: var(--text-muted); }
+    .dep-step { display: flex; align-items: center; gap: 10px; margin: 4px 0 12px; }
+    .dep-step-num {
+      width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; background: var(--gradient); color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 800;
+    }
+    .dep-step-title { font-size: 0.95rem; font-weight: 700; }
+    .dep-networks { display: grid; gap: 10px; margin-bottom: 24px; }
+    .dep-network {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 14px 16px;
+      background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; cursor: pointer;
+      font-family: var(--font); color: var(--text); transition: border-color var(--transition), background var(--transition);
+    }
+    .dep-network.active { border-color: var(--primary); background: rgba(79,70,229,0.08); }
+    .dep-network-badge {
+      flex-shrink: 0; min-width: 46px; padding: 4px 8px; border-radius: 8px; text-align: center;
+      font-size: 0.72rem; font-weight: 800; letter-spacing: 0.3px; color: #fff;
+    }
+    .dep-network-badge.trx { background: #EB0029; }
+    .dep-network-badge.bsc { background: #F0B90B; color: #1E2329; }
+    .dep-network-info { flex: 1; min-width: 0; }
+    .dep-network-name { font-size: 0.9rem; font-weight: 700; }
+    .dep-network-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .dep-network-check { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; position: relative; }
+    .dep-network.active .dep-network-check { border-color: var(--primary); background: var(--primary); }
+    .dep-network.active .dep-network-check::after {
+      content: ''; position: absolute; left: 5px; top: 1px; width: 5px; height: 10px;
+      border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+    }
+    .dep-address-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+      padding: 20px 16px; margin-bottom: 24px; text-align: center;
+    }
+    .dep-qr { width: 176px; height: 176px; margin: 0 auto 16px; padding: 10px; background: #fff; border-radius: 12px; }
+    .dep-qr img { width: 100%; height: 100%; display: block; image-rendering: pixelated; }
+    .dep-qr-empty { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; color: #999; font-size: 0.8rem; }
+    .dep-addr-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 6px; text-align: left; }
+    .dep-addr-box {
+      display: flex; align-items: center; gap: 10px; text-align: left; padding: 12px 14px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+    }
+    .dep-addr-text { flex: 1; min-width: 0; font-family: 'Courier New', monospace; font-size: 0.85rem; font-weight: 700; word-break: break-all; }
+    .dep-copy-btn {
+      flex-shrink: 0; display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: none; border-radius: 8px;
+      background: var(--primary); color: #fff; font-family: var(--font); font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    }
+    .dep-facts { margin-top: 14px; text-align: left; }
+    .dep-fact { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 0.8rem; border-bottom: 1px dashed var(--border); }
+    .dep-fact:last-child { border-bottom: none; }
+    .dep-fact span:first-child { color: var(--text-muted); }
+    .dep-fact span:last-child { font-weight: 700; text-align: right; }
+    .dep-upload, .form-field label.dep-upload {
+      display: flex; flex-direction: column; margin-bottom: 0; align-items: center; justify-content: center; gap: 6px;
+      min-height: 150px; padding: 18px; border: 2px dashed var(--border); border-radius: 14px; cursor: pointer;
+      background: var(--surface); color: var(--text-secondary); text-align: center; transition: border-color var(--transition);
+    }
+    .dep-upload:hover, .dep-upload.has-file { border-color: var(--primary); }
+    .dep-upload strong { color: var(--text); font-size: 0.9rem; }
+    .dep-upload small { font-size: 0.75rem; color: var(--text-muted); }
+    .dep-upload img { max-width: 100%; max-height: 260px; border-radius: 10px; display: block; }
+    .dep-submit-bar {
+      position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+      background: var(--surface); border-top: 1px solid var(--border);
+    }
+    .dep-submit-bar .btn { max-width: 528px; margin: 0 auto; display: block; }
+    .dep-history-item {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0;
+      border-bottom: 1px solid var(--border); font-size: 0.85rem;
+    }
+    .dep-history-item:last-child { border-bottom: none; }
+    .dep-history-sub { font-size: 0.72rem; color: var(--text-muted); }
+
+    /* ---- Profile picture upload ---- */
+    .avatar-edit { position: relative; cursor: pointer; flex-shrink: 0; border: none; background: none; padding: 0; }
+    .avatar-edit-badge {
+      position: absolute; right: -4px; bottom: -4px; width: 22px; height: 22px; border-radius: 50%;
+      background: var(--primary); color: #fff; border: 2px solid var(--surface);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .avatar-edit.uploading .profile-avatar { opacity: 0.5; }
+
+    /* ---- Daily check-in ---- */
+    .checkin-card {
+      display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 16px;
+      border-radius: var(--radius); border: 1px solid rgba(124,58,237,0.25);
+      background: linear-gradient(135deg, rgba(124,58,237,0.16), rgba(20,184,166,0.12));
+    }
+    .checkin-icon {
+      width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; background: var(--gradient); color: #fff;
+      display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(124,58,237,0.3);
+    }
+    .checkin-info { flex: 1; min-width: 0; }
+    .checkin-title { font-size: 0.95rem; font-weight: 800; }
+    .checkin-sub { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; }
+    .checkin-btn {
+      flex-shrink: 0; padding: 10px 18px; border: none; border-radius: 30px; background: var(--gradient); color: #fff;
+      font-family: var(--font); font-size: 0.82rem; font-weight: 800; cursor: pointer; white-space: nowrap;
+    }
+    .checkin-btn:disabled { background: var(--surface-hover); color: var(--text-muted); cursor: default; font-variant-numeric: tabular-nums; }
+
     /* ---- Responsive ---- */
     @media (max-width: 380px) {
+      .checkin-card { flex-wrap: wrap; }
+      .my-income-col:first-child { padding-right: 8px; }
+      .my-income-col:last-child { padding-left: 8px; }
+      .my-income-row { gap: 6px; }
+      .my-income-row .label { font-size: 0.72rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .checkin-btn { width: 100%; }
+      .dep-qr { width: 150px; height: 150px; }
       .my-quick-actions { grid-template-columns: repeat(2, 1fr); }
       .my-actions-row { grid-template-columns: repeat(2, 1fr); }
       .my-stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
@@ -1187,6 +1320,7 @@
 
     <!-- ===== STAKE TAB ===== -->
     <div class="tab-page active" id="page-stake">
+      <div class="checkin-slot" data-only-claimable="true"></div>
       <!-- Sub tabs -->
       <div class="stake-subtabs">
         <button class="stake-subtab active" data-stab="stake" onclick="switchStakeTab('stake')">Stake</button>
@@ -1487,7 +1621,10 @@
 
         <!-- Profile Header -->
         <div class="my-profile-header">
-          <div class="profile-avatar" id="profileAvatar">U</div>
+          <button type="button" class="avatar-edit" onclick="pickAvatar()" title="Change profile picture" aria-label="Change profile picture">
+            <div class="profile-avatar" id="profileAvatar">U</div>
+            <span class="avatar-edit-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+          </button>
           <div class="my-profile-info">
             <div class="profile-name" id="profileName">User</div>
             <div class="profile-uid" id="profileUid">UID: ---</div>
@@ -1509,6 +1646,8 @@
           <div class="my-wallet-amount" id="profileBalance">$0.00</div>
           <div class="my-wallet-token">MLK Token / USDT</div>
         </div>
+
+        <div class="checkin-slot"></div>
 
         <!-- Quick Actions -->
         <div class="my-quick-actions">
@@ -1790,7 +1929,10 @@
         </button>
 
         <div class="settings-profile-card">
-          <div class="profile-avatar" id="settingsAvatar">U</div>
+          <button type="button" class="avatar-edit" onclick="pickAvatar()" title="Change profile picture" aria-label="Change profile picture">
+            <div class="profile-avatar" id="settingsAvatar">U</div>
+            <span class="avatar-edit-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></span>
+          </button>
           <div class="settings-profile-info">
             <div class="settings-profile-name" id="settingsName">User</div>
             <div class="settings-profile-uid" id="settingsUid">UID: ---</div>
@@ -1873,56 +2015,97 @@
     </button>
   </nav>
 
-  <!-- Deposit Modal -->
-  <div class="modal-overlay" id="depositModal">
-    <div class="modal-sheet" id="depositSheet">
-      <div class="modal-handle"></div>
-      <div class="modal-title">Deposit USDT</div>
+  <!-- Deposit Page (full screen, exchange-style: network -> address -> proof) -->
+  <div class="dep-page" id="depositPage" aria-hidden="true">
+    <div class="dep-topbar">
+      <button class="dep-icon-btn" onclick="closeDepositPage()" aria-label="Back">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <h2>Deposit USDT</h2>
+      <button class="dep-icon-btn" onclick="document.getElementById('depHistorySection').scrollIntoView({ behavior: 'smooth' })" aria-label="Deposit history">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </button>
+    </div>
+    <div class="dep-scroll">
+      <div class="dep-inner">
+        <div class="dep-coin">
+          <svg width="36" height="36" viewBox="0 0 24 24"><circle cx="12" cy="12" r="12" fill="#26A17B"/><path d="M13.5 8.5V10.7C15.7 10.9 17.4 11.5 17.4 12.3C17.4 13.1 15.7 13.7 13.5 13.9V17H10.5V13.9C8.3 13.7 6.6 13.1 6.6 12.3C6.6 11.5 8.3 10.9 10.5 10.7V8.5H7V6.5H17V8.5H13.5Z" fill="#fff"/></svg>
+          <div>
+            <div class="dep-coin-name">USDT</div>
+            <div class="dep-coin-sub">TetherUS</div>
+          </div>
+        </div>
 
-      <div class="deposit-network-tabs">
-        <button class="deposit-network-tab active" data-network="trc20" onclick="switchDepositNetwork('trc20')">TRC-20</button>
-        <button class="deposit-network-tab" data-network="bep20" onclick="switchDepositNetwork('bep20')">BEP-20</button>
-      </div>
-
-      <!-- QR Code -->
-      <div class="deposit-qr-wrap" id="depositQrWrap">
-        <div class="deposit-qr"><canvas id="depositQrCanvas" width="180" height="180"></canvas></div>
-        <div class="deposit-qr-label">Scan to get deposit address</div>
-      </div>
-
-      <div class="deposit-addr-block" id="depositAddrTrc20">
-        <div class="deposit-addr-label">USDT Deposit Address (TRC-20)</div>
-        <div class="deposit-addr-row">
-          <span class="deposit-addr-text" id="depAddrTrc20Val" data-hidden="true">********************************</span>
-          <button class="deposit-eye-btn" onclick="toggleDepositAddr('trc20')" title="Show/Hide">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div class="dep-step"><span class="dep-step-num">1</span><span class="dep-step-title">Select network</span></div>
+        <div class="dep-networks">
+          <button class="dep-network active" data-network="trc20" onclick="selectDepositNetwork('trc20')">
+            <span class="dep-network-badge trx">TRX</span>
+            <span class="dep-network-info">
+              <span class="dep-network-name" style="display:block;">Tron (TRC20)</span>
+              <span class="dep-network-meta" style="display:block;">Arrival time &asymp; 2 mins &middot; 1 confirmation</span>
+            </span>
+            <span class="dep-network-check"></span>
           </button>
-          <button class="deposit-copy-btn" onclick="copyDepositAddr('trc20')">Copy</button>
+          <button class="dep-network" data-network="bep20" onclick="selectDepositNetwork('bep20')">
+            <span class="dep-network-badge bsc">BSC</span>
+            <span class="dep-network-info">
+              <span class="dep-network-name" style="display:block;">BNB Smart Chain (BEP20)</span>
+              <span class="dep-network-meta" style="display:block;">Arrival time &asymp; 1 min &middot; 15 confirmations</span>
+            </span>
+            <span class="dep-network-check"></span>
+          </button>
+        </div>
+
+        <div class="dep-step"><span class="dep-step-num">2</span><span class="dep-step-title">Send USDT to this address</span></div>
+        <div class="dep-address-card">
+          <div class="dep-qr" id="depQr"><div class="dep-qr-empty">Loading&hellip;</div></div>
+          <div class="dep-addr-label">Deposit address</div>
+          <div class="dep-addr-box">
+            <span class="dep-addr-text" id="depAddrText">&mdash;</span>
+            <button class="dep-copy-btn" onclick="copyDepositAddress()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="dep-facts">
+            <div class="dep-fact"><span>Network</span><span id="depFactNetwork">Tron (TRC20)</span></div>
+            <div class="dep-fact"><span>Minimum deposit</span><span id="depFactMin">50 USDT</span></div>
+            <div class="dep-fact"><span>Credited to</span><span>Wallet balance (after review)</span></div>
+          </div>
+        </div>
+
+        <div class="deposit-warning">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <p>Send only <strong>USDT</strong> to this address, on the <strong id="depWarnNetwork">Tron (TRC20)</strong> network. Sending any other coin or using a different network may result in the loss of your deposit.</p>
+        </div>
+
+        <div class="dep-step"><span class="dep-step-num">3</span><span class="dep-step-title">Submit your deposit for review</span></div>
+        <div class="form-field">
+          <label for="depositAmount">Amount sent (USDT)</label>
+          <input type="number" id="depositAmount" placeholder="Minimum 50" min="0" step="0.01" inputmode="decimal">
+        </div>
+        <div class="form-field">
+          <label for="depositTxid">Transaction ID / Hash <span style="font-weight:400;color:var(--text-muted);">(optional)</span></label>
+          <input type="text" id="depositTxid" placeholder="Paste the TxID from your wallet" maxlength="120" autocomplete="off">
+        </div>
+        <div class="form-field">
+          <label>Payment screenshot</label>
+          <label class="dep-upload" id="depUploadBox" for="depositScreenshot">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            <strong>Tap to upload screenshot</strong>
+            <small>Show the completed transfer, amount and address. PNG or JPG.</small>
+          </label>
+          <input type="file" id="depositScreenshot" accept="image/png,image/jpeg,image/webp" style="display:none;">
+        </div>
+
+        <div id="depHistorySection" style="margin-top:28px;">
+          <div class="card-title">Recent deposits</div>
+          <div class="card" id="depHistoryList"><div class="empty-state"><p>No deposits yet</p></div></div>
         </div>
       </div>
-
-      <div class="deposit-addr-block" id="depositAddrBep20" style="display:none;">
-        <div class="deposit-addr-label">USDT Deposit Address (BEP-20)</div>
-        <div class="deposit-addr-row">
-          <span class="deposit-addr-text" id="depAddrBep20Val" data-hidden="true">********************************</span>
-          <button class="deposit-eye-btn" onclick="toggleDepositAddr('bep20')" title="Show/Hide">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-          </button>
-          <button class="deposit-copy-btn" onclick="copyDepositAddr('bep20')">Copy</button>
-        </div>
-      </div>
-
-      <div class="deposit-warning">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        <p>Only send USDT on the selected network. Sending other tokens or using the wrong network may result in permanent loss of funds.</p>
-      </div>
-
-      <div class="form-field">
-        <label>Deposit Amount (USDT)</label>
-        <input type="number" id="depositAmount" placeholder="Minimum $50" min="50">
-      </div>
-      <button class="btn btn-primary" id="depositBtn">Submit Deposit Request</button>
-      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+    <div class="dep-submit-bar">
+      <button class="btn btn-primary" id="depositBtn">Submit Deposit</button>
     </div>
   </div>
 
@@ -2068,6 +2251,8 @@
 
   <!-- Team Modal removed - now uses inline team page view -->
 
+  <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/webp" style="display:none;">
+
   <script>
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2145,7 +2330,8 @@
       else if (tab === 'earn') loadEarn();
       else if (tab === 'reserve') loadReserve();
       else if (tab === 'assets') loadAssets();
-      else if (tab === 'my') loadProfile();
+      else if (tab === 'my') { loadProfile(); loadCheckin(); }
+      if (tab === 'stake') loadCheckin();
     }
 
     // ---- STAKE ----
@@ -2964,30 +3150,122 @@
       else el.classList.remove('deposit-addr-placeholder');
     }
 
+    // ---- Deposit page ----
+    const DEPOSIT_NETWORK_LABELS = { trc20: 'Tron (TRC20)', bep20: 'BNB Smart Chain (BEP20)' };
+    let depositScreenshotDataUrl = '';
+
+    // Shrinks a photo/screenshot client-side before upload (phone screenshots can be 5-10 MB).
+    // With `square`, center-crops to a square (used for profile pictures).
+    function compressImage(file, maxDim, quality, square = false) {
+      return new Promise((resolve, reject) => {
+        if (!file || !/^image\//.test(file.type)) return reject(new Error('Please choose an image file'));
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Could not read that image'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('Could not read that image'));
+          img.onload = () => {
+            let sx = 0, sy = 0, sw = img.width, sh = img.height;
+            if (square) {
+              const side = Math.min(sw, sh);
+              sx = (sw - side) / 2; sy = (sh - side) / 2; sw = sh = side;
+            }
+            const scale = Math.min(1, maxDim / Math.max(sw, sh));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.round(sw * scale);
+            canvas.height = Math.round(sh * scale);
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
     async function openDepositModal() {
-      openModal('depositModal');
+      const page = document.getElementById('depositPage');
+      page.classList.add('active');
+      page.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      resetDepositForm();
       const addrs = await loadPlatformAddresses();
-      setAddrField(document.getElementById('depAddrTrc20Val'), addrs.trc20);
-      setAddrField(document.getElementById('depAddrBep20Val'), addrs.bep20);
-      currentDepositNetwork = 'trc20';
-      renderDepositQR(addrs.trc20);
+      const min = addrs.minDeposit ?? 50;
+      document.getElementById('depFactMin').textContent = min + ' USDT';
+      document.getElementById('depositAmount').placeholder = 'Minimum ' + min;
+      selectDepositNetwork(addrs.trc20 || !addrs.bep20 ? 'trc20' : 'bep20');
+      loadDepositHistory();
     }
 
-    function switchDepositNetwork(network) {
+    function closeDepositPage() {
+      const page = document.getElementById('depositPage');
+      page.classList.remove('active');
+      page.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
+    function selectDepositNetwork(network) {
       currentDepositNetwork = network;
-      document.querySelectorAll('.deposit-network-tab').forEach(t => t.classList.remove('active'));
-      document.querySelector(`.deposit-network-tab[data-network="${network}"]`).classList.add('active');
-      document.getElementById('depositAddrTrc20').style.display = network === 'trc20' ? 'block' : 'none';
-      document.getElementById('depositAddrBep20').style.display = network === 'bep20' ? 'block' : 'none';
-      renderDepositQR(network === 'trc20' ? platformAddresses.trc20 : platformAddresses.bep20);
+      document.querySelectorAll('.dep-network').forEach(b => b.classList.toggle('active', b.dataset.network === network));
+      const addr = platformAddresses[network] || '';
+      const qr = platformAddresses.qr?.[network] || '';
+      document.getElementById('depAddrText').textContent = addr || 'Not available for this network yet';
+      document.getElementById('depQr').innerHTML = qr
+        ? `<img src="${qr}" alt="Deposit address QR code">`
+        : '<div class="dep-qr-empty">No address set</div>';
+      document.getElementById('depFactNetwork').textContent = DEPOSIT_NETWORK_LABELS[network];
+      document.getElementById('depWarnNetwork').textContent = DEPOSIT_NETWORK_LABELS[network];
     }
 
-    function toggleDepositAddr(type) {
-      const el = document.getElementById(type === 'trc20' ? 'depAddrTrc20Val' : 'depAddrBep20Val');
-      const addr = el.dataset.addr;
-      if (!addr) return;
-      if (el.dataset.hidden === 'true') { el.textContent = addr; el.dataset.hidden = 'false'; }
-      else { el.textContent = '********************************'; el.dataset.hidden = 'true'; }
+    function copyDepositAddress() {
+      const addr = platformAddresses[currentDepositNetwork];
+      if (!addr) return toast('Address not available', 'error');
+      navigator.clipboard.writeText(addr).then(() => toast('Address copied!'), () => toast('Copy failed — long-press the address to copy', 'error'));
+    }
+
+    function resetDepositForm() {
+      depositScreenshotDataUrl = '';
+      document.getElementById('depositAmount').value = '';
+      document.getElementById('depositTxid').value = '';
+      document.getElementById('depositScreenshot').value = '';
+      const box = document.getElementById('depUploadBox');
+      box.classList.remove('has-file');
+      box.innerHTML = '<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg><strong>Tap to upload screenshot</strong><small>Show the completed transfer, amount and address. PNG or JPG.</small>';
+    }
+
+    document.getElementById('depositScreenshot').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const box = document.getElementById('depUploadBox');
+      try {
+        depositScreenshotDataUrl = await compressImage(file, 1600, 0.85);
+        box.classList.add('has-file');
+        box.innerHTML = `<img src="${depositScreenshotDataUrl}" alt="Payment screenshot"><small>Tap to change screenshot</small>`;
+      } catch (err) {
+        depositScreenshotDataUrl = '';
+        toast(err.message, 'error');
+      }
+    });
+
+    async function loadDepositHistory() {
+      const el = document.getElementById('depHistoryList');
+      try {
+        const deps = await api('/api/deposits');
+        if (!deps.length) { el.innerHTML = '<div class="empty-state"><p>No deposits yet</p></div>'; return; }
+        const label = { Approved: 'Completed', Rejected: 'Rejected', Pending: 'Pending' };
+        const badge = { Approved: 'deposited', Rejected: 'rejected', Pending: 'pending' };
+        el.innerHTML = deps.slice(0, 10).map(d => `
+          <div class="dep-history-item">
+            <div>
+              <div style="font-weight:700;">+${fmt(d.amount)} USDT</div>
+              <div class="dep-history-sub">${new Date(d.createdAt).toLocaleString()}${d.network ? ' &middot; ' + (d.network === 'bep20' ? 'BEP20' : 'TRC20') : ''}</div>
+            </div>
+            <span class="badge badge-${badge[d.status] || 'pending'}">${label[d.status] || escapeHtml(d.status)}</span>
+          </div>`).join('');
+      } catch (e) { el.innerHTML = '<div class="empty-state"><p>Could not load deposits</p></div>'; }
     }
 
     function toggleAssetAddr(type) {
@@ -2998,57 +3276,10 @@
       else { el.textContent = '********************************'; el.dataset.hidden = 'true'; }
     }
 
-    function copyDepositAddr(type) {
-      const addr = type === 'trc20' ? platformAddresses.trc20 : platformAddresses.bep20;
-      if (!addr) return toast('Address not configured', 'error');
-      navigator.clipboard.writeText(addr).then(() => toast('Address copied!'));
-    }
-
-    // QR Code generator (lightweight, no library)
-    function renderDepositQR(text) {
-      const canvas = document.getElementById('depositQrCanvas');
-      const ctx = canvas.getContext('2d');
-      const size = 180;
-      ctx.clearRect(0, 0, size, size);
-      if (!text) {
-        ctx.fillStyle = '#ccc';
-        ctx.font = '13px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText('No address set', size / 2, size / 2);
-        return;
-      }
-      // Generate QR using simple encoding via image API
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => { ctx.drawImage(img, 0, 0, size, size); };
-      img.onerror = () => {
-        ctx.fillStyle = '#f0f0f0'; ctx.fillRect(0, 0, size, size);
-        ctx.fillStyle = '#999'; ctx.font = '11px Inter, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('QR unavailable', size / 2, size / 2);
-      };
-      img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(text);
-    }
-
     async function loadAssetAddresses() {
       const addrs = await loadPlatformAddresses();
       setAddrField(document.getElementById('assetAddrBep20'), addrs.bep20);
       setAddrField(document.getElementById('assetAddrTrc20'), addrs.trc20);
-    }
-
-    function showDepositLoader() {
-      const sheet = document.getElementById('depositSheet');
-      let loader = sheet.querySelector('.deposit-loader-overlay');
-      if (!loader) {
-        loader = document.createElement('div');
-        loader.className = 'deposit-loader-overlay';
-        loader.innerHTML = '<div class="brand-loader"><div class="brand-loader-ring"></div><img src="/assets/images/MetaLink-NFT-icon.png" alt="" class="brand-loader-logo"></div><p>Processing deposit...</p><p class="sub">Please wait while we confirm your transaction</p>';
-        sheet.appendChild(loader);
-      }
-    }
-
-    function hideDepositLoader() {
-      const loader = document.querySelector('.deposit-loader-overlay');
-      if (loader) loader.remove();
     }
     async function openWithdrawModal() {
       openModal('withdrawModal');
@@ -3068,22 +3299,30 @@
 
     document.getElementById('depositBtn').addEventListener('click', async () => {
       const amount = parseFloat(document.getElementById('depositAmount').value);
-      if (!amount || amount <= 0) return toast('Enter a valid amount', 'error');
+      const min = platformAddresses.minDeposit ?? 50;
+      if (!platformAddresses[currentDepositNetwork]) return toast('This network is not available yet — choose another', 'error');
+      if (!amount || amount <= 0) return toast('Enter the amount you sent', 'error');
+      if (amount < min) return toast('Minimum deposit is ' + min + ' USDT', 'error');
+      if (!depositScreenshotDataUrl) return toast('Please upload a screenshot of your transfer', 'error');
       const btn = document.getElementById('depositBtn');
-      btn.disabled = true;
-      showDepositLoader();
+      btn.disabled = true; btn.textContent = 'Submitting...';
       try {
-        await api('/api/deposits', { method: 'POST', body: JSON.stringify({ amount }) });
-        hideDepositLoader();
-        toast('Deposit submitted! Admin will confirm shortly.');
-        closeAllModals();
-        document.getElementById('depositAmount').value = '';
+        await api('/api/deposits', {
+          method: 'POST',
+          body: JSON.stringify({
+            amount,
+            network: currentDepositNetwork,
+            txid: document.getElementById('depositTxid').value.trim(),
+            screenshot: depositScreenshotDataUrl
+          })
+        });
+        toast('Deposit submitted! You\'ll get an email once it is confirmed.');
+        resetDepositForm();
+        loadDepositHistory();
         loadAssets();
-      } catch (e) {
-        hideDepositLoader();
-        toast(e.message, 'error');
-      }
-      finally { btn.disabled = false; }
+        document.getElementById('depHistorySection').scrollIntoView({ behavior: 'smooth' });
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Submit Deposit'; }
     });
 
     document.getElementById('withdrawBtn').addEventListener('click', async () => {
@@ -3334,6 +3573,94 @@
       finally { btn.disabled = false; btn.textContent = 'Disable Google Authenticator'; }
     });
 
+    // ---- Profile picture ----
+    function setAvatarEl(id, p) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = '';
+      if (p.avatar) {
+        const img = document.createElement('img');
+        img.src = p.avatar; img.alt = '';
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+        el.appendChild(img);
+      } else el.textContent = (p.username || 'U').charAt(0).toUpperCase();
+    }
+
+    function pickAvatar() { document.getElementById('avatarFileInput').click(); }
+
+    document.getElementById('avatarFileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      e.target.value = '';
+      if (!file) return;
+      const buttons = document.querySelectorAll('.avatar-edit');
+      buttons.forEach(b => b.classList.add('uploading'));
+      try {
+        const image = await compressImage(file, 400, 0.88, true);
+        const updated = await api('/api/user/avatar', { method: 'POST', body: JSON.stringify({ image }) });
+        profileData = { ...profileData, ...updated };
+        ['profileAvatar', 'settingsAvatar', 'inviteAvatar'].forEach(id => setAvatarEl(id, profileData));
+        toast('Profile picture updated!');
+      } catch (err) { toast(err.message, 'error'); }
+      finally { buttons.forEach(b => b.classList.remove('uploading')); }
+    });
+
+    // ---- Daily check-in ----
+    let checkinState = null;
+    let checkinTimer = null;
+
+    function fmtCountdown(ms) {
+      const h = Math.floor(ms / 3600000), m = Math.floor((ms % 3600000) / 60000), s = Math.floor((ms % 60000) / 1000);
+      return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
+    }
+
+    async function loadCheckin() {
+      try { checkinState = await api('/api/checkin'); renderCheckin(); } catch (e) {}
+    }
+
+    function renderCheckin() {
+      clearInterval(checkinTimer);
+      const s = checkinState;
+      document.querySelectorAll('.checkin-slot').forEach(slot => {
+        if (!s || !s.enabled || (slot.dataset.onlyClaimable && !s.canClaim)) { slot.innerHTML = ''; return; }
+        const sub = s.canClaim
+          ? `Claim <strong>+${fmt(s.reward)} USDT</strong> now${s.streak ? ' &middot; ' + s.streak + '-day streak' : ''}`
+          : `Next reward: +${fmt(s.reward)} USDT${s.streak ? ' &middot; ' + s.streak + '-day streak' : ''}`;
+        slot.innerHTML = `
+          <div class="checkin-card">
+            <div class="checkin-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+            <div class="checkin-info">
+              <div class="checkin-title">Daily Check-in Reward</div>
+              <div class="checkin-sub">${sub}</div>
+            </div>
+            <button class="checkin-btn" data-checkin-btn ${s.canClaim ? '' : 'disabled'} onclick="claimCheckin(this)">${s.canClaim ? 'Claim' : 'Claimed'}</button>
+          </div>`;
+      });
+      if (s && s.enabled && !s.canClaim && s.nextCheckinAt) {
+        const tick = () => {
+          const remaining = new Date(s.nextCheckinAt).getTime() - Date.now();
+          if (remaining <= 0) { clearInterval(checkinTimer); loadCheckin(); return; }
+          document.querySelectorAll('[data-checkin-btn]').forEach(b => { b.textContent = fmtCountdown(remaining); });
+        };
+        tick();
+        checkinTimer = setInterval(tick, 1000);
+      }
+    }
+
+    async function claimCheckin(btn) {
+      btn.disabled = true; btn.textContent = 'Claiming...';
+      try {
+        const r = await api('/api/checkin', { method: 'POST' });
+        checkinState = r;
+        toast('+' + fmt(r.claimed) + ' USDT added to your balance!');
+        renderCheckin();
+        updateHeaderBalance();
+        if (document.getElementById('page-my').classList.contains('active')) loadProfile();
+      } catch (e) {
+        toast(e.message, 'error');
+        loadCheckin();
+      }
+    }
+
     function copyInviteLink() {
       const link = getInviteLink();
       navigator.clipboard.writeText(link).then(() => toast('Referral link copied!'));
@@ -3366,7 +3693,7 @@
       setTimeout(() => el.remove(), 400);
     }
     Promise.race([
-      Promise.all([loadStakes(), updateHeaderBalance(), loadPlatformInfo()]),
+      Promise.all([loadPlatformInfo().then(loadStakes), updateHeaderBalance(), loadCheckin()]),
       new Promise(resolve => setTimeout(resolve, 4000)) // safety net so the loader never gets stuck on a slow/failed request
     ]).then(hideBootLoader);
   </script>

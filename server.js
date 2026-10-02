@@ -32,12 +32,20 @@ const authLimiter = rateLimit({
 });
 
 app.use(express.json({ limit: '10mb' }));
+// Images in /assets and /uploads are embedded in emails and by other sites (link previews), which helmet's
+// default same-origin resource policy would block. Private deposit screenshots are never served from here.
+app.use(['/assets', '/uploads'], (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); next(); });
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAge: '1h' }));
 // Files uploaded before uploads moved into Postgres; anything not found here falls through to the DB route below.
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
 
+// Deposit screenshots are private (they show users' wallets/transactions): stored under this prefix and
+// only served through the admin-only route, never through the public /uploads/ URL.
+const PRIVATE_UPLOAD_PREFIX = 'proof_';
+
 app.get('/uploads/:name', async (req, res) => {
+  if (req.params.name.startsWith(PRIVATE_UPLOAD_PREFIX)) return res.status(404).end();
   const { rows } = await pool.query('SELECT content_type, bytes FROM app.uploads WHERE name = $1', [req.params.name]);
   if (!rows.length) return res.status(404).end();
   // Upload names are server-generated and never reused, so the content behind a URL never changes.
@@ -48,7 +56,21 @@ app.get('/uploads/:name', async (req, res) => {
 function getConfig(c = pool) { return db.getSetting(c, 'platform_config'); }
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).substr(2, 9); }
-function generateUID() { return 'MLK' + Math.random().toString(36).substr(2, 8).toUpperCase(); }
+// UIDs double as referral codes, so they skip look-alike characters (I/O/0/1) that people mistype.
+const UID_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+const UID_DIGITS = '23456789';
+// 10 characters, always a mix: at least 4 letters and 4 digits, shuffled.
+function generateUID() {
+  const pick = set => set[crypto.randomInt(set.length)];
+  const chars = [];
+  for (let i = 0; i < 4; i++) chars.push(pick(UID_LETTERS), pick(UID_DIGITS));
+  for (let i = 0; i < 2; i++) chars.push(pick(UID_LETTERS + UID_DIGITS));
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join('');
+}
 function generateOrderNumber() { return Date.now().toString() + Math.floor(Math.random() * 100000).toString(); }
 
 function generateVerificationCode() { return Math.floor(100000 + Math.random() * 900000).toString(); }
@@ -84,19 +106,141 @@ function passwordResetEmailHtml(code) {
     <p>This code will expire shortly for your security. If you did not request a password reset, please ignore this email &mdash; your password will not be changed.</p>`);
 }
 
+const SITE_URL = 'https://metalinknft.com';
+const EMAIL_WELCOME_IMAGE_URL = SITE_URL + '/assets/images/MetaLink-NFT-welcome.jpg';
+const TELEGRAM_URL = 'https://t.me/metaLinkNFT';
+
+function escHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function emailButton(label, href) {
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0;"><tr><td style="border-radius:8px;background:#4F46E5;">
+    <a href="${href}" style="display:inline-block;padding:12px 28px;font-family:Arial,sans-serif;font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">${label}</a>
+  </td></tr></table>`;
+}
+
 function welcomeEmailHtml(username, uid) {
-  return emailWrapper(`
-    <p>Hi ${username},</p>
-    <p>Welcome to MetaLink NFT! Your account has been created successfully and you're ready to start exploring.</p>
-    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;font-family:'Courier New',monospace;font-weight:700;letter-spacing:1px;">UID: ${uid}</p>
-    <p>Here's what you can do next:</p>
-    <ul style="padding-left:20px;line-height:1.8;">
-      <li><strong>Stake</strong> &mdash; put your balance to work in our Exclusive Zone NFT stakes</li>
-      <li><strong>Earn</strong> &mdash; explore Growth, Comprehensive, Ecology and USDT Finance plans</li>
-      <li><strong>Reserve</strong> &mdash; try a daily reservation draw for a chance at bonus rewards</li>
-      <li><strong>Invite friends</strong> &mdash; earn team commission when the people you refer make deposits</li>
-    </ul>
-    <p>If you have any questions, our team is always here to help.</p>`);
+  return `<div style="background:#f4f5f7;padding:24px 0;">
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;color:#1e2329;">
+    <a href="${SITE_URL}"><img src="${EMAIL_WELCOME_IMAGE_URL}" alt="MetaLink NFT &mdash; The Future of Digital Ownership" width="560" style="display:block;width:100%;height:auto;border:0;"></a>
+    <div style="padding:28px 28px 8px;">
+      <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">Welcome to MetaLink NFT, ${escHtml(username)}!</h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#474d57;">Your account has been created successfully and you're ready to start exploring.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4fa;border-radius:8px;margin:0 0 20px;">
+        <tr><td style="padding:14px 16px;font-size:13px;color:#707a8a;">Your UID</td>
+            <td style="padding:14px 16px;text-align:right;font-family:'Courier New',monospace;font-size:16px;font-weight:700;letter-spacing:1px;">${escHtml(uid)}</td></tr>
+      </table>
+      <p style="margin:0 0 8px;font-size:15px;font-weight:700;">Here's what you can do next:</p>
+      <ul style="margin:0 0 8px;padding-left:20px;font-size:14px;line-height:1.8;color:#474d57;">
+        <li><strong>Stake</strong> &mdash; put your balance to work in our Exclusive Zone NFT stakes</li>
+        <li><strong>Earn</strong> &mdash; explore Growth, Comprehensive, Ecology and USDT Finance plans</li>
+        <li><strong>Reserve</strong> &mdash; try a daily reservation draw for a chance at bonus rewards</li>
+        <li><strong>Daily check-in</strong> &mdash; claim your sign-in reward every 24 hours</li>
+        <li><strong>Invite friends</strong> &mdash; earn team commission when the people you refer make deposits</li>
+      </ul>
+      ${emailButton('Go to My Account', SITE_URL + '/app.html')}
+      <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#474d57;">Join our community on Telegram for news and support: <a href="${TELEGRAM_URL}" style="color:#4F46E5;font-weight:700;text-decoration:none;">t.me/metaLinkNFT</a></p>
+    </div>
+    ${emailFooter()}
+  </div></div>`;
+}
+
+function emailFooter() {
+  return `<div style="padding:20px 28px;background:#fafafa;border-top:1px solid #eaecef;font-size:12px;line-height:1.6;color:#848e9c;">
+    <p style="margin:0 0 8px;"><strong>Don't recognize this activity?</strong> Please reset your password and contact our support team immediately.</p>
+    <p style="margin:0;">This is an automated message, please do not reply. &copy; ${new Date().getUTCFullYear()} MetaLink NFT. All rights reserved.</p>
+  </div>`;
+}
+
+// Exchange-style transaction email (deposit / withdrawal): logo, headline, short message,
+// a details table, a call-to-action, and the standard security footer.
+function transactionEmailHtml({ title, titleColor = '#1e2329', greeting, message, rows }) {
+  const detailRows = rows.map(([label, value]) => `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #eaecef;font-size:13px;color:#707a8a;vertical-align:top;">${label}</td>
+      <td style="padding:10px 0 10px 16px;border-bottom:1px solid #eaecef;font-size:13px;font-weight:700;text-align:right;word-break:break-all;">${value}</td>
+    </tr>`).join('');
+  return `<div style="background:#f4f5f7;padding:24px 0;">
+  <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;color:#1e2329;">
+    <div style="padding:20px 28px;border-bottom:1px solid #eaecef;">
+      <img src="${EMAIL_LOGO_URL}" alt="MetaLink NFT" style="height:30px;display:block;">
+    </div>
+    <div style="padding:28px 28px 8px;">
+      <h1 style="margin:0 0 20px;font-size:24px;line-height:1.3;color:${titleColor};">${title}</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#474d57;">${greeting}</p>
+      <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#474d57;">${message}</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eaecef;">${detailRows}</table>
+      ${emailButton('Visit Your Account', SITE_URL + '/app.html')}
+    </div>
+    ${emailFooter()}
+  </div></div>`;
+}
+
+function emailTime(date = new Date()) {
+  return new Date(date).toISOString().replace('T', ' ').slice(0, 19) + ' (UTC)';
+}
+
+function networkLabel(network) {
+  return network === 'bep20' ? 'BNB Smart Chain (BEP20)' : network === 'trc20' ? 'Tron (TRC20)' : '&mdash;';
+}
+
+function depositEmail(kind, username, deposit, newBalance) {
+  const amount = `${fmtMoney(deposit.amount)} USDT`;
+  const rows = [['Amount', amount]];
+  if (deposit.network) rows.push(['Network', networkLabel(deposit.network)]);
+  if (deposit.txid) rows.push(['Transaction ID', escHtml(deposit.txid)]);
+  const greeting = `Hi ${escHtml(username)},`;
+  if (kind === 'submitted') {
+    rows.push(['Status', '<span style="color:#d97706;">Pending review</span>'], ['Submitted', emailTime(deposit.createdAt)]);
+    return { subject: `[MetaLink NFT] Deposit Request Received - ${amount}`, html: transactionEmailHtml({
+      title: 'Deposit Request Received', greeting, rows,
+      message: `We've received your deposit request of <strong>${amount}</strong>. Our team is verifying your transfer, and your balance will be credited as soon as it is confirmed.`
+    }) };
+  }
+  if (kind === 'approved') {
+    rows.push(['Status', '<span style="color:#03a66d;">Completed</span>'], ['Available Balance', `${fmtMoney(newBalance)} USDT`], ['Time', emailTime()]);
+    return { subject: `[MetaLink NFT] Deposit Successful - ${amount}`, html: transactionEmailHtml({
+      title: 'Deposit Successful', titleColor: '#03a66d', greeting, rows,
+      message: `Your deposit of <strong>${amount}</strong> is now available in your MetaLink NFT account. Log in to check your balance.`
+    }) };
+  }
+  rows.push(['Status', '<span style="color:#cf304a;">Rejected</span>'], ['Time', emailTime()]);
+  return { subject: `[MetaLink NFT] Deposit Unsuccessful - ${amount}`, html: transactionEmailHtml({
+    title: 'Deposit Unsuccessful', titleColor: '#cf304a', greeting, rows,
+    message: `We could not confirm your deposit of <strong>${amount}</strong>, so it has not been credited. Please check that the transfer and screenshot are correct, or contact our support team.`
+  }) };
+}
+
+function withdrawalEmail(kind, withdrawal) {
+  const amount = `${fmtMoney(withdrawal.amount)} USDT`;
+  const rows = [
+    ['Amount', amount],
+    ['Fee', `${fmtMoney(withdrawal.fee)} USDT`],
+    ['You Receive', `${fmtMoney(withdrawal.netAmount)} USDT`],
+    ['Network', networkLabel(withdrawal.walletType === 'erc20' ? 'bep20' : withdrawal.walletType)],
+    ['Address', escHtml(withdrawal.walletAddress)]
+  ];
+  const greeting = `Hi ${escHtml(withdrawal.username)},`;
+  if (kind === 'submitted') {
+    rows.push(['Status', '<span style="color:#d97706;">Processing</span>'], ['Submitted', emailTime(withdrawal.createdAt)]);
+    return { subject: `[MetaLink NFT] Withdrawal Request Submitted - ${amount}`, html: transactionEmailHtml({
+      title: 'Withdrawal Request Submitted', greeting, rows,
+      message: `You have submitted a withdrawal request of <strong>${amount}</strong>. It is now being processed, and we'll email you again once it has been sent.`
+    }) };
+  }
+  if (kind === 'approved') {
+    rows.push(['Status', '<span style="color:#03a66d;">Completed</span>'], ['Time', emailTime()]);
+    return { subject: `[MetaLink NFT] Withdrawal Successful - ${amount}`, html: transactionEmailHtml({
+      title: 'Withdrawal Successful', titleColor: '#03a66d', greeting, rows,
+      message: `You have successfully withdrawn <strong>${fmtMoney(withdrawal.netAmount)} USDT</strong> to the address below. Depending on network conditions, it may take a few minutes to arrive in your wallet.`
+    }) };
+  }
+  rows.push(['Status', '<span style="color:#cf304a;">Rejected</span>'], ['Time', emailTime()]);
+  return { subject: `[MetaLink NFT] Withdrawal Rejected - ${amount}`, html: transactionEmailHtml({
+    title: 'Withdrawal Rejected', titleColor: '#cf304a', greeting, rows,
+    message: `Your withdrawal request of <strong>${amount}</strong> was not approved, and the full amount has been returned to your MetaLink NFT balance.`
+  }) };
 }
 
 function levelUpgradeEmailHtml(username, level, balance) {
@@ -106,34 +250,6 @@ function levelUpgradeEmailHtml(username, level, balance) {
     <p>Your wallet balance has crossed the threshold for Level ${level}, and your account has been automatically upgraded.</p>
     <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">Current Balance: <strong>${fmtMoney(balance)} USDT</strong></p>
     <p>Higher levels can unlock better rewards across the platform. Keep growing your balance to reach the next one.</p>`);
-}
-
-function depositConfirmedEmailHtml(username, amount, newBalance) {
-  return emailWrapper(`
-    <p>Hi ${username},</p>
-    <p>Your deposit has been confirmed and credited to your account.</p>
-    <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">
-      Amount Deposited: <strong>${fmtMoney(amount)} USDT</strong><br>
-      New Balance: <strong>${fmtMoney(newBalance)} USDT</strong>
-    </p>
-    <p>Thank you for using MetaLink NFT.</p>`);
-}
-
-function withdrawalStatusEmailHtml(username, amount, netAmount, status) {
-  if (status === 'Approved') {
-    return emailWrapper(`
-      <p>Hi ${username},</p>
-      <p>Your withdrawal request has been processed.</p>
-      <p style="text-align:center;padding:14px;background:#f4f4fa;border-radius:8px;">
-        Requested Amount: <strong>${fmtMoney(amount)} USDT</strong><br>
-        Net Amount Sent: <strong>${fmtMoney(netAmount)} USDT</strong>
-      </p>
-      <p>Please allow some time for the transaction to reflect on your wallet, depending on network conditions.</p>`);
-  }
-  return emailWrapper(`
-    <p>Hi ${username},</p>
-    <p>Your withdrawal request for <strong>${fmtMoney(amount)} USDT</strong> was not approved, and the amount has been returned to your wallet balance.</p>
-    <p>If you believe this is a mistake, please contact our support team.</p>`);
 }
 
 function fmtMoney(n) { return parseFloat(n || 0).toFixed(2); }
@@ -389,13 +505,16 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
     const config = await getConfig(c);
     const signupBonus = config.signupBonus !== undefined ? parseFloat(config.signupBonus) : 10;
 
+    let uid = generateUID();
+    while (await db.findUserBy(c, 'uid', uid)) uid = generateUID();
+
     const user = {
       id: generateId(),
       email,
       password: pending.passwordHash,
       secondPassword: pending.passwordHash,
       username: pending.username,
-      uid: generateUID(),
+      uid,
       phoneCountryCode: pending.phoneCountryCode,
       phoneNumber: pending.phoneNumber,
       level: 0,
@@ -944,7 +1063,8 @@ function getNextReservationAt(myOrders) {
   return nextAt > Date.now() ? new Date(nextAt).toISOString() : null;
 }
 
-const RESERVE_LEVELS = [
+// Used until the admin saves their own levels from the dashboard (stored in settings 'reserve_levels').
+const DEFAULT_RESERVE_LEVELS = [
   { level: 1, min: 50, max: 499, rewardPct: 2.5, name: 'Blue Cap Ape', image: '/assets/images/nfts/blue-cap-ape.jpg' },
   { level: 2, min: 500, max: 1999, rewardPct: 3.0, name: 'Purple Hat Ape', image: '/assets/images/nfts/purple-hat-ape.jpg' },
   { level: 3, min: 2000, max: 4999, rewardPct: 3.5, name: 'Cartoon Ape', image: '/assets/images/nfts/cartoon-ape.jpg' },
@@ -953,9 +1073,34 @@ const RESERVE_LEVELS = [
   { level: 6, min: 50000, max: 100000, rewardPct: 5.0, name: 'Collector Edition II', image: '/assets/images/nfts/col2.jpg' }
 ];
 
+async function getReserveLevels(c = pool) {
+  const stored = await db.getSetting(c, 'reserve_levels');
+  return Array.isArray(stored.levels) && stored.levels.length ? stored.levels : DEFAULT_RESERVE_LEVELS;
+}
+
+// Returns { levels } (sorted by min, numbered 1..n) or { error }.
+function validateReserveLevels(input) {
+  if (!Array.isArray(input) || input.length < 1 || input.length > 20) return { error: 'Provide between 1 and 20 reservation levels' };
+  const levels = [];
+  for (const raw of input) {
+    const min = parseFloat(raw.min), max = parseFloat(raw.max), rewardPct = parseFloat(raw.rewardPct);
+    const name = String(raw.name || '').trim();
+    const image = String(raw.image || '').trim();
+    if (!name || name.length > 60) return { error: 'Each level needs a name (max 60 characters)' };
+    if (!(min >= 0) || !(max > min)) return { error: `"${name}": maximum must be greater than minimum, and minimum at least 0` };
+    if (!(rewardPct >= 0 && rewardPct <= 100)) return { error: `"${name}": reward % must be between 0 and 100` };
+    if (image && !/^(\/(assets|uploads)\/[\w\-./]+|https:\/\/\S+)$/.test(image)) return { error: `"${name}": invalid image` };
+    levels.push({ min, max, rewardPct, name, image });
+  }
+  levels.sort((a, b) => a.min - b.min);
+  levels.forEach((lv, i) => { lv.level = i + 1; });
+  return { levels };
+}
+
 app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
   const myOrders = await db.listDocs(pool, 'reserve_orders', { userId: req.userId });
   const user = await db.getUser(pool, req.userId);
+  const RESERVE_LEVELS = await getReserveLevels();
 
   const todayEarnings = myOrders
     .filter(o => o.status === 'Won' && new Date(o.reservationDate).toDateString() === new Date().toDateString())
@@ -968,9 +1113,9 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
     todayEarnings,
     cumulativeIncome,
     teamBenefits: user?.dailyIncome?.team || 0,
-    reservationRange: `${RESERVE_LEVELS[0].min} - ${RESERVE_LEVELS[RESERVE_LEVELS.length - 1].max}`,
+    reservationRange: `${Math.min(...RESERVE_LEVELS.map(l => l.min))} - ${Math.max(...RESERVE_LEVELS.map(l => l.max))}`,
     walletBalance: user?.walletBalance || 0,
-    balanceForReservation: Math.min(user?.walletBalance || 0, RESERVE_LEVELS[RESERVE_LEVELS.length - 1].max),
+    balanceForReservation: Math.min(user?.walletBalance || 0, Math.max(...RESERVE_LEVELS.map(l => l.max))),
     nextReservationAt: getNextReservationAt(myOrders),
     levels: RESERVE_LEVELS,
     orders: myOrders
@@ -988,6 +1133,7 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
     const nextReservationAt = getNextReservationAt(existingOrders);
     if (nextReservationAt) return { status: 400, body: { error: 'You can only reserve once every 24 hours', nextReservationAt } };
 
+    const RESERVE_LEVELS = await getReserveLevels(c);
     const balance = user.walletBalance;
     const affordableLevels = RESERVE_LEVELS.filter(lv => lv.min <= balance);
     if (!affordableLevels.length) return { status: 400, body: { error: `Insufficient balance. Minimum reservation is ${RESERVE_LEVELS[0].min} USDT` } };
@@ -1052,7 +1198,7 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
 
   const history = [
     ...withdrawals.map(w => ({ type: 'Withdraw', amount: -w.amount, date: w.createdAt, status: w.status === 'Approved' ? 'Deposited' : w.status === 'Rejected' ? 'Rejected' : 'Processing' })),
-    ...deposits.map(d => ({ type: 'Deposit', amount: d.amount, date: d.createdAt, status: d.status === 'Approved' ? 'Deposited' : 'Processing' })),
+    ...deposits.map(d => ({ type: 'Deposit', amount: d.amount, date: d.createdAt, status: d.status === 'Approved' ? 'Deposited' : d.status === 'Rejected' ? 'Rejected' : 'Processing' })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   res.json({
@@ -1122,6 +1268,10 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
     return { status: 200, body: withdrawal };
   });
 
+  if (result.status === 200) {
+    const { subject, html } = withdrawalEmail('submitted', result.body);
+    sendEmail(result.body.email, subject, html).catch(() => {});
+  }
   res.status(result.status).json(result.body);
 });
 
@@ -1131,9 +1281,28 @@ app.get('/api/withdrawals', authMiddleware, async (req, res) => {
 
 // ===================== DEPOSIT ROUTES =====================
 
+const IMAGE_DATA_URL_RE = /^data:image\/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/]+=*)$/;
+const MAX_PROOF_BYTES = 5 * 1024 * 1024;
+const MAX_AVATAR_BYTES = 1024 * 1024;
+
+// Returns { ext, contentType, bytes } for a valid base64 image data URL, or null.
+function decodeImageDataUrl(dataUrl, maxBytes) {
+  const m = typeof dataUrl === 'string' && dataUrl.match(IMAGE_DATA_URL_RE);
+  if (!m) return null;
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+  const bytes = Buffer.from(m[2], 'base64');
+  if (!bytes.length || bytes.length > maxBytes) return null;
+  return { ext, contentType: 'image/' + (ext === 'jpg' ? 'jpeg' : ext), bytes };
+}
+
 app.post('/api/deposits', authMiddleware, async (req, res) => {
-  const { amount } = req.body;
+  const { amount, network, txid, screenshot } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+  if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Select a deposit network' });
+  const cleanTxid = typeof txid === 'string' ? txid.trim() : '';
+  if (cleanTxid.length > 120) return res.status(400).json({ error: 'Transaction ID is too long' });
+  const proof = decodeImageDataUrl(screenshot, MAX_PROOF_BYTES);
+  if (!proof) return res.status(400).json({ error: 'Please upload a screenshot of your transfer (PNG, JPG or WEBP, max 5 MB)' });
 
   const config = await getConfig();
   const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
@@ -1143,12 +1312,102 @@ app.post('/api/deposits', authMiddleware, async (req, res) => {
     id: generateId(),
     userId: req.userId,
     amount: parseFloat(amount),
+    network,
+    txid: cleanTxid,
+    proofName: PRIVATE_UPLOAD_PREFIX + generateId() + '.' + proof.ext,
     status: 'Pending',
     createdAt: new Date().toISOString()
   };
-  await db.insertDoc(pool, 'deposits', deposit);
+  await tx(async c => {
+    await c.query('INSERT INTO app.uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [deposit.proofName, proof.contentType, proof.bytes]);
+    await db.insertDoc(c, 'deposits', deposit);
+  });
 
+  const user = await db.getUser(pool, req.userId);
+  if (user) {
+    const { subject, html } = depositEmail('submitted', user.username, deposit);
+    sendEmail(user.email, subject, html).catch(() => {});
+  }
   res.json(deposit);
+});
+
+app.get('/api/deposits', authMiddleware, async (req, res) => {
+  res.json(await db.listDocs(pool, 'deposits', { userId: req.userId, order: 'DESC' }));
+});
+
+// ===================== DAILY CHECK-IN =====================
+
+const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+function checkinStatus(user, config) {
+  const reward = parseFloat(config.dailyCheckinReward) || 0;
+  const last = user.lastCheckinAt ? new Date(user.lastCheckinAt).getTime() : 0;
+  const nextAt = last ? last + CHECKIN_COOLDOWN_MS : 0;
+  return {
+    enabled: reward > 0,
+    reward,
+    lastCheckinAt: user.lastCheckinAt || null,
+    nextCheckinAt: nextAt > Date.now() ? new Date(nextAt).toISOString() : null,
+    canClaim: reward > 0 && nextAt <= Date.now(),
+    totalClaimed: user.checkinTotal || 0,
+    streak: user.checkinStreak || 0
+  };
+}
+
+app.get('/api/checkin', authMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(checkinStatus(user, await getConfig()));
+});
+
+app.post('/api/checkin', authMiddleware, async (req, res) => {
+  const emails = [];
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    const config = await getConfig(c);
+    const status = checkinStatus(user, config);
+    if (!status.enabled) return { status: 400, body: { error: 'Daily check-in rewards are not available right now' } };
+    if (!status.canClaim) return { status: 400, body: { error: 'You have already claimed today\'s reward', nextCheckinAt: status.nextCheckinAt } };
+
+    const now = Date.now();
+    const last = user.lastCheckinAt ? new Date(user.lastCheckinAt).getTime() : 0;
+    // A streak continues if the previous claim was within 48h (i.e. the user didn't skip a whole day).
+    user.checkinStreak = last && now - last < 2 * CHECKIN_COOLDOWN_MS ? (user.checkinStreak || 0) + 1 : 1;
+    user.lastCheckinAt = new Date(now).toISOString();
+    user.checkinTotal = parseFloat(((user.checkinTotal || 0) + status.reward).toFixed(2));
+    user.walletBalance += status.reward;
+    user.totalIncome += status.reward;
+    user.dailyIncome = user.dailyIncome || {};
+    user.dailyIncome.activity = (user.dailyIncome.activity || 0) + status.reward;
+    checkAndApplyLevelUpgrade(user, config, emails);
+    await db.saveUser(c, user);
+    return { status: 200, body: { ...checkinStatus(user, config), claimed: status.reward, walletBalance: user.walletBalance } };
+  });
+
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
+});
+
+// ===================== PROFILE PICTURE =====================
+
+app.post('/api/user/avatar', authMiddleware, async (req, res) => {
+  const img = decodeImageDataUrl(req.body.image, MAX_AVATAR_BYTES);
+  if (!img || img.ext === 'gif') return res.status(400).json({ error: 'Please choose a PNG, JPG or WEBP image under 1 MB' });
+
+  const name = generateId() + '.' + img.ext;
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.userId, { lock: true });
+    if (!u) return null;
+    await c.query('INSERT INTO app.uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [name, img.contentType, img.bytes]);
+    // Drop the previous picture so replaced avatars don't pile up in the database.
+    const previous = typeof u.avatar === 'string' && u.avatar.match(/^\/uploads\/([\w-]+\.\w+)$/);
+    if (previous) await c.query('DELETE FROM app.uploads WHERE name = $1', [previous[1]]);
+    u.avatar = '/uploads/' + name;
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(publicProfile(user));
 });
 
 // ===================== ANNOUNCEMENT ROUTES =====================
@@ -1267,14 +1526,17 @@ app.put('/api/admin/users/:id/balance', adminMiddleware, async (req, res) => {
 
     if (action === 'add') {
       u.walletBalance += parseFloat(amount);
-      await db.insertDoc(c, 'deposits', {
+      const deposit = {
         id: generateId(),
         userId: u.id,
         amount: parseFloat(amount),
         status: 'Approved',
         approvedBy: 'admin',
         createdAt: new Date().toISOString()
-      });
+      };
+      await db.insertDoc(c, 'deposits', deposit);
+      const { subject, html } = depositEmail('approved', u.username, deposit, u.walletBalance);
+      emails.push([u.email, subject, html]);
     } else if (action === 'subtract') {
       u.walletBalance = Math.max(0, u.walletBalance - parseFloat(amount));
     } else if (action === 'set') {
@@ -1297,11 +1559,12 @@ app.get('/api/admin/withdrawals', adminMiddleware, async (req, res) => {
 app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
   const { status } = req.body;
 
+  let previousStatus;
   const withdrawal = await tx(async c => {
     const w = await db.getDoc(c, 'withdrawals', req.params.id, { lock: true });
     if (!w) return null;
 
-    const previousStatus = w.status;
+    previousStatus = w.status;
     w.status = status;
     w.processedAt = new Date().toISOString();
 
@@ -1319,20 +1582,41 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
   });
   if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
 
-  if (status === 'Approved' || status === 'Rejected') {
-    sendEmail(
-      withdrawal.email,
-      status === 'Approved' ? 'Your withdrawal has been processed' : 'Your withdrawal request was not approved',
-      withdrawalStatusEmailHtml(withdrawal.username, withdrawal.amount, withdrawal.netAmount, status)
-    ).catch(() => {});
+  if ((status === 'Approved' || status === 'Rejected') && status !== previousStatus) {
+    const { subject, html } = withdrawalEmail(status === 'Approved' ? 'approved' : 'rejected', withdrawal);
+    sendEmail(withdrawal.email, subject, html).catch(() => {});
   }
 
   res.json(withdrawal);
 });
 
 app.get('/api/admin/deposits', adminMiddleware, async (req, res) => {
-  const deposits = await db.listDocs(pool, 'deposits');
+  // Joined here so the admin page doesn't have to download every user just to label deposits.
+  const { rows } = await pool.query(`
+    SELECT d.data, u.data->>'username' AS username, u.data->>'email' AS email, u.data->>'uid' AS uid
+    FROM app.deposits d LEFT JOIN app.users u ON u.id = d.user_id`);
+  const deposits = rows.map(r => ({ ...r.data, username: r.username, email: r.email, uid: r.uid, hasProof: !!r.data.proofName }));
   res.json(deposits.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+});
+
+app.get('/api/admin/deposits/:id/proof', adminMiddleware, async (req, res) => {
+  const d = await db.getDoc(pool, 'deposits', req.params.id);
+  if (!d || !d.proofName) return res.status(404).json({ error: 'No screenshot for this deposit' });
+  const { rows } = await pool.query('SELECT content_type, bytes FROM app.uploads WHERE name = $1', [d.proofName]);
+  if (!rows.length) return res.status(404).json({ error: 'Screenshot not found' });
+  res.set('Cache-Control', 'private, no-store');
+  res.type(rows[0].content_type).send(rows[0].bytes);
+});
+
+app.get('/api/admin/reserve-levels', adminMiddleware, async (req, res) => {
+  res.json(await getReserveLevels());
+});
+
+app.put('/api/admin/reserve-levels', adminMiddleware, async (req, res) => {
+  const { levels, error } = validateReserveLevels(req.body.levels);
+  if (error) return res.status(400).json({ error });
+  await db.setSetting(pool, 'reserve_levels', { levels });
+  res.json(levels);
 });
 
 app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
@@ -1347,6 +1631,14 @@ app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
     d.status = status;
     d.processedAt = new Date().toISOString();
 
+    if (status === 'Rejected' && previousStatus !== 'Rejected') {
+      const user = await db.getUser(c, d.userId);
+      if (user) {
+        const { subject, html } = depositEmail('rejected', user.username, d);
+        emails.push([user.email, subject, html]);
+      }
+    }
+
     // Only credit on the transition into Approved, so approving twice can't credit twice.
     if (status === 'Approved' && previousStatus !== 'Approved') {
       const user = await db.getUser(c, d.userId, { lock: true });
@@ -1354,7 +1646,8 @@ app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
         const cfg = await getConfig(c);
         user.walletBalance += d.amount;
         checkAndApplyLevelUpgrade(user, cfg, emails);
-        emails.push([user.email, 'Your deposit has been confirmed', depositConfirmedEmailHtml(user.username, d.amount, user.walletBalance)]);
+        const { subject, html } = depositEmail('approved', user.username, d, user.walletBalance);
+        emails.push([user.email, subject, html]);
         await db.saveUser(c, user);
 
         if (!d.referralPaid) {
@@ -1472,9 +1765,17 @@ app.post('/api/admin/upload', adminMiddleware, async (req, res) => {
 
 app.get('/api/platform/deposit-addresses', async (req, res) => {
   const config = await getConfig();
+  const trc20 = config.depositAddressTrc20 || '';
+  const bep20 = config.depositAddressBep20 || '';
+  const qrOpts = { margin: 1, width: 360 };
   res.json({
-    trc20: config.depositAddressTrc20 || '',
-    bep20: config.depositAddressBep20 || ''
+    trc20,
+    bep20,
+    qr: {
+      trc20: trc20 ? await QRCode.toDataURL(trc20, qrOpts) : '',
+      bep20: bep20 ? await QRCode.toDataURL(bep20, qrOpts) : ''
+    },
+    minDeposit: config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50
   });
 });
 
@@ -1496,7 +1797,7 @@ app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward } = req.body;
 
   const result = await tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(424244)');
@@ -1510,6 +1811,11 @@ app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
     if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
     if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
     if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
+    if (dailyCheckinReward !== undefined) {
+      const reward = parseFloat(dailyCheckinReward);
+      if (isNaN(reward) || reward < 0 || reward > 100000) return { status: 400, body: { error: 'Daily check-in reward must be 0 or more (0 turns it off)' } };
+      config.dailyCheckinReward = reward;
+    }
     if (reserveWinRatePct !== undefined) {
       const rate = parseFloat(reserveWinRatePct);
       if (isNaN(rate) || rate < 0 || rate > 100) return { status: 400, body: { error: 'Reservation win rate must be between 0 and 100' } };

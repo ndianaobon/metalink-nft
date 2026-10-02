@@ -105,6 +105,7 @@
               <button class="admin-nav-item" data-page="users">&#128101; Users</button>
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
+              <button class="admin-nav-item" data-page="reservations">&#127915; Reservations</button>
               <button class="admin-nav-item" data-page="wallets">&#128092; Wallets</button>
               <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
               <button class="admin-nav-item" data-page="settings">&#9881; Settings</button>
@@ -157,6 +158,7 @@
         else if (this.currentPage === 'users') await this.loadUsers(c);
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
+        else if (this.currentPage === 'reservations') await this.loadReservations(c);
         else if (this.currentPage === 'wallets') await this.loadWallets(c);
         else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
         else if (this.currentPage === 'settings') await this.loadSettings(c);
@@ -356,35 +358,138 @@
       async loadDeposits(c) {
         try {
           const deposits = await this.api('/admin/deposits');
-          const users = await this.api('/admin/users');
+          const pending = deposits.filter(d => d.status === 'Pending').length;
+          const networkLabel = n => n === 'bep20' ? 'BEP20' : n === 'trc20' ? 'TRC20' : '-';
           c.innerHTML = `
             <div class="admin-table-card">
-              <div class="admin-table-header"><h3>Deposits (${deposits.length})</h3></div>
+              <div class="admin-table-header"><h3>Deposits (${deposits.length})${pending ? ` &middot; <span style="color:#d97706;">${pending} pending review</span>` : ''}</h3></div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Network</th><th>TxID</th><th>Screenshot</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
-                    ${deposits.map(d => {
-                      const user = users.find(u => u.id === d.userId);
-                      return `<tr>
+                    ${deposits.map(d => `<tr>
                         <td>${new Date(d.createdAt).toLocaleString()}</td>
-                        <td>${escapeHtml(user?.username || 'Unknown')} (${escapeHtml(user?.email)})</td>
-                        <td><strong>${d.amount} USDT</strong></td>
+                        <td><strong>${escapeHtml(d.username || 'Unknown')}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(d.email)}${d.uid ? ' &middot; ' + escapeHtml(d.uid) : ''}</span></td>
+                        <td><strong>${d.amount} USDT</strong>${d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : ''}</td>
+                        <td>${networkLabel(d.network)}</td>
+                        <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${d.txid ? escapeHtml(d.txid) : '-'}</td>
+                        <td>${d.hasProof ? `<button class="admin-btn admin-btn-edit" onclick="Admin.viewDepositProof('${escapeHtml(d.id)}')">View</button>` : '<span style="color:#ccc;">None</span>'}</td>
                         <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span></td>
-                        <td>
+                        <td style="white-space:nowrap;">
                           ${d.status === 'Pending' ? `
                             <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Approved')">Approve</button>
                             <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Rejected')">Reject</button>
                           ` : '<span style="color:#888;">Processed</span>'}
                         </td>
-                      </tr>`;
-                    }).join('')}
+                      </tr>`).join('')}
                   </tbody>
                 </table>
               </div>
               ${deposits.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No deposits yet</p>' : ''}
             </div>`;
         } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      // Screenshots are admin-only, so they're fetched with the admin token rather than linked directly.
+      async viewDepositProof(id) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal" style="max-width:640px;">
+            <h3>Payment Screenshot</h3>
+            <div id="proofBody" style="text-align:center;padding:20px;color:#888;">Loading...</div>
+            <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>
+          </div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        try {
+          const res = await fetch(`/api/admin/deposits/${encodeURIComponent(id)}/proof`, { headers: { Authorization: 'Bearer ' + this.token } });
+          if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Could not load screenshot');
+          const url = URL.createObjectURL(await res.blob());
+          modal.querySelector('#proofBody').innerHTML = `<a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="Payment screenshot" style="max-width:100%;max-height:70vh;border-radius:8px;"></a><p style="font-size:0.75rem;margin-top:8px;">Click the image to open it full size.</p>`;
+        } catch (e) { modal.querySelector('#proofBody').textContent = e.message; }
+      },
+
+      async loadReservations(c) {
+        try {
+          this.reserveLevels = await this.api('/admin/reserve-levels');
+          this.renderReservations(c);
+        } catch (e) { c.innerHTML = '<p>Failed to load reservation levels</p>'; }
+      },
+
+      renderReservations(c = document.getElementById('adminContent')) {
+        const levels = this.reserveLevels;
+        c.innerHTML = `
+          <div class="admin-table-card">
+            <div class="admin-table-header">
+              <h3>Reservation Levels (${levels.length})</h3>
+              <button class="admin-btn admin-btn-primary" onclick="Admin.addReserveLevel()">+ Add Level</button>
+            </div>
+            <div style="padding:16px 24px 0;font-size:0.85rem;color:#888;">
+              When a user taps Reserve, the system picks one of the levels their balance qualifies for (balance &ge; minimum), reserves a random amount between that level's minimum and maximum,
+              and pays the reward % if the draw wins (win rate is set in Settings). Levels are numbered automatically from the lowest minimum.
+            </div>
+            <div style="overflow-x:auto;">
+              <table class="admin-table">
+                <thead><tr><th>Image</th><th>Item Name</th><th>Min (USDT)</th><th>Max (USDT)</th><th>Reward %</th><th></th></tr></thead>
+                <tbody>
+                  ${levels.map((lv, i) => `
+                    <tr>
+                      <td style="white-space:nowrap;">
+                        <label style="cursor:pointer;display:inline-flex;align-items:center;gap:8px;">
+                          ${lv.image ? `<img src="${escapeHtml(lv.image)}" alt="" style="width:44px;height:44px;border-radius:8px;object-fit:cover;">` : '<span style="display:inline-block;width:44px;height:44px;border-radius:8px;background:#eee;"></span>'}
+                          <span class="admin-btn admin-btn-edit" style="pointer-events:none;">Change</span>
+                          <input type="file" accept="image/*" style="display:none;" onchange="Admin.uploadReserveImage(${i}, event)">
+                        </label>
+                      </td>
+                      <td><input class="admin-form-input" style="min-width:160px;" value="${escapeHtml(lv.name)}" oninput="Admin.reserveLevels[${i}].name=this.value"></td>
+                      <td><input class="admin-form-input" style="width:110px;" type="number" min="0" step="0.01" value="${lv.min}" oninput="Admin.reserveLevels[${i}].min=this.value"></td>
+                      <td><input class="admin-form-input" style="width:110px;" type="number" min="0" step="0.01" value="${lv.max}" oninput="Admin.reserveLevels[${i}].max=this.value"></td>
+                      <td><input class="admin-form-input" style="width:90px;" type="number" min="0" max="100" step="0.1" value="${lv.rewardPct}" oninput="Admin.reserveLevels[${i}].rewardPct=this.value"></td>
+                      <td><button class="admin-btn admin-btn-delete" onclick="Admin.removeReserveLevel(${i})" ${levels.length <= 1 ? 'disabled' : ''}>Remove</button></td>
+                    </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>
+            <div style="padding:16px 24px 24px;">
+              <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;" onclick="Admin.saveReserveLevels()">Save Reservation Levels</button>
+            </div>
+          </div>`;
+      },
+
+      addReserveLevel() {
+        const last = this.reserveLevels[this.reserveLevels.length - 1];
+        const min = last ? Number(last.max) + 1 : 50;
+        this.reserveLevels.push({ name: 'New Item', min, max: min * 2, rewardPct: 5, image: '' });
+        this.renderReservations();
+      },
+
+      removeReserveLevel(i) {
+        if (!confirm('Remove this level?')) return;
+        this.reserveLevels.splice(i, 1);
+        this.renderReservations();
+      },
+
+      uploadReserveImage(i, event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          try {
+            const res = await this.api('/admin/upload', { method: 'POST', body: JSON.stringify({ image: e.target.result }) });
+            this.reserveLevels[i].image = res.url;
+            this.renderReservations();
+          } catch (err) { this.toast('Failed to upload image'); }
+        };
+        reader.readAsDataURL(file);
+      },
+
+      async saveReserveLevels() {
+        try {
+          this.reserveLevels = await this.api('/admin/reserve-levels', { method: 'PUT', body: JSON.stringify({ levels: this.reserveLevels }) });
+          this.renderReservations();
+          this.toast('Reservation levels saved!', 'success');
+        } catch (e) { this.toast(e.message); }
       },
 
       async updateDeposit(id, status) {
@@ -606,6 +711,11 @@
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Chance a reservation draw wins (the rest lose, i.e. "Not Won")</p>
                   </div>
                   <div class="admin-form-group">
+                    <label class="admin-form-label">Daily Check-in Reward ($)</label>
+                    <input class="admin-form-input" id="cfgDailyCheckin" type="number" step="0.01" min="0" value="${config.dailyCheckinReward !== undefined ? config.dailyCheckinReward : 0}" placeholder="0">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Users can claim this once every 24 hours. Set to 0 to turn the daily reward off.</p>
+                  </div>
+                  <div class="admin-form-group">
                     <label class="admin-form-label">Stake Handling Fee</label>
                     <label style="display:flex;align-items:center;gap:8px;padding:10px 0;cursor:pointer;">
                       <input type="checkbox" id="cfgHandlingFeeEnabled" style="width:18px;height:18px;" ${config.handlingFeeEnabled === true ? 'checked' : ''}>
@@ -698,6 +808,7 @@
               referralBonusPctC: document.getElementById('cfgReferralPctC').value,
               withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value,
               reserveWinRatePct: document.getElementById('cfgReserveWinRate').value,
+              dailyCheckinReward: document.getElementById('cfgDailyCheckin').value,
               handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked
             })
           });

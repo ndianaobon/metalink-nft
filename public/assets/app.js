@@ -35,6 +35,17 @@ if (mobileMenuBtn && navLinks) {
   });
 }
 
+// Already signed in: point the Log In buttons straight at the app instead.
+try {
+  if (localStorage.getItem('mlk_token')) {
+    document.querySelectorAll('[data-auth-login]').forEach(a => {
+      a.href = '/app.html';
+      const label = a.querySelector('span') || a;
+      label.textContent = 'My Account';
+    });
+  }
+} catch (e) {}
+
 // Wallet Modal
 const walletModal = document.getElementById('walletModal');
 const modalClose = document.getElementById('modalClose');
