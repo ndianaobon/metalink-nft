@@ -2017,6 +2017,19 @@ app.get('/api/platform/deposit-addresses', async (req, res) => {
   });
 });
 
+// Community links behind the app menu's Telegram and Group buttons (admin-editable in Settings).
+const DEFAULT_TELEGRAM_LINK = 'https://t.me/MetaLinkNFT_Admin';
+const DEFAULT_GROUP_LINK = 'https://t.me/+pOKs2lnyBXM5NjI9';
+
+function validLink(value) {
+  const v = String(value).trim();
+  if (v === '') return '';
+  try {
+    const u = new URL(v.startsWith('http') ? v : 'https://' + v);
+    return u.protocol === 'https:' || u.protocol === 'http:' ? u.toString() : null;
+  } catch { return null; }
+}
+
 app.get('/api/platform/info', async (req, res) => {
   const config = await getConfig();
   res.json({
@@ -2026,7 +2039,9 @@ app.get('/api/platform/info', async (req, res) => {
     referralBonusPctB: config.referralBonusPctB !== undefined ? config.referralBonusPctB : 8,
     referralBonusPctC: config.referralBonusPctC !== undefined ? config.referralBonusPctC : 3,
     withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4,
-    handlingFeeEnabled: config.handlingFeeEnabled === true
+    handlingFeeEnabled: config.handlingFeeEnabled === true,
+    telegramLink: config.telegramLink || DEFAULT_TELEGRAM_LINK,
+    groupLink: config.groupLink || DEFAULT_GROUP_LINK
   });
 });
 
@@ -2035,7 +2050,7 @@ app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink } = req.body;
 
   const result = await tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(424244)');
@@ -2049,6 +2064,12 @@ app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
     if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
     if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
     if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
+    for (const [key, value, label] of [['telegramLink', telegramLink, 'Telegram link'], ['groupLink', groupLink, 'Group link']]) {
+      if (value === undefined) continue;
+      const link = validLink(value);
+      if (link === null) return { status: 400, body: { error: `${label} must be a web link, e.g. https://t.me/yourchannel` } };
+      config[key] = link; // '' falls back to the default link
+    }
     if (dailyCheckinReward !== undefined) {
       const reward = parseFloat(dailyCheckinReward);
       if (isNaN(reward) || reward < 0 || reward > 100000) return { status: 400, body: { error: 'Daily check-in reward must be 0 or more (0 turns it off)' } };

@@ -897,6 +897,22 @@
             </div>
 
             <div class="admin-table-card" style="margin-top:24px;">
+              <div class="admin-table-header"><h3>Community Links</h3></div>
+              <div style="padding:24px;">
+                <p style="font-size:0.85rem;color:#888;margin-bottom:20px;">These open when users tap <strong>Telegram</strong> or <strong>Group</strong> in the app menu. Leave a field empty to use the default link.</p>
+                <div class="admin-form-group">
+                  <label class="admin-form-label">Telegram Link</label>
+                  <input class="admin-form-input" id="cfgTelegramLink" value="${escapeHtml(config.telegramLink || '')}" placeholder="https://t.me/MetaLinkNFT_Admin">
+                </div>
+                <div class="admin-form-group">
+                  <label class="admin-form-label">Group Link</label>
+                  <input class="admin-form-input" id="cfgGroupLink" value="${escapeHtml(config.groupLink || '')}" placeholder="https://t.me/+pOKs2lnyBXM5NjI9">
+                </div>
+                <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;" onclick="Admin.saveCommunityLinks()">Save Links</button>
+              </div>
+            </div>
+
+            <div class="admin-table-card" style="margin-top:24px;">
               <div class="admin-table-header"><h3>Platform Settings</h3></div>
               <div style="padding:24px;">
                 <div class="admin-settings-grid">
@@ -1018,6 +1034,21 @@
             })
           });
           this.toast('Deposit addresses saved!', 'success');
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async saveCommunityLinks() {
+        try {
+          const cfg = await this.api('/admin/platform-config', {
+            method: 'PUT',
+            body: JSON.stringify({
+              telegramLink: document.getElementById('cfgTelegramLink').value,
+              groupLink: document.getElementById('cfgGroupLink').value
+            })
+          });
+          document.getElementById('cfgTelegramLink').value = cfg.telegramLink || '';
+          document.getElementById('cfgGroupLink').value = cfg.groupLink || '';
+          this.toast('Community links saved!', 'success');
         } catch (e) { this.toast(e.message); }
       },
 
