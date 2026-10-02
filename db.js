@@ -86,6 +86,23 @@ async function createSchema(c) {
     expires_at bigint NOT NULL,
     PRIMARY KEY (kind, key)
   )`);
+  // Every IP each user has signed up / logged in / been active from, for multi-account detection.
+  await c.query(`CREATE TABLE IF NOT EXISTS app.user_ips (
+    user_id text NOT NULL,
+    ip text NOT NULL,
+    first_seen timestamptz NOT NULL DEFAULT now(),
+    last_seen timestamptz NOT NULL DEFAULT now(),
+    hits integer NOT NULL DEFAULT 1,
+    PRIMARY KEY (user_id, ip)
+  )`);
+  await c.query('CREATE INDEX IF NOT EXISTS user_ips_ip_idx ON app.user_ips (ip)');
+  // IPs that may not create new accounts (set when banning a user with "block their IPs").
+  await c.query(`CREATE TABLE IF NOT EXISTS app.banned_ips (
+    ip text PRIMARY KEY,
+    user_id text,
+    reason text,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`);
   await c.query(`CREATE TABLE IF NOT EXISTS app.uploads (
     name text PRIMARY KEY,
     content_type text NOT NULL,

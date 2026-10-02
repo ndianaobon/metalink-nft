@@ -103,6 +103,7 @@
               </div>
               <button class="admin-nav-item active" data-page="dashboard">&#128202; Dashboard</button>
               <button class="admin-nav-item" data-page="users">&#128101; Users</button>
+              <button class="admin-nav-item" data-page="multiaccounts">&#128737; Multi-Accounts</button>
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
               <button class="admin-nav-item" data-page="reservations">&#127915; Reservations</button>
@@ -156,6 +157,7 @@
 
         if (this.currentPage === 'dashboard') await this.loadDashboard(c);
         else if (this.currentPage === 'users') await this.loadUsers(c);
+        else if (this.currentPage === 'multiaccounts') await this.loadMultiAccounts(c);
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
         else if (this.currentPage === 'reservations') await this.loadReservations(c);
@@ -189,34 +191,257 @@
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>Status</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Wallet TRC20</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Status</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
                   <tbody>
-                    ${users.map(u => {
-                      const frozen = u.frozenUntil && new Date(u.frozenUntil).getTime() > Date.now();
-                      const statusBadge = frozen
-                        ? `<span class="admin-badge admin-badge-rejected" title="Frozen until ${new Date(u.frozenUntil).toLocaleString()}">&#10060; Frozen</span>`
-                        : `<span class="admin-badge ${u.online ? 'admin-badge-approved' : 'admin-badge-pending'}">${u.online ? '&#9679; Online' : '&#9675; Offline'}</span>`;
-                      return `
+                    ${users.map(u => `
                       <tr>
-                        <td>${statusBadge}</td>
+                        <td>${this.statusBadge(u)}</td>
                         <td><strong>${escapeHtml(u.uid)}</strong></td>
                         <td>${escapeHtml(u.username)}</td>
                         <td>${escapeHtml(u.email)}</td>
                         <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
                         <td>${u.level}</td>
-                        <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(u.walletAddress?.trc20) || '-'}</td>
+                        <td>${u.sharedIpAccounts ? `<button class="admin-btn admin-btn-reject" title="Other accounts have used this user's IP address" onclick="Admin.showUserIps('${escapeHtml(u.id)}')">&#9888; ${u.sharedIpAccounts} other${u.sharedIpAccounts > 1 ? 's' : ''}</button>` : '<span style="color:#ccc;">-</span>'}</td>
+                        <td style="font-size:0.78rem;">${escapeHtml(u.lastIp || u.signupIp) || '-'}</td>
                         <td>${new Date(u.createdAt).toLocaleDateString()}</td>
                         <td style="white-space:nowrap;">
                           <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(u.id)}')">Edit</button>
                           <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${escapeHtml(u.id)}','${escapeHtml(u.username)}')">+ Balance</button>
+                          ${this.moderationButtons(u)}
                         </td>
-                      </tr>`;
-                    }).join('')}
+                      </tr>`).join('')}
                   </tbody>
                 </table>
               </div>
             </div>`;
         } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+      },
+
+      statusBadge(u) {
+        if (u.bannedAt) return `<span class="admin-badge admin-badge-rejected" title="${escapeHtml(u.banReason || 'No reason given')}">&#9940; Banned</span>`;
+        if (u.frozenUntil && new Date(u.frozenUntil).getTime() > Date.now()) {
+          return `<span class="admin-badge admin-badge-pending" style="background:#ffedd5;color:#c2410c;" title="Until ${new Date(u.frozenUntil).toLocaleString()}${u.suspendReason ? ' — ' + escapeHtml(u.suspendReason) : ''}">&#9208; Suspended</span>`;
+        }
+        if (u.online === undefined) return '<span class="admin-badge admin-badge-approved">Active</span>';
+        return `<span class="admin-badge ${u.online ? 'admin-badge-approved' : 'admin-badge-pending'}">${u.online ? '&#9679; Online' : '&#9675; Offline'}</span>`;
+      },
+
+      moderationButtons(u) {
+        const id = escapeHtml(u.id), name = escapeHtml(u.username);
+        const suspended = u.frozenUntil && new Date(u.frozenUntil).getTime() > Date.now();
+        return `
+          ${suspended
+            ? `<button class="admin-btn admin-btn-edit" onclick="Admin.moderate('unsuspend','${id}','${name}')">Unsuspend</button>`
+            : `<button class="admin-btn admin-btn-edit" style="background:#ffedd5;color:#c2410c;" onclick="Admin.showSuspendForm('${id}','${name}')">Suspend</button>`}
+          ${u.bannedAt
+            ? `<button class="admin-btn admin-btn-approve" onclick="Admin.moderate('unban','${id}','${name}')">Unban</button>`
+            : `<button class="admin-btn admin-btn-delete" onclick="Admin.showBanForm('${id}','${name}')">Ban</button>`}
+          <button class="admin-btn" style="background:#eef2ff;color:#4f46e5;" onclick="Admin.showUserIps('${id}')">IPs</button>`;
+      },
+
+      showSuspendForm(id, username) {
+        const durations = [['1 hour', 1], ['24 hours', 24], ['3 days', 72], ['7 days', 168], ['30 days', 720]];
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3>Suspend ${username}</h3>
+            <p style="font-size:0.85rem;color:#888;margin-bottom:14px;">The user is logged out immediately and can't sign in until the suspension ends. They'll see the end date and reason when they try.</p>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Duration</label>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;" id="suspendPresets">
+                ${durations.map(([label, h], i) => `<button type="button" class="admin-btn ${i === 1 ? 'admin-btn-primary' : ''}" style="${i === 1 ? '' : 'background:#eee;'}" data-hours="${h}">${label}</button>`).join('')}
+                <button type="button" class="admin-btn" style="background:#eee;" data-hours="custom">Custom</button>
+              </div>
+            </div>
+            <div class="admin-form-group" id="suspendCustomWrap" style="display:none;">
+              <label class="admin-form-label">Suspend until</label>
+              <input class="admin-form-input" id="suspendUntil" type="datetime-local">
+            </div>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Reason (shown to the user)</label>
+              <textarea class="admin-form-input admin-form-textarea" id="suspendReason" maxlength="300" placeholder="e.g. Multiple accounts on one device"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+              <button class="admin-btn admin-btn-primary" style="flex:1;" id="suspendConfirm">Suspend</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        let hours = 24;
+        modal.querySelectorAll('#suspendPresets button').forEach(btn => btn.addEventListener('click', () => {
+          modal.querySelectorAll('#suspendPresets button').forEach(b => { b.classList.remove('admin-btn-primary'); b.style.background = '#eee'; });
+          btn.classList.add('admin-btn-primary'); btn.style.background = '';
+          hours = btn.dataset.hours;
+          modal.querySelector('#suspendCustomWrap').style.display = hours === 'custom' ? '' : 'none';
+        }));
+        modal.querySelector('#suspendConfirm').addEventListener('click', async () => {
+          let until;
+          if (hours === 'custom') {
+            const v = modal.querySelector('#suspendUntil').value;
+            if (!v) { this.toast('Pick an end date and time'); return; }
+            until = new Date(v).toISOString();
+          } else until = new Date(Date.now() + Number(hours) * 3600000).toISOString();
+          try {
+            await this.api(`/admin/users/${id}/suspend`, { method: 'POST', body: JSON.stringify({ until, reason: modal.querySelector('#suspendReason').value }) });
+            modal.remove();
+            this.toast(`${username} suspended until ${new Date(until).toLocaleString()}`, 'success');
+            this.refreshAfterModeration();
+          } catch (e) { this.toast(e.message); }
+        });
+      },
+
+      showBanForm(id, username) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3 style="color:#dc2626;">Ban ${username}</h3>
+            <p style="font-size:0.85rem;color:#888;margin-bottom:14px;">The account is permanently blocked and logged out immediately. You can unban it later. Their balance and history are kept.</p>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Reason (shown to the user)</label>
+              <textarea class="admin-form-input admin-form-textarea" id="banReason" maxlength="300" placeholder="e.g. Fraudulent deposits"></textarea>
+            </div>
+            <label style="display:flex;gap:10px;align-items:flex-start;padding:12px;background:#fef2f2;border-radius:8px;margin-bottom:16px;cursor:pointer;">
+              <input type="checkbox" id="banBlockIps" style="width:18px;height:18px;margin-top:2px;">
+              <span style="font-size:0.85rem;"><strong>Also block new sign-ups from this user's IP addresses.</strong><br>
+              <span style="color:#888;">Careful: mobile networks and public Wi-Fi share IPs between many people, so this can block innocent new users too.</span></span>
+            </label>
+            <div style="display:flex;gap:10px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+              <button class="admin-btn" style="flex:1;background:#dc2626;color:#fff;" id="banConfirm">Ban User</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+        modal.querySelector('#banConfirm').addEventListener('click', async () => {
+          try {
+            const r = await this.api(`/admin/users/${id}/ban`, { method: 'POST', body: JSON.stringify({ reason: modal.querySelector('#banReason').value, blockIps: modal.querySelector('#banBlockIps').checked }) });
+            modal.remove();
+            this.toast(`${username} banned${r.blockedIps ? ` and ${r.blockedIps} IP address${r.blockedIps > 1 ? 'es' : ''} blocked` : ''}`, 'success');
+            this.refreshAfterModeration();
+          } catch (e) { this.toast(e.message); }
+        });
+      },
+
+      async moderate(action, id, username) {
+        const labels = { unsuspend: 'Lift the suspension for', unban: 'Unban' };
+        if (!confirm(`${labels[action]} ${username}?`)) return;
+        try {
+          await this.api(`/admin/users/${id}/${action}`, { method: 'POST' });
+          this.toast(action === 'unban' ? `${username} unbanned` : `Suspension lifted for ${username}`, 'success');
+          this.refreshAfterModeration();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      refreshAfterModeration() {
+        document.querySelectorAll('.admin-modal-overlay').forEach(m => m.remove());
+        this.loadPage();
+      },
+
+      async showUserIps(id) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = '<div class="admin-modal" style="max-width:640px;"><div style="padding:20px;text-align:center;color:#888;">Loading...</div></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        try {
+          const { user, ips } = await this.api(`/admin/users/${id}/ips`);
+          modal.querySelector('.admin-modal').innerHTML = `
+            <h3>IP addresses &mdash; ${escapeHtml(user.username)}</h3>
+            <p style="font-size:0.82rem;color:#888;margin-bottom:12px;">Sign-up IP: <strong>${escapeHtml(user.signupIp) || 'not recorded'}</strong> &middot; Last IP: <strong>${escapeHtml(user.lastIp) || 'not recorded'}</strong></p>
+            ${ips.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+              <thead><tr><th>IP</th><th>First seen</th><th>Last seen</th><th>Other accounts</th></tr></thead>
+              <tbody>${ips.map(i => `<tr>
+                <td style="font-family:monospace;">${escapeHtml(i.ip)}${i.ipBanned ? ' <span class="admin-badge admin-badge-rejected">Blocked</span>' : ''}</td>
+                <td style="font-size:0.8rem;">${new Date(i.firstSeen).toLocaleString()}</td>
+                <td style="font-size:0.8rem;">${new Date(i.lastSeen).toLocaleString()}</td>
+                <td>${i.otherAccounts ? `<button class="admin-btn admin-btn-reject" onclick="Admin.openMultiAccounts('${escapeHtml(i.ip)}')">&#9888; ${i.otherAccounts}</button>` : '0'}</td>
+              </tr>`).join('')}</tbody></table></div>` : '<p style="color:#888;padding:12px 0;">No IP addresses recorded yet. They are recorded from now on whenever this user signs up, logs in or uses the app.</p>'}
+            <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>`;
+        } catch (e) { modal.querySelector('.admin-modal').innerHTML = `<p style="padding:20px;">${escapeHtml(e.message)}</p>`; }
+      },
+
+      openMultiAccounts(ip) {
+        document.querySelectorAll('.admin-modal-overlay').forEach(m => m.remove());
+        this.multiAccountFilter = ip || '';
+        document.querySelector('[data-page="multiaccounts"]').click();
+      },
+
+      async loadMultiAccounts(c) {
+        try {
+          const [groups, myIp, bannedIps] = await Promise.all([
+            this.api('/admin/multi-accounts'), this.api('/admin/my-ip'), this.api('/admin/banned-ips')
+          ]);
+          this.multiAccountGroups = groups;
+          c.innerHTML = `
+            <div class="admin-table-card" style="padding:16px 20px;margin-bottom:20px;font-size:0.85rem;color:#555;">
+              The server sees <strong>your</strong> IP address as <strong style="font-family:monospace;">${escapeHtml(myIp.ip)}</strong>.
+              Check that this matches <a href="https://whatismyipaddress.com" target="_blank" rel="noopener">whatismyipaddress.com</a> &mdash; if it doesn't, IP detection is seeing the hosting network instead of visitors, so let your developer know.
+              <br><span style="color:#888;">Accounts sharing an IP aren't always the same person: families, offices, mobile networks and public Wi-Fi share IPs. Check deposits, referrals and timing before banning.</span>
+            </div>
+            <div class="admin-table-card">
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+                <h3>Multiple Accounts on One IP (${groups.length})</h3>
+                <input class="admin-form-input" id="multiFilter" style="max-width:260px;" placeholder="Filter by IP, username or email" value="${escapeHtml(this.multiAccountFilter || '')}" oninput="Admin.multiAccountFilter=this.value;Admin.renderMultiAccountGroups()">
+              </div>
+              <div id="multiGroups" style="padding:16px;"></div>
+            </div>
+            <div class="admin-table-card" style="margin-top:24px;">
+              <div class="admin-table-header"><h3>Blocked IP Addresses (${bannedIps.length})</h3></div>
+              ${bannedIps.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+                <thead><tr><th>IP</th><th>Banned user</th><th>Reason</th><th>Blocked</th><th></th></tr></thead>
+                <tbody>${bannedIps.map(b => `<tr>
+                  <td style="font-family:monospace;">${escapeHtml(b.ip)}</td>
+                  <td>${escapeHtml(b.username || '-')}</td>
+                  <td style="max-width:220px;">${escapeHtml(b.reason || '-')}</td>
+                  <td style="font-size:0.8rem;">${new Date(b.createdAt).toLocaleString()}</td>
+                  <td><button class="admin-btn admin-btn-approve" onclick="Admin.unblockIp('${escapeHtml(b.ip)}')">Unblock</button></td>
+                </tr>`).join('')}</tbody></table></div>` : '<p style="padding:20px;color:#888;text-align:center;">No IP addresses are blocked. You can block a banned user\'s IPs when banning them.</p>'}
+            </div>`;
+          this.renderMultiAccountGroups();
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      renderMultiAccountGroups() {
+        const el = document.getElementById('multiGroups');
+        if (!el) return;
+        const q = (this.multiAccountFilter || '').trim().toLowerCase();
+        const groups = (this.multiAccountGroups || []).filter(g => !q || g.ip.toLowerCase().includes(q) ||
+          g.accounts.some(a => (a.username || '').toLowerCase().includes(q) || (a.email || '').toLowerCase().includes(q) || (a.uid || '').toLowerCase().includes(q)));
+        if (!groups.length) {
+          el.innerHTML = `<p style="padding:24px;color:#888;text-align:center;">${q ? 'No matches.' : 'No IP address is shared by more than one account yet. IPs are recorded whenever users sign up, log in or use the app.'}</p>`;
+          return;
+        }
+        el.innerHTML = groups.map(g => `
+          <div style="border:1px solid #eee;border-radius:10px;margin-bottom:16px;overflow:hidden;">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#fafafa;border-bottom:1px solid #eee;">
+              <strong style="font-family:monospace;font-size:0.95rem;">${escapeHtml(g.ip)}</strong>
+              <span class="admin-badge admin-badge-rejected">${g.accounts.length} accounts</span>
+              ${g.ipBanned ? '<span class="admin-badge admin-badge-rejected">Sign-ups blocked</span>' : ''}
+              <span style="margin-left:auto;font-size:0.78rem;color:#888;">Last activity ${new Date(g.lastSeen).toLocaleString()}</span>
+            </div>
+            <div style="overflow-x:auto;"><table class="admin-table">
+              <thead><tr><th>Status</th><th>User</th><th>UID</th><th>Balance</th><th>Joined</th><th>First seen on this IP</th><th>Actions</th></tr></thead>
+              <tbody>${g.accounts.map(a => `<tr>
+                <td>${this.statusBadge(a)}</td>
+                <td><strong>${escapeHtml(a.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(a.email)}</span></td>
+                <td>${escapeHtml(a.uid)}</td>
+                <td>${Number(a.walletBalance || 0).toFixed(2)}</td>
+                <td style="font-size:0.8rem;">${new Date(a.createdAt).toLocaleDateString()}</td>
+                <td style="font-size:0.8rem;">${new Date(a.firstSeenOnIp).toLocaleString()}</td>
+                <td style="white-space:nowrap;">${this.moderationButtons(a)}</td>
+              </tr>`).join('')}</tbody>
+            </table></div>
+          </div>`).join('');
+      },
+
+      async unblockIp(ip) {
+        if (!confirm(`Allow new sign-ups from ${ip} again?`)) return;
+        try {
+          await this.api('/admin/banned-ips/' + encodeURIComponent(ip), { method: 'DELETE' });
+          this.toast('IP unblocked', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
       },
 
       async editUser(id) {

@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
+const net = require('net');
 const cluster = require('cluster');
 const bcrypt = require('bcryptjs');
 const helmet = require('helmet');
@@ -28,6 +29,10 @@ const authLimiter = rateLimit({
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
+  // Count per visitor. The default key (the socket address) is Hostinger's proxy, which would make
+  // every user on the site share a single 20-attempt budget.
+  keyGenerator: req => getClientIp(req),
+  validate: { xForwardedForHeader: false }, // we read X-Forwarded-For ourselves in getClientIp
   message: { error: 'Too many attempts. Please try again later.' }
 });
 
@@ -278,6 +283,65 @@ function isFrozen(user) {
   return !!user.frozenUntil && new Date(user.frozenUntil).getTime() > Date.now();
 }
 
+function isBanned(user) { return !!user.bannedAt; }
+
+// The 403 body every blocked-account check returns; the login page and app show it to the user.
+function blockedResponse(user) {
+  if (isBanned(user)) return { error: 'Account banned', banned: true, reason: user.banReason || '' };
+  return { error: 'Account frozen', frozenUntil: user.frozenUntil, reason: user.suspendReason || '' };
+}
+
+// ---------- client IP (for multi-account detection) ----------
+
+function isPrivateIp(ip) {
+  if (net.isIPv4(ip)) {
+    const [a, b] = ip.split('.').map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) ||
+      (a === 169 && b === 254) || (a === 100 && b >= 64 && b <= 127);
+  }
+  const v6 = ip.toLowerCase();
+  return v6 === '::1' || v6 === '::' || v6.startsWith('fc') || v6.startsWith('fd') || v6.startsWith('fe80');
+}
+
+function normalizeIp(raw) {
+  let ip = String(raw || '').trim().replace(/^::ffff:/i, '');
+  if (/^\d+\.\d+\.\d+\.\d+:\d+$/.test(ip)) ip = ip.split(':')[0]; // strip a port some proxies append
+  return net.isIP(ip) ? ip : '';
+}
+
+// The site sits behind Hostinger's CDN and proxies, so the socket address is a proxy. The visitor's
+// address is the first public entry in X-Forwarded-For (proxies append theirs after it).
+function getClientIp(req) {
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(normalizeIp).filter(Boolean);
+  const publicIp = chain.find(ip => !isPrivateIp(ip));
+  if (publicIp) return publicIp;
+  const realIp = normalizeIp(req.headers['x-real-ip']);
+  if (realIp && !isPrivateIp(realIp)) return realIp;
+  return chain[0] || normalizeIp(req.socket.remoteAddress) || 'unknown';
+}
+
+function recordUserIp(userId, ip, c = pool) {
+  // A private address means we only saw an internal proxy, which every visitor would share;
+  // recording it would flag all users as one group.
+  if (!userId || !net.isIP(ip) || isPrivateIp(ip)) return Promise.resolve();
+  return c.query(`
+    INSERT INTO app.user_ips (user_id, ip) VALUES ($1, $2)
+    ON CONFLICT (user_id, ip) DO UPDATE SET last_seen = now(), hits = app.user_ips.hits + 1`, [userId, ip])
+    .catch(e => console.error('[ip] record failed:', e.message));
+}
+
+async function isIpBanned(ip) {
+  const { rows } = await pool.query('SELECT 1 FROM app.banned_ips WHERE ip = $1', [ip]);
+  return rows.length > 0;
+}
+async function noteLogin(userId, req) {
+  const ip = getClientIp(req);
+  await db.patchDoc(pool, 'users', userId, { lastIp: ip, lastLoginAt: new Date().toISOString() });
+  await recordUserIp(userId, ip);
+}
+
+const IP_BLOCKED_ERROR ='New accounts cannot be created from your network. Please contact support.';
+
 // epochTolerance: 30 accepts codes from one 30s step before/after the current one, to absorb minor clock drift between server and phone.
 async function isValidTotp(code, secret) {
   if (!code || !secret) return false;
@@ -359,21 +423,26 @@ async function authMiddleware(req, res, next) {
   req.userId = session.userId;
   req.userRole = session.role || 'user';
 
-  // Throttled "last active" tracking (also doubles as the freeze check, so a freeze takes
-  // effect for an active session within ~1 minute rather than needing a fresh login).
+  // Throttled "last active" tracking. Suspending/banning deletes sessions immediately; this re-check
+  // is a backstop (e.g. a suspension set through the edit form on another server process).
   const now = Date.now();
   if (now - session.lastActivityWrite > ACTIVITY_WRITE_THROTTLE_MS) {
+    const ip = getClientIp(req);
     // One round trip: claim the write slot (of several simultaneous requests only one wins), stamp
-    // lastActiveAt, and read back the freeze date.
+    // lastActiveAt/lastIp, and read back the account's status.
     const { rows } = await pool.query(`
       WITH s AS (UPDATE app.sessions SET last_activity_write = $2 WHERE token_hash = $1 AND last_activity_write = $3 RETURNING user_id)
-      UPDATE app.users u SET data = u.data || jsonb_build_object('lastActiveAt', $4::text)
+      UPDATE app.users u SET data = u.data || jsonb_build_object('lastActiveAt', $4::text, 'lastIp', $5::text)
       FROM s WHERE u.id = s.user_id
-      RETURNING u.data->>'frozenUntil' AS frozen_until`,
-      [session.tokenHash, now, session.lastActivityWrite, new Date(now).toISOString()]);
-    if (rows.length && isFrozen({ frozenUntil: rows[0].frozen_until })) {
-      await deleteSession(session.tokenHash);
-      return res.status(403).json({ error: 'Account frozen', frozenUntil: rows[0].frozen_until });
+      RETURNING u.data->>'frozenUntil' AS "frozenUntil", u.data->>'suspendReason' AS "suspendReason",
+                u.data->>'bannedAt' AS "bannedAt", u.data->>'banReason' AS "banReason"`,
+      [session.tokenHash, now, session.lastActivityWrite, new Date(now).toISOString(), ip]);
+    if (rows.length) {
+      recordUserIp(session.userId, ip);
+      if (isBanned(rows[0]) || isFrozen(rows[0])) {
+        await deleteSession(session.tokenHash);
+        return res.status(403).json(blockedResponse(rows[0]));
+      }
     }
   }
 
@@ -435,6 +504,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (!phoneCountryCode || !phoneNumber) return res.status(400).json({ error: 'Phone number is required' });
 
+  if (await isIpBanned(getClientIp(req))) return res.status(403).json({ error: IP_BLOCKED_ERROR });
   if (await db.findUserBy(pool, 'email', email)) return res.status(400).json({ error: 'Email already registered' });
   if (await db.findUserBy(pool, 'username_lower', username.toLowerCase())) return res.status(400).json({ error: 'Username is already taken' });
 
@@ -496,6 +566,9 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
   }
   if (pending.code !== code) return res.status(400).json({ error: 'Invalid verification code' });
 
+  const ip = getClientIp(req);
+  if (await isIpBanned(ip)) return res.status(403).json({ error: IP_BLOCKED_ERROR });
+
   const result = await tx(async c => {
     // Serializes account creation so two simultaneous signups can't claim the same email/username.
     await c.query('SELECT pg_advisory_xact_lock(424243)');
@@ -526,12 +599,15 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
       avatar: '',
       referralCode: null,
       referredBy: pending.referredBy,
+      signupIp: ip,
+      lastIp: ip,
       createdAt: new Date().toISOString(),
       totalIncome: 0,
       totalWithdrawn: 0,
       dailyIncome: { comprehensive: 0, reserve: 0, team: 0, activity: 0, finance: 0, earn: 0, ecology: 0, growth: 0, stake: 0 }
     };
     await db.insertUser(c, user);
+    await recordUserIp(user.id, ip, c);
 
     const tiers = ['A', 'B', 'C'];
     let currentReferrerId = user.referredBy;
@@ -566,9 +642,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     await db.patchDoc(pool, 'users', user.id, { password: await hashPassword(password) });
   }
 
-  if (isFrozen(user)) {
-    return res.status(403).json({ error: 'Account frozen', frozenUntil: user.frozenUntil });
-  }
+  if (isBanned(user) || isFrozen(user)) return res.status(403).json(blockedResponse(user));
 
   if (user.twoFactorEnabled) {
     const tempToken = crypto.randomBytes(32).toString('hex');
@@ -576,6 +650,7 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     return res.json({ requires2FA: true, tempToken });
   }
 
+  await noteLogin(user.id, req);
   const token = await createSession(user.id, 'user');
 
   res.json({
@@ -606,6 +681,8 @@ app.post('/api/auth/login/2fa', authLimiter, async (req, res) => {
   }
 
   await db.ephDel(EPH_LOGIN, tempToken);
+  if (isBanned(user) || isFrozen(user)) return res.status(403).json(blockedResponse(user));
+  await noteLogin(user.id, req);
   const token = await createSession(user.id, 'user');
 
   res.json({
@@ -1410,6 +1487,19 @@ app.post('/api/user/avatar', authMiddleware, async (req, res) => {
   res.json(publicProfile(user));
 });
 
+app.delete('/api/user/avatar', authMiddleware, async (req, res) => {
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.userId, { lock: true });
+    if (!u) return null;
+    const previous = typeof u.avatar === 'string' && u.avatar.match(/^\/uploads\/([\w-]+\.\w+)$/);
+    if (previous) await c.query('DELETE FROM app.uploads WHERE name = $1', [previous[1]]);
+    u.avatar = '';
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(publicProfile(user));
+});
+
 // ===================== ANNOUNCEMENT ROUTES =====================
 
 app.get('/api/announcements', async (req, res) => {
@@ -1467,11 +1557,158 @@ app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
 });
 
 app.get('/api/admin/users', adminMiddleware, async (req, res) => {
+  // For each user: how many *other* accounts have used any of the same IP addresses.
+  const { rows: shared } = await pool.query(`
+    SELECT a.user_id, count(DISTINCT b.user_id)::int AS n
+    FROM app.user_ips a JOIN app.user_ips b ON b.ip = a.ip AND b.user_id <> a.user_id
+    GROUP BY a.user_id`);
+  const sharedMap = Object.fromEntries(shared.map(r => [r.user_id, r.n]));
   const users = (await db.listDocs(pool, 'users')).map(u => {
     const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
-    return { ...publicProfile(u), online };
+    return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0 };
   });
   res.json(users);
+});
+
+// ---------- multi-account detection, suspensions and bans ----------
+
+function accountStatus(u) {
+  if (isBanned(u)) return 'banned';
+  if (isFrozen(u)) return 'suspended';
+  return 'active';
+}
+
+function accountSummary(u) {
+  return {
+    id: u.id, username: u.username, email: u.email, uid: u.uid, createdAt: u.createdAt,
+    walletBalance: u.walletBalance, status: accountStatus(u), frozenUntil: u.frozenUntil || null,
+    suspendReason: u.suspendReason || '', bannedAt: u.bannedAt || null, banReason: u.banReason || '',
+    referredBy: u.referredBy || null
+  };
+}
+
+// IP addresses used by 2+ different accounts, most accounts first.
+app.get('/api/admin/multi-accounts', adminMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT i.ip, max(i.last_seen) AS last_seen,
+           json_agg(json_build_object('userId', i.user_id, 'firstSeen', i.first_seen, 'lastSeen', i.last_seen, 'hits', i.hits) ORDER BY i.first_seen) AS seen,
+           EXISTS (SELECT 1 FROM app.banned_ips b WHERE b.ip = i.ip) AS ip_banned
+    FROM app.user_ips i
+    WHERE i.ip IN (SELECT ip FROM app.user_ips GROUP BY ip HAVING count(DISTINCT user_id) > 1)
+    GROUP BY i.ip
+    ORDER BY count(DISTINCT i.user_id) DESC, max(i.last_seen) DESC
+    LIMIT 500`);
+  const userIds = [...new Set(rows.flatMap(r => r.seen.map(s => s.userId)))];
+  const users = {};
+  const { rows: userRows } = userIds.length ? await pool.query('SELECT data FROM app.users WHERE id = ANY($1)', [userIds]) : { rows: [] };
+  userRows.forEach(r => { users[r.data.id] = r.data; });
+  res.json(rows.map(r => ({
+    ip: r.ip,
+    lastSeen: r.last_seen,
+    ipBanned: r.ip_banned,
+    accounts: r.seen.filter(s => users[s.userId]).map(s => ({ ...accountSummary(users[s.userId]), firstSeenOnIp: s.firstSeen, lastSeenOnIp: s.lastSeen, hits: s.hits }))
+  })).filter(g => g.accounts.length > 1));
+});
+
+// Every IP one user has used, with how many other accounts share each.
+app.get('/api/admin/users/:id/ips', adminMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { rows } = await pool.query(`
+    SELECT i.ip, i.first_seen, i.last_seen, i.hits,
+           (SELECT count(DISTINCT o.user_id)::int FROM app.user_ips o WHERE o.ip = i.ip AND o.user_id <> i.user_id) AS other_accounts,
+           EXISTS (SELECT 1 FROM app.banned_ips b WHERE b.ip = i.ip) AS ip_banned
+    FROM app.user_ips i WHERE i.user_id = $1 ORDER BY i.last_seen DESC`, [user.id]);
+  res.json({
+    user: { ...accountSummary(user), signupIp: user.signupIp || null, lastIp: user.lastIp || null },
+    ips: rows.map(r => ({ ip: r.ip, firstSeen: r.first_seen, lastSeen: r.last_seen, hits: r.hits, otherAccounts: r.other_accounts, ipBanned: r.ip_banned }))
+  });
+});
+
+// Lets the admin confirm the server is seeing real visitor IPs (should match whatismyip.com).
+app.get('/api/admin/my-ip', adminMiddleware, async (req, res) => {
+  res.json({ ip: getClientIp(req), forwardedFor: req.headers['x-forwarded-for'] || null });
+});
+
+const MAX_SUSPEND_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+
+app.post('/api/admin/users/:id/suspend', adminMiddleware, async (req, res) => {
+  const until = new Date(req.body.until);
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  if (isNaN(until.getTime()) || until.getTime() <= Date.now()) return res.status(400).json({ error: 'Choose an end date/time in the future' });
+  if (until.getTime() - Date.now() > MAX_SUSPEND_MS) return res.status(400).json({ error: 'Suspensions can be at most 10 years. Use Ban instead.' });
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+    u.frozenUntil = until.toISOString();
+    u.suspendReason = reason;
+    u.suspendedAt = new Date().toISOString();
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  await deleteSessionsFor(user.id, 'user'); // logs them out everywhere immediately
+  res.json(accountSummary(user));
+});
+
+app.post('/api/admin/users/:id/unsuspend', adminMiddleware, async (req, res) => {
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+    u.frozenUntil = null;
+    u.suspendReason = '';
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(accountSummary(user));
+});
+
+app.post('/api/admin/users/:id/ban', adminMiddleware, async (req, res) => {
+  const reason = String(req.body.reason || '').trim().slice(0, 300);
+  const blockIps = req.body.blockIps === true;
+  const result = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+    u.bannedAt = new Date().toISOString();
+    u.banReason = reason;
+    await db.saveUser(c, u);
+    let blockedIps = 0;
+    if (blockIps) {
+      const r = await c.query(`
+        INSERT INTO app.banned_ips (ip, user_id, reason)
+        SELECT ip, $1, $2 FROM app.user_ips WHERE user_id = $1
+        ON CONFLICT (ip) DO NOTHING`, [u.id, reason]);
+      blockedIps = r.rowCount;
+    }
+    return { user: u, blockedIps };
+  });
+  if (!result) return res.status(404).json({ error: 'User not found' });
+  await deleteSessionsFor(result.user.id, 'user');
+  res.json({ ...accountSummary(result.user), blockedIps: result.blockedIps });
+});
+
+app.post('/api/admin/users/:id/unban', adminMiddleware, async (req, res) => {
+  const user = await tx(async c => {
+    const u = await db.getUser(c, req.params.id, { lock: true });
+    if (!u) return null;
+    u.bannedAt = null;
+    u.banReason = '';
+    await c.query('DELETE FROM app.banned_ips WHERE user_id = $1', [u.id]);
+    return db.saveUser(c, u);
+  });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(accountSummary(user));
+});
+
+app.get('/api/admin/banned-ips', adminMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT b.ip, b.reason, b.created_at, b.user_id, u.data->>'username' AS username
+    FROM app.banned_ips b LEFT JOIN app.users u ON u.id = b.user_id ORDER BY b.created_at DESC`);
+  res.json(rows.map(r => ({ ip: r.ip, reason: r.reason, createdAt: r.created_at, userId: r.user_id, username: r.username })));
+});
+
+app.delete('/api/admin/banned-ips/:ip', adminMiddleware, async (req, res) => {
+  await pool.query('DELETE FROM app.banned_ips WHERE ip = $1', [req.params.ip]);
+  res.json({ message: 'Unblocked' });
 });
 
 app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
@@ -1498,6 +1735,7 @@ app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
     return { status: 200, body: publicProfile(user) };
   });
 
+  if (result.status === 200 && isFrozen(result.body)) await deleteSessionsFor(result.body.id, 'user');
   res.status(result.status).json(result.body);
 });
 

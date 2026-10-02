@@ -2253,6 +2253,22 @@
 
   <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/webp" style="display:none;">
 
+  <!-- Profile picture options -->
+  <div class="modal-overlay" id="avatarMenuModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" style="text-align:center;">Profile Picture</div>
+      <div style="display:flex;justify-content:center;margin-bottom:20px;">
+        <div class="profile-avatar" id="avatarMenuPreview" style="width:88px;height:88px;border-radius:24px;font-size:2.2rem;">U</div>
+      </div>
+      <button class="btn btn-primary" onclick="closeAllModals(); document.getElementById('avatarFileInput').click();">
+        <span id="avatarMenuChangeLabel">Upload Photo</span>
+      </button>
+      <button class="btn btn-outline" id="avatarRemoveBtn" style="margin-top:10px;color:var(--negative);border-color:rgba(239,68,68,0.35);" onclick="removeAvatar()">Remove Photo</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
   <script>
     function escapeHtml(str) {
       return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2283,11 +2299,12 @@
       }).then(async r => {
         const d = await r.json();
         if (r.status === 401) { logout(); throw new Error('Session expired'); }
-        if (r.status === 403 && d.frozenUntil) {
+        if (r.status === 403 && (d.frozenUntil || d.banned)) {
           localStorage.removeItem('mlk_token');
           localStorage.removeItem('mlk_user');
-          window.location.href = '/signup.html?frozen=' + encodeURIComponent(d.frozenUntil) + '#login';
-          throw new Error('Account frozen');
+          const q = d.banned ? 'banned=1' : 'frozen=' + encodeURIComponent(d.frozenUntil);
+          window.location.href = '/signup.html?' + q + (d.reason ? '&reason=' + encodeURIComponent(d.reason) : '') + '#login';
+          throw new Error(d.banned ? 'Account banned' : 'Account suspended');
         }
         if (!r.ok) throw new Error(d.error || 'Request failed');
         return d;
@@ -3586,7 +3603,31 @@
       } else el.textContent = (p.username || 'U').charAt(0).toUpperCase();
     }
 
-    function pickAvatar() { document.getElementById('avatarFileInput').click(); }
+    // Tapping the avatar opens a small menu: change (upload) or remove the current picture.
+    async function pickAvatar() {
+      if (!profileData) {
+        try { profileData = await api('/api/user/profile'); } catch (e) { return; }
+      }
+      const hasAvatar = !!profileData.avatar;
+      setAvatarEl('avatarMenuPreview', profileData);
+      document.getElementById('avatarMenuChangeLabel').textContent = hasAvatar ? 'Change Photo' : 'Upload Photo';
+      document.getElementById('avatarRemoveBtn').style.display = hasAvatar ? '' : 'none';
+      openModal('avatarMenuModal');
+    }
+
+    async function removeAvatar() {
+      if (!confirm('Remove your profile picture?')) return;
+      const btn = document.getElementById('avatarRemoveBtn');
+      btn.disabled = true;
+      try {
+        const updated = await api('/api/user/avatar', { method: 'DELETE' });
+        profileData = { ...profileData, ...updated };
+        ['profileAvatar', 'settingsAvatar', 'inviteAvatar'].forEach(id => setAvatarEl(id, profileData));
+        closeAllModals();
+        toast('Profile picture removed');
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; }
+    }
 
     document.getElementById('avatarFileInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
