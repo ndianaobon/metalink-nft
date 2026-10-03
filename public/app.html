@@ -375,28 +375,96 @@
     .income-item .val { font-size: 0.95rem; font-weight: 700; }
 
     /* ---- Reserve Page ---- */
-    .reserve-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px; }
-    .reserve-stat-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 16px 16px 16px 18px; position: relative; overflow: hidden;
+    .rv-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 26px; }
+    .rv-stat {
+      position: relative; overflow: hidden; min-width: 0;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 12px 10px 14px 16px;
     }
-    .reserve-stat-card::before {
-      content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary);
-    }
-    .reserve-stat-card.accent-teal::before { background: var(--positive); }
-    .reserve-stat-card.accent-amber::before { background: var(--warning); }
-    .reserve-stat-card.accent-muted::before { background: var(--text-muted); }
-    .reserve-stat-icon {
-      width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
-      background: rgba(79,70,229,0.12); color: var(--primary); margin-bottom: 10px;
-    }
-    .reserve-stat-card.accent-teal .reserve-stat-icon { background: rgba(20,184,166,0.12); color: var(--positive); }
-    .reserve-stat-card.accent-amber .reserve-stat-icon { background: rgba(245,158,11,0.12); color: var(--warning); }
-    .reserve-stat-card.accent-muted .reserve-stat-icon { background: rgba(107,107,128,0.12); color: var(--text-muted); }
-    .reserve-stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
-    .reserve-stat-val { font-size: 1.25rem; font-weight: 800; }
+    .rv-stat::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; border-radius: 14px 0 0 14px; background: var(--primary); }
+    .rv-stat.accent-blue::before { background: #0EA5E9; }
+    .rv-stat.accent-green::before { background: #22C55E; }
+    .rv-stat.accent-grey::before { background: #A1A1AA; }
+    .rv-stat.accent-orange::before { background: #F97316; }
+    .rv-stat.accent-teal::before { background: #5EEAD4; }
+    .rv-stat.accent-slate::before { background: #475569; }
+    .rv-stat-label { font-size: 0.76rem; line-height: 1.35; color: var(--text-secondary); margin-bottom: 6px; }
+    .rv-stat-val { font-size: clamp(1rem, 4.6vw, 1.45rem); font-weight: 800; line-height: 1.2; word-break: break-word; font-variant-numeric: tabular-nums; }
 
-    .reserve-layout { display: block; }
+    .rv-tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 2px solid var(--text); margin-bottom: 22px; }
+    .rv-tab {
+      position: relative; background: none; border: none; padding: 12px 4px 14px; cursor: pointer;
+      font-family: var(--font); font-size: 1.05rem; font-weight: 600; color: var(--text-muted);
+    }
+    .rv-tab.active { color: var(--text); font-weight: 800; }
+    .rv-tab.active::after {
+      content: ''; position: absolute; left: 10%; right: 10%; bottom: -2px; height: 4px; border-radius: 4px;
+      background: linear-gradient(90deg, #a7f3d0, #5eead4, #38bdf8);
+    }
+    .rv-panel { display: none; animation: fadeUp 0.25s ease; }
+    .rv-panel.active { display: block; }
+
+    .rv-selectors { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+    .rv-dropdown { position: relative; flex: 1; min-width: 0; }
+    .rv-select {
+      width: 100%; display: flex; align-items: center; gap: 8px; padding: 14px 14px; border-radius: 14px;
+      border: 1.5px solid var(--text); background: transparent; color: var(--text); cursor: pointer;
+      font-family: var(--font); font-size: 1rem; font-weight: 600; text-align: left;
+    }
+    .rv-select-main { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .rv-select-pct { color: #22C55E; font-weight: 700; white-space: nowrap; }
+    .rv-chevron { flex-shrink: 0; color: var(--text-muted); transition: transform var(--transition); }
+    .rv-dropdown.open .rv-chevron { transform: rotate(180deg); }
+    .rv-tether {
+      width: 20px; height: 20px; flex-shrink: 0; border-radius: 50%; background: #26A17B center/12px no-repeat
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.5 8.5V10.7C15.7 10.9 17.4 11.5 17.4 12.3C17.4 13.1 15.7 13.7 13.5 13.9V17H10.5V13.9C8.3 13.7 6.6 13.1 6.6 12.3C6.6 11.5 8.3 10.9 10.5 10.7V8.5H7V6.5H17V8.5H13.5Z' fill='%23fff'/%3E%3C/svg%3E");
+      display: inline-block; vertical-align: -4px;
+    }
+    .rv-menu {
+      position: absolute; left: 0; min-width: max(100%, 200px); top: calc(100% + 6px); z-index: 30; display: none;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 6px;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.35); max-height: 300px; overflow-y: auto;
+    }
+    .rv-dropdown.open .rv-menu { display: block; animation: fadeUp 0.15s ease; }
+    #rvAmountDropdown .rv-menu { left: auto; right: 0; } /* open leftwards so it never runs off the right edge */
+    .rv-option {
+      width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 12px;
+      border: none; border-radius: 10px; background: none; color: var(--text); cursor: pointer;
+      font-family: var(--font); font-size: 0.9rem; font-weight: 600; text-align: left;
+    }
+    .rv-option:hover { background: var(--surface-hover); }
+    .rv-option.selected { background: rgba(79,70,229,0.14); color: var(--primary); }
+    .rv-option.locked { opacity: 0.45; cursor: not-allowed; }
+    .rv-option small { font-weight: 500; color: var(--text-muted); font-size: 0.72rem; white-space: nowrap; }
+    .rv-option > span { white-space: nowrap; }
+    .rv-option .pct { color: #22C55E; }
+    .rv-info {
+      flex-shrink: 0; width: 44px; height: 44px; border-radius: 50%; border: none; background: none;
+      color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+
+    .rv-round {
+      display: flex; flex-direction: column; align-items: center; text-align: center;
+      padding: 22px 18px 24px; border-radius: 22px; color: #0f0f1c;
+      background: linear-gradient(100deg, #93c5fd 0%, #a7f3d0 50%, #fbcfe8 100%);
+    }
+    .rv-round-title { font-size: 1.35rem; font-weight: 700; margin-bottom: 12px; }
+    .rv-round .reserve-cooldown-ring .ring-bg { stroke: rgba(15,15,28,0.12); }
+    .rv-round .reserve-cooldown-ring .ring-progress { stroke: #4F46E5; }
+    .rv-round .reserve-cooldown-time { color: #0f0f1c; font-size: 1.05rem; }
+    .rv-round-sub { font-size: 0.82rem; color: rgba(15,15,28,0.7); margin-top: 10px; }
+    .rv-reserve-btn {
+      margin-top: 16px; width: 100%; max-width: 320px; padding: 14px; border: none; border-radius: 30px;
+      background: #0f0f1c; color: #fff; font-family: var(--font); font-size: 1rem; font-weight: 800; cursor: pointer;
+      box-shadow: 0 6px 18px rgba(15,15,28,0.25);
+    }
+    .rv-reserve-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .rv-hint { font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 14px; line-height: 1.5; }
+
+    .rv-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px 10px 30px; }
+    .rv-empty svg { width: min(280px, 70vw); height: auto; }
+    .rv-empty-title { font-size: 1.15rem; font-weight: 700; margin-top: 10px; }
+    .rv-empty-time { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-top: 4px; font-variant-numeric: tabular-nums; }
 
     /* ---- Assets Page ---- */
     .balance-card {
@@ -943,42 +1011,46 @@
     .modal-overlay.centered.active .modal-sheet.centered { transform: scale(1); }
     .reserve-result-title { font-size: 1.15rem; font-weight: 800; margin-bottom: 20px; }
     .reserve-result-image { width: 160px; height: 160px; border-radius: 16px; object-fit: cover; margin: 0 auto 16px; display: block; box-shadow: var(--shadow); }
-    .reserve-result-name { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .reserve-result-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; word-break: break-word; }
+    .reserve-result-value { font-size: 1.05rem; color: var(--text-secondary); margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
     .reserve-result-status { font-size: 0.85rem; margin-bottom: 20px; }
     .reserve-result-status.won { color: var(--positive); font-weight: 700; }
     .reserve-result-status.lost { color: var(--text-muted); }
     .reserve-result-confirm-btn {
-      width: 100%; padding: 14px; border: none; border-radius: 30px; font-family: var(--font);
-      font-size: 0.95rem; font-weight: 700; color: #fff; cursor: pointer;
-      background: var(--gradient); transition: all var(--transition);
+      width: 100%; padding: 14px; border: none; border-radius: 12px; font-family: var(--font);
+      font-size: 1.05rem; font-weight: 800; color: #0f0f1c; cursor: pointer;
+      background: linear-gradient(100deg, #bbf7d0, #a5f3fc 45%, #67e8f9); transition: all var(--transition);
     }
     .reserve-result-confirm-btn:hover { opacity: 0.92; }
 
-    /* ---- Reserve order draw cards ---- */
+    /* ---- Reserve order cards ---- */
     .reserve-draw-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 16px; margin-bottom: 12px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+      padding: 18px 18px 20px; margin-bottom: 14px;
     }
-    .reserve-draw-date { font-size: 0.78rem; color: var(--primary); font-weight: 600; margin-bottom: 10px; }
-    .reserve-draw-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-    .reserve-draw-row .label { font-size: 0.78rem; color: var(--text-muted); }
-    .reserve-draw-order-no { font-size: 0.92rem; font-weight: 700; margin-bottom: 10px; }
-    .reserve-draw-est { font-size: 0.85rem; font-weight: 600; }
-    .reserve-draw-item {
-      display: flex; align-items: center; gap: 12px; margin-top: 12px; padding-top: 12px;
-      border-top: 1px solid var(--border);
+    .reserve-draw-date {
+      font-size: clamp(0.9rem, 3.8vw, 1.05rem); font-weight: 600; margin-bottom: 8px; font-variant-numeric: tabular-nums;
+      background: linear-gradient(90deg, #38bdf8, #a7f3d0 55%, #fdba74); -webkit-background-clip: text; background-clip: text; color: transparent;
     }
-    .reserve-draw-item img { width: 48px; height: 48px; border-radius: 10px; object-fit: cover; flex-shrink: 0; }
+    .reserve-draw-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+    .reserve-draw-order-label { font-size: clamp(1rem, 4.2vw, 1.2rem); font-weight: 600; }
+    .reserve-draw-order-no { font-size: clamp(1rem, 4.2vw, 1.2rem); font-weight: 600; word-break: break-all; margin-bottom: 4px; }
+    .reserve-draw-badge { flex-shrink: 0; padding: 7px 22px; border-radius: 4px; font-size: 0.9rem; font-weight: 700; color: #fff; }
+    .reserve-draw-badge.won { background: #4ADE80; }
+    .reserve-draw-badge.lost { background: #52525B; }
+    .reserve-draw-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 14px; font-variant-numeric: tabular-nums; }
+    .reserve-draw-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .reserve-draw-row .label { font-size: clamp(0.92rem, 3.9vw, 1.05rem); font-weight: 600; color: var(--text-secondary); }
+    .reserve-draw-est { font-size: clamp(0.92rem, 3.9vw, 1.05rem); font-weight: 600; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+    .reserve-draw-item { display: flex; align-items: center; gap: 16px; }
+    .reserve-draw-item img { width: clamp(96px, 30vw, 150px); aspect-ratio: 1; border-radius: 14px; object-fit: cover; flex-shrink: 0; }
     .reserve-draw-item-info { flex: 1; min-width: 0; }
-    .reserve-draw-item-name { font-size: 0.88rem; font-weight: 600; }
-    .reserve-draw-item-price { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
-    .reserve-draw-item-price .val { color: var(--text); font-weight: 600; }
+    .reserve-draw-item-name { font-size: clamp(1rem, 4.2vw, 1.2rem); font-weight: 600; margin-bottom: 10px; word-break: break-word; }
+    .reserve-draw-item-price { font-size: clamp(0.92rem, 3.9vw, 1.05rem); font-weight: 600; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .reserve-draw-item-price .val { color: var(--text); }
+    .reserve-draw-reward { margin-top: 8px; font-size: 0.85rem; font-weight: 700; color: #4ADE80; }
 
     /* ---- Reservation cooldown ring ---- */
-    .reserve-cooldown-card {
-      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
-      padding: 24px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: center;
-    }
     .reserve-cooldown-ring-wrap { position: relative; width: 116px; height: 116px; }
     .reserve-cooldown-ring { width: 116px; height: 116px; transform: rotate(-90deg); }
     .reserve-cooldown-ring circle { fill: none; stroke-width: 8; }
@@ -988,20 +1060,8 @@
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text);
     }
-    .reserve-cooldown-label { font-size: 0.78rem; color: var(--text-muted); margin-top: 14px; }
 
-    /* ---- Reservation levels / rules ---- */
-    .reserve-info-btn {
-      background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 2px;
-      display: flex; transition: color var(--transition);
-    }
-    .reserve-info-btn:hover { color: var(--primary); }
-    .reserve-eligible-levels { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-    .reserve-level-chip {
-      font-size: 0.72rem; font-weight: 700; padding: 4px 10px; border-radius: 20px;
-      background: rgba(79,70,229,0.1); color: var(--primary);
-    }
-    .reserve-level-chip.locked { background: var(--bg); color: var(--text-muted); }
+    /* ---- Reservation rules ---- */
     .reserve-rules-row {
       display: flex; justify-content: space-between; align-items: center; padding: 10px 0;
       border-bottom: 1px solid var(--border); font-size: 0.85rem;
@@ -1247,6 +1307,17 @@
 
     /* ---- Responsive ---- */
     @media (max-width: 380px) {
+      .rv-stats { gap: 8px; }
+      .rv-stat { padding: 10px 8px 12px 13px; }
+      .rv-stat-label { font-size: 0.7rem; }
+      .rv-tab { font-size: 0.95rem; }
+      .rv-selectors { gap: 6px; }
+      .rv-select { padding: 12px 8px; font-size: 0.85rem; gap: 5px; }
+      .rv-select .rv-tether { width: 17px; height: 17px; background-size: 10px; }
+      .rv-select .rv-chevron { width: 14px; }
+      .rv-info { width: 32px; }
+      .reserve-draw-card { padding: 14px 14px 16px; }
+      .reserve-draw-badge { padding: 6px 14px; }
       .checkin-card { flex-wrap: wrap; }
       .my-income-col:first-child { padding-right: 8px; }
       .my-income-col:last-child { padding-left: 8px; }
@@ -1260,6 +1331,9 @@
       .team-level-grid { grid-template-columns: 1fr; }
       .team-tabs { grid-template-columns: 1fr; }
       .team-tab-btn:not(:last-child) { border-right: none; border-bottom: 1px solid var(--border); }
+    }
+    @media (max-width: 339px) {
+      .rv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (min-width: 600px) {
       .tab-page { max-width: 600px; margin: 0 auto; }
@@ -1279,8 +1353,12 @@
       #page-stake { max-width: 960px; }
       .nft-catalog { grid-template-columns: repeat(2, 1fr); gap: 20px; }
       #page-reserve { max-width: 960px; }
-      .reserve-stats { grid-template-columns: repeat(3, 1fr); }
-      .reserve-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+      .rv-stats { gap: 16px; }
+      .rv-stat { padding: 16px 14px 18px 20px; }
+      #rvPanelReserve { max-width: 620px; margin: 0 auto; }
+      #rvTodayList, #reserveOrders { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+      #rvTodayList > .rv-empty, #reserveOrders > .rv-empty { grid-column: 1 / -1; }
+      .reserve-draw-card { margin-bottom: 0; }
     }
     @media (min-width: 1300px) {
       #page-stake { max-width: 1240px; }
@@ -1391,9 +1469,10 @@
         <div class="reserve-result-title" id="reserveResultTitle">Reservation Success</div>
         <img class="reserve-result-image" id="reserveResultImage" src="" alt="">
         <div class="reserve-result-name" id="reserveResultName"></div>
+        <div class="reserve-result-value" id="reserveResultValue"></div>
         <div class="nft-card-level" id="reserveResultLevel" style="display:inline-block;margin-bottom:10px;"></div>
         <div class="reserve-result-status" id="reserveResultStatus"></div>
-        <button class="reserve-result-confirm-btn" onclick="closeAllModals()">Confirm</button>
+        <button class="reserve-result-confirm-btn" onclick="confirmReserveResult()">Confirm</button>
       </div>
     </div>
 
@@ -1512,80 +1591,72 @@
 
     <!-- ===== RESERVE TAB ===== -->
     <div class="tab-page" id="page-reserve">
-      <h1 class="page-title">Reserve</h1>
-      <div class="reserve-stats">
-        <div class="reserve-stat-card accent-blue">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
-          <div class="reserve-stat-label">Today's Earnings</div>
-          <div class="reserve-stat-val" id="reserveToday" style="color:var(--positive)">0.00</div>
-        </div>
-        <div class="reserve-stat-card accent-teal">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-          <div class="reserve-stat-label">Cumulative Income</div>
-          <div class="reserve-stat-val" id="reserveCumulative">0.00</div>
-        </div>
-        <div class="reserve-stat-card accent-muted">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-          <div class="reserve-stat-label">Team Benefits</div>
-          <div class="reserve-stat-val" id="reserveTeamBenefits">0.00</div>
-        </div>
-        <div class="reserve-stat-card accent-amber">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></div>
-          <div class="reserve-stat-label">Reservation Range</div>
-          <div class="reserve-stat-val" id="reserveRange" style="font-size:1.05rem;">50 - 2,000</div>
-        </div>
-        <div class="reserve-stat-card accent-blue">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3H8a2 2 0 0 0-2 2v2h12V5a2 2 0 0 0-2-2z"/></svg></div>
-          <div class="reserve-stat-label">Wallet Balance</div>
-          <div class="reserve-stat-val" id="reserveBalance">0.00</div>
-        </div>
-        <div class="reserve-stat-card accent-muted">
-          <div class="reserve-stat-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
-          <div class="reserve-stat-label">Balance for Reservation</div>
-          <div class="reserve-stat-val" id="reserveBalanceFor">0.00</div>
-        </div>
+      <!-- Stats -->
+      <div class="rv-stats">
+        <div class="rv-stat accent-blue"><div class="rv-stat-label">Today Earnings</div><div class="rv-stat-val" id="reserveToday">0</div></div>
+        <div class="rv-stat accent-green"><div class="rv-stat-label">Cumulative Income</div><div class="rv-stat-val" id="reserveCumulative">0</div></div>
+        <div class="rv-stat accent-grey"><div class="rv-stat-label">Team Benefits</div><div class="rv-stat-val" id="reserveTeamBenefits">0</div></div>
+        <div class="rv-stat accent-orange"><div class="rv-stat-label">Reservation range</div><div class="rv-stat-val" id="reserveRange">0</div></div>
+        <div class="rv-stat accent-teal"><div class="rv-stat-label">Wallet Balance</div><div class="rv-stat-val" id="reserveBalance">0</div></div>
+        <div class="rv-stat accent-slate"><div class="rv-stat-label">Balance for Reservation</div><div class="rv-stat-val" id="reserveBalanceFor">0</div></div>
       </div>
 
-      <div class="reserve-layout">
-        <div class="card">
-          <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-            <span>Make a Reservation</span>
-            <button type="button" class="reserve-info-btn" onclick="openReserveRulesModal()" title="Reservation Rules">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      <!-- Tabs -->
+      <div class="rv-tabs" role="tablist">
+        <button class="rv-tab" data-rtab="today" role="tab" onclick="switchReserveTab('today')">Today's</button>
+        <button class="rv-tab active" data-rtab="reserve" role="tab" onclick="switchReserveTab('reserve')">Reserve</button>
+        <button class="rv-tab" data-rtab="collection" role="tab" onclick="switchReserveTab('collection')">Collection</button>
+      </div>
+
+      <!-- Today's orders -->
+      <div class="rv-panel" id="rvPanelToday">
+        <div id="rvTodayList"></div>
+      </div>
+
+      <!-- Reserve -->
+      <div class="rv-panel active" id="rvPanelReserve">
+        <div class="rv-selectors">
+          <div class="rv-dropdown" id="rvLevelDropdown">
+            <button type="button" class="rv-select" onclick="toggleReserveDropdown('rvLevelDropdown')" aria-haspopup="listbox">
+              <span class="rv-select-main" id="rvLevelLabel">LV 1</span>
+              <span class="rv-select-pct" id="rvLevelPct">0%</span>
+              <svg class="rv-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
             </button>
+            <div class="rv-menu" id="rvLevelMenu" role="listbox"></div>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Range</span>
-            <span class="stat-value" id="reserveRangeText">50 - 100000 USDT</span>
+          <div class="rv-dropdown" id="rvAmountDropdown">
+            <button type="button" class="rv-select" onclick="toggleReserveDropdown('rvAmountDropdown')" aria-haspopup="listbox">
+              <span class="rv-tether"></span>
+              <span class="rv-select-main" id="rvAmountLabel">0 - 0</span>
+              <svg class="rv-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="rv-menu" id="rvAmountMenu" role="listbox"></div>
           </div>
-          <div class="stat-row">
-            <span class="stat-label">Your Balance</span>
-            <span class="stat-value" id="reserveBalance2">0.00 USDT</span>
-          </div>
-          <div class="reserve-eligible-levels" id="reserveEligibleLevels"></div>
-          <p style="font-size:0.82rem;color:var(--text-secondary);margin:16px 0;line-height:1.5;">
-            Tap below to instantly reserve a random item within your eligible level range. No amount entry needed &mdash; the level, item, and price are drawn automatically.
-          </p>
-          <button class="btn btn-primary" id="reserveBtn">Reserve Now</button>
+          <button type="button" class="rv-info" onclick="openReserveRulesModal()" title="Reservation rules" aria-label="Reservation rules">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          </button>
         </div>
 
-        <div>
-          <div class="reserve-cooldown-card" id="reserveCooldownCard" style="display:none;">
-            <div class="reserve-cooldown-ring-wrap">
-              <svg class="reserve-cooldown-ring" viewBox="0 0 116 116">
-                <circle class="ring-bg" cx="58" cy="58" r="50"></circle>
-                <circle class="ring-progress" id="reserveCooldownRingProgress" cx="58" cy="58" r="50"></circle>
-              </svg>
-              <div class="reserve-cooldown-time" id="reserveCooldownTime">24:00:00</div>
-            </div>
-            <div class="reserve-cooldown-label">Next reservation available in</div>
+        <div class="rv-round" id="rvRoundCard">
+          <div class="rv-round-title" id="rvRoundTitle">Next Round</div>
+          <div class="reserve-cooldown-ring-wrap" id="rvRingWrap">
+            <svg class="reserve-cooldown-ring" viewBox="0 0 116 116">
+              <circle class="ring-bg" cx="58" cy="58" r="50"></circle>
+              <circle class="ring-progress" id="reserveCooldownRingProgress" cx="58" cy="58" r="50"></circle>
+            </svg>
+            <div class="reserve-cooldown-time" id="reserveCooldownTime">00:00:00</div>
           </div>
-          <div class="card-title">Order History</div>
-          <div class="stake-category-tabs" id="reserveOrderTabs"></div>
-          <div class="card" id="reserveOrders">
-            <div class="empty-state"><p>No orders yet</p></div>
-          </div>
+          <div class="rv-round-sub" id="rvRoundSub">Next reservation available in</div>
+          <button class="rv-reserve-btn" id="reserveBtn">Reserve Now</button>
         </div>
+
+        <div class="rv-hint" id="rvHint"></div>
+      </div>
+
+      <!-- Collection (all orders) -->
+      <div class="rv-panel" id="rvPanelCollection">
+        <div class="stake-category-tabs" id="reserveOrderTabs"></div>
+        <div id="reserveOrders"></div>
       </div>
     </div>
 
@@ -2741,25 +2812,46 @@
     // ---- RESERVE ----
     let reserveOrdersCache = [];
     let reserveOrderFilter = 'all';
-
     let reserveLevelsCache = [];
+    let reserveBalance = 0;
+    let selectedReserveLevel = null; // level number chosen in the LV / amount dropdowns
+    let reserveTab = 'reserve';
+    let lastReserveOrder = null;
+
+    const pad2 = n => String(n).padStart(2, '0');
+    function fmtDateTime(d) {
+      d = new Date(d);
+      return `${d.getFullYear()}/${pad2(d.getMonth() + 1)}/${pad2(d.getDate())} ${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+    }
+    function tzLabel() {
+      const off = -new Date().getTimezoneOffset();
+      return `GMT${off >= 0 ? '+' : '-'}${pad2(Math.floor(Math.abs(off) / 60))}:${pad2(Math.abs(off) % 60)}`;
+    }
+    // Whole numbers without decimals (like "150"), everything else to 2 decimals.
+    function fmtNum(n) { n = Number(n) || 0; return Number.isInteger(n) ? String(n) : n.toFixed(2); }
 
     async function loadReserve() {
       try {
         const d = await api('/api/reserve/orders');
-        document.getElementById('reserveToday').textContent = fmt(d.todayEarnings);
-        document.getElementById('reserveCumulative').textContent = fmt(d.cumulativeIncome);
-        document.getElementById('reserveTeamBenefits').textContent = fmt(d.teamBenefits);
-        document.getElementById('reserveRange').textContent = d.reservationRange;
-        document.getElementById('reserveRangeText').textContent = d.reservationRange + ' USDT';
-        document.getElementById('reserveBalance').textContent = fmt(d.walletBalance);
-        document.getElementById('reserveBalance2').textContent = fmt(d.walletBalance) + ' USDT';
-        document.getElementById('reserveBalanceFor').textContent = fmt(d.balanceForReservation);
+        reserveLevelsCache = (d.levels || []).slice().sort((a, b) => a.min - b.min);
+        reserveBalance = d.walletBalance || 0;
+        document.getElementById('reserveToday').textContent = fmtNum(d.todayEarnings);
+        document.getElementById('reserveCumulative').textContent = fmtNum(d.cumulativeIncome);
+        document.getElementById('reserveTeamBenefits').textContent = fmtNum(d.teamBenefits);
+        document.getElementById('reserveRange').textContent = String(d.reservationRange || '').replace(' - ', ' ~ ');
+        document.getElementById('reserveBalance').textContent = fmtNum(d.walletBalance);
+        document.getElementById('reserveBalanceFor').textContent = fmtNum(d.balanceForReservation);
 
-        reserveLevelsCache = d.levels || [];
-        renderReserveEligibleLevels(d.walletBalance);
+        // Keep the user's choice if it's still affordable; otherwise pick the best level they can afford.
+        const affordable = reserveLevelsCache.filter(lv => lv.min <= reserveBalance);
+        const current = reserveLevelsCache.find(lv => lv.level === selectedReserveLevel);
+        if (!current || current.min > reserveBalance) {
+          selectedReserveLevel = (affordable[affordable.length - 1] || reserveLevelsCache[0] || {}).level ?? null;
+        }
+        renderReserveSelectors();
 
-        reserveOrdersCache = d.orders.sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate));
+        reserveOrdersCache = (d.orders || []).sort((a, b) => new Date(b.reservationDate) - new Date(a.reservationDate));
+        renderReserveTodayList();
         renderReserveOrderTabs();
         renderReserveOrders();
 
@@ -2768,37 +2860,91 @@
       } catch (e) { console.error(e); }
     }
 
-    function renderReserveEligibleLevels(balance) {
-      const el = document.getElementById('reserveEligibleLevels');
-      el.innerHTML = reserveLevelsCache.map(lv => `
-        <span class="reserve-level-chip ${lv.min > balance ? 'locked' : ''}">Lv${lv.level} (${lv.rewardPct}%)</span>
-      `).join('');
+    function switchReserveTab(tab) {
+      reserveTab = tab;
+      document.querySelectorAll('.rv-tab').forEach(t => t.classList.toggle('active', t.dataset.rtab === tab));
+      document.getElementById('rvPanelToday').classList.toggle('active', tab === 'today');
+      document.getElementById('rvPanelReserve').classList.toggle('active', tab === 'reserve');
+      document.getElementById('rvPanelCollection').classList.toggle('active', tab === 'collection');
+      closeReserveDropdowns();
+      if (tab === 'today') renderReserveTodayList(); // refreshes the "No Data" clock
+    }
+
+    // ---- LV / amount dropdowns (one choice drives both) ----
+    function selectedLevelObj() { return reserveLevelsCache.find(lv => lv.level === selectedReserveLevel) || null; }
+
+    function renderReserveSelectors() {
+      const lv = selectedLevelObj();
+      document.getElementById('rvLevelLabel').textContent = lv ? 'LV ' + lv.level : 'LV -';
+      document.getElementById('rvLevelPct').textContent = lv ? lv.rewardPct + '%' : '';
+      document.getElementById('rvAmountLabel').textContent = lv ? `${fmtNum(lv.min)} - ${fmtNum(lv.max)}` : '-';
+      const option = (lv2, content) => {
+        const locked = lv2.min > reserveBalance;
+        return `<button type="button" role="option" class="rv-option ${lv2.level === selectedReserveLevel ? 'selected' : ''} ${locked ? 'locked' : ''}"
+          ${locked ? 'aria-disabled="true"' : ''} onclick="chooseReserveLevel(${lv2.level})">${content}${locked ? `<small>Min ${fmtNum(lv2.min)} USDT</small>` : ''}</button>`;
+      };
+      document.getElementById('rvLevelMenu').innerHTML = reserveLevelsCache.map(l =>
+        option(l, `<span>LV ${l.level} <span class="pct">${l.rewardPct}%</span></span>`)).join('');
+      document.getElementById('rvAmountMenu').innerHTML = reserveLevelsCache.map(l =>
+        option(l, `<span><span class="rv-tether"></span> ${fmtNum(l.min)} - ${fmtNum(l.max)}</span>`)).join('');
+      renderReserveHint();
+    }
+
+    function chooseReserveLevel(level) {
+      const lv = reserveLevelsCache.find(l => l.level === level);
+      if (!lv) return;
+      if (lv.min > reserveBalance) { toast(`Level ${lv.level} needs at least ${fmtNum(lv.min)} USDT in your balance`, 'error'); return; }
+      selectedReserveLevel = level;
+      closeReserveDropdowns();
+      renderReserveSelectors();
+    }
+
+    function toggleReserveDropdown(id) {
+      const el = document.getElementById(id);
+      const open = !el.classList.contains('open');
+      closeReserveDropdowns();
+      el.classList.toggle('open', open);
+    }
+    function closeReserveDropdowns() { document.querySelectorAll('.rv-dropdown.open').forEach(d => d.classList.remove('open')); }
+    document.addEventListener('click', e => { if (!e.target.closest('.rv-dropdown')) closeReserveDropdowns(); });
+
+    function renderReserveHint() {
+      const lv = selectedLevelObj();
+      const el = document.getElementById('rvHint');
+      if (!lv) { el.textContent = ''; return; }
+      el.innerHTML = lv.min > reserveBalance
+        ? `Your balance (${fmt(reserveBalance)} USDT) is below the minimum for this level. Deposit at least ${fmt(lv.min - reserveBalance)} USDT more to reserve.`
+        : `Balance: <strong>${fmt(reserveBalance)} USDT</strong> &middot; A random item between ${fmtNum(lv.min)} and ${fmtNum(Math.min(lv.max, reserveBalance))} USDT is drawn at LV ${lv.level} (${lv.rewardPct}% reward).`;
+      const btn = document.getElementById('reserveBtn');
+      if (!reserveCooldownInterval) btn.disabled = lv.min > reserveBalance;
     }
 
     function openReserveRulesModal() {
       const el = document.getElementById('reserveRulesTable');
       el.innerHTML = reserveLevelsCache.map(lv => `
         <div class="reserve-rules-row">
-          <span class="rr-level">Level ${lv.level}</span>
-          <span class="rr-range">${fmt(lv.min)} &ndash; ${fmt(lv.max)} USDT</span>
+          <span class="rr-level">LV ${lv.level}</span>
+          <span class="rr-range">${fmtNum(lv.min)} &ndash; ${fmtNum(lv.max)} USDT</span>
           <span class="rr-pct">${lv.rewardPct}%</span>
         </div>
-      `).join('');
+      `).join('') + '<p style="font-size:0.78rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">Choose a level, then reserve once every 24 hours. The amount is returned to your balance after the draw, plus the reward if you win.</p>';
       openModal('reserveRulesModal');
     }
 
+    // ---- Next-round countdown (circle) ----
     let reserveCooldownInterval = null;
     const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
     const RESERVE_RING_CIRCUMFERENCE = 2 * Math.PI * 50;
 
     function startReserveCooldown(nextReservationAt) {
       clearInterval(reserveCooldownInterval);
-      const card = document.getElementById('reserveCooldownCard');
       const ring = document.getElementById('reserveCooldownRingProgress');
       const timeEl = document.getElementById('reserveCooldownTime');
       const btn = document.getElementById('reserveBtn');
       ring.style.strokeDasharray = RESERVE_RING_CIRCUMFERENCE;
-      card.style.display = 'flex';
+      document.getElementById('rvRoundTitle').textContent = 'Next Round';
+      document.getElementById('rvRingWrap').style.display = '';
+      document.getElementById('rvRoundSub').style.display = '';
       btn.disabled = true;
 
       function tick() {
@@ -2807,8 +2953,8 @@
         const h = Math.floor(remaining / 3600000);
         const m = Math.floor((remaining % 3600000) / 60000);
         const s = Math.floor((remaining % 60000) / 1000);
-        timeEl.textContent = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-        btn.textContent = 'Available in ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+        timeEl.textContent = pad2(h) + ':' + pad2(m) + ':' + pad2(s);
+        btn.textContent = 'Available in ' + pad2(h) + ':' + pad2(m);
         const fraction = Math.max(0, Math.min(1, remaining / RESERVE_COOLDOWN_MS));
         ring.style.strokeDashoffset = RESERVE_RING_CIRCUMFERENCE * (1 - fraction);
       }
@@ -2818,10 +2964,69 @@
 
     function stopReserveCooldown() {
       clearInterval(reserveCooldownInterval);
-      document.getElementById('reserveCooldownCard').style.display = 'none';
+      reserveCooldownInterval = null;
+      document.getElementById('rvRoundTitle').textContent = 'Round Open';
+      document.getElementById('rvRingWrap').style.display = 'none';
+      document.getElementById('rvRoundSub').style.display = 'none';
       const btn = document.getElementById('reserveBtn');
-      btn.disabled = false;
       btn.textContent = 'Reserve Now';
+      const lv = selectedLevelObj();
+      btn.disabled = !lv || lv.min > reserveBalance;
+    }
+
+    // ---- Order cards (Today's + Collection) ----
+    const RESERVE_EMPTY_SVG = `<svg viewBox="0 0 280 220" fill="none" aria-hidden="true">
+      <circle cx="140" cy="118" r="88" fill="url(#rvE1)" opacity="0.55"/>
+      <rect x="92" y="60" width="118" height="110" rx="12" fill="#eef9ff"/>
+      <rect x="108" y="82" width="70" height="8" rx="4" fill="#a5e1f5"/><rect x="108" y="100" width="86" height="8" rx="4" fill="#a5e1f5"/><rect x="108" y="118" width="60" height="8" rx="4" fill="#a5e1f5"/>
+      <rect x="70" y="112" width="58" height="72" rx="10" fill="#f8fdff"/>
+      <rect x="80" y="126" width="26" height="7" rx="3.5" fill="#86efac"/><rect x="80" y="142" width="38" height="6" rx="3" fill="#a5e1f5"/><rect x="80" y="156" width="30" height="6" rx="3" fill="#a5e1f5"/>
+      <rect x="168" y="34" width="62" height="32" rx="8" fill="#eef9ff"/><circle cx="185" cy="50" r="4" fill="#7dd3fc"/><circle cx="199" cy="50" r="4" fill="#7dd3fc"/><circle cx="213" cy="50" r="4" fill="#7dd3fc"/>
+      <path d="M170 116l26 26m0-26l-26 26" stroke="#f43f5e" stroke-width="10" stroke-linecap="round"/>
+      <path d="M58 64l4 10 10 4-10 4-4 10-4-10-10-4 10-4z" fill="#7dd3fc"/><path d="M136 178l3 8 8 3-8 3-3 8-3-8-8-3 8-3z" fill="#7dd3fc"/>
+      <circle cx="122" cy="48" r="5" stroke="#7dd3fc" stroke-width="2.5"/><circle cx="232" cy="84" r="4" stroke="#7dd3fc" stroke-width="2.5"/>
+      <defs><radialGradient id="rvE1" cx="0" cy="0" r="1" gradientTransform="translate(140 118) rotate(90) scale(88)"><stop stop-color="#94a3b8"/><stop offset="1" stop-color="#334155"/></radialGradient></defs>
+    </svg>`;
+
+    function reserveEmptyHtml() {
+      return `<div class="rv-empty">${RESERVE_EMPTY_SVG}
+        <div class="rv-empty-title">No Data Available</div>
+        <div class="rv-empty-time">${tzLabel()} ${fmtDateTime(new Date()).replace(/\//g, '-')}</div></div>`;
+    }
+
+    function reserveOrderCard(o) {
+      const won = o.status === 'Won';
+      return `
+        <div class="reserve-draw-card">
+          <div class="reserve-draw-date">Draw date : ${fmtDateTime(o.reservationDate)}</div>
+          <div class="reserve-draw-head">
+            <div style="min-width:0;">
+              <div class="reserve-draw-order-label">Order No. :</div>
+              <div class="reserve-draw-order-no">${escapeHtml(o.orderNumber)}</div>
+            </div>
+            <span class="reserve-draw-badge ${won ? 'won' : 'lost'}">${won ? 'Won' : 'Not Won'}</span>
+          </div>
+          <div class="reserve-draw-sub">Reservation date : (${tzLabel()}) ${fmtDateTime(o.reservationDate)}</div>
+          <div class="reserve-draw-row">
+            <span class="label">Estimated Amount</span>
+            <span class="reserve-draw-est"><span class="rv-tether"></span>${fmtNum(o.estimatedMin ?? o.reservationAmount)} ~ ${fmtNum(o.estimatedMax ?? o.reservationAmount)}</span>
+          </div>
+          ${o.itemName ? `
+            <div class="reserve-draw-item">
+              <img src="${escapeHtml(o.itemImage)}" alt="${escapeHtml(o.itemName)}" loading="lazy">
+              <div class="reserve-draw-item-info">
+                <div class="reserve-draw-item-name">${escapeHtml(o.itemName)}</div>
+                <div class="reserve-draw-item-price">Item Price <span class="rv-tether"></span><span class="val">${fmt(o.itemPrice)}</span></div>
+                ${won && o.reward ? `<div class="reserve-draw-reward">+${fmt(o.reward)} USDT reward &middot; LV ${o.level}</div>` : ''}
+              </div>
+            </div>` : ''}
+        </div>`;
+    }
+
+    function renderReserveTodayList() {
+      const today = new Date().toDateString();
+      const items = reserveOrdersCache.filter(o => new Date(o.reservationDate).toDateString() === today);
+      document.getElementById('rvTodayList').innerHTML = items.length ? items.map(reserveOrderCard).join('') : reserveEmptyHtml();
     }
 
     function filterReserveOrders(status) {
@@ -2840,55 +3045,47 @@
     function renderReserveOrders() {
       const el = document.getElementById('reserveOrders');
       const filtered = reserveOrderFilter === 'all' ? reserveOrdersCache : reserveOrdersCache.filter(o => o.status === reserveOrderFilter);
-      if (!filtered.length) { el.innerHTML = '<div class="empty-state"><p>No orders yet</p></div>'; return; }
-      el.innerHTML = filtered.map(o => `
-        <div class="reserve-draw-card">
-          <div class="reserve-draw-date">Draw date: ${fmtDate(o.reservationDate)} ${new Date(o.reservationDate).toLocaleTimeString()}</div>
-          <div class="reserve-draw-row"><span class="label">Order No.</span><span class="badge ${o.status === 'Won' ? 'badge-won' : 'badge-lost'}">${o.status}</span></div>
-          <div class="reserve-draw-order-no">${escapeHtml(o.orderNumber)}</div>
-          ${o.level ? `<div class="reserve-draw-row"><span class="label">Level</span><span class="reserve-draw-est">Lv${o.level} &middot; ${o.rewardPct}%</span></div>` : ''}
-          <div class="reserve-draw-row"><span class="label">Estimated Amount</span><span class="reserve-draw-est">${fmt(o.estimatedMin ?? o.reservationAmount)} ~ ${fmt(o.estimatedMax ?? o.reservationAmount)}</span></div>
-          ${o.itemName ? `
-            <div class="reserve-draw-item">
-              <img src="${escapeHtml(o.itemImage)}" alt="${escapeHtml(o.itemName)}">
-              <div class="reserve-draw-item-info">
-                <div class="reserve-draw-item-name">${escapeHtml(o.itemName)}</div>
-                <div class="reserve-draw-item-price">Item Price <span class="val">${fmt(o.itemPrice)}</span></div>
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `).join('');
+      el.innerHTML = filtered.length ? filtered.map(reserveOrderCard).join('') : reserveEmptyHtml();
     }
 
+    // ---- Reserve ----
     document.getElementById('reserveBtn').addEventListener('click', async () => {
+      const lv = selectedLevelObj();
+      if (!lv) return;
       const btn = document.getElementById('reserveBtn');
       btn.disabled = true; btn.textContent = 'Drawing...';
       try {
-        const o = await api('/api/reserve/orders', { method: 'POST' });
-        if (o.status === 'Won' && o.reward >= 0.01) {
-          showRewardCard({ kind: 'reserve', amount: o.reward, detail: `${o.itemName} · Level ${o.level} · ${o.rewardPct}%` });
-          updateHeaderBalance();
-          refreshLevel();
-          loadReserve();
-          return;
-        }
-        document.getElementById('reserveResultTitle').textContent = o.status === 'Won' ? 'Reservation Success' : 'Reservation Complete';
+        const o = await api('/api/reserve/orders', { method: 'POST', body: JSON.stringify({ level: lv.level }) });
+        lastReserveOrder = o;
+        document.getElementById('reserveResultTitle').textContent = 'Reservation success';
         document.getElementById('reserveResultImage').src = o.itemImage;
         document.getElementById('reserveResultImage').alt = o.itemName;
         document.getElementById('reserveResultName').textContent = o.itemName;
-        document.getElementById('reserveResultLevel').textContent = 'Level ' + o.level + ' · ' + o.rewardPct + '%';
+        document.getElementById('reserveResultValue').innerHTML = `Value: ${fmt(o.itemPrice)} <span class="rv-tether"></span>`;
+        document.getElementById('reserveResultLevel').textContent = 'LV ' + o.level + ' · ' + o.rewardPct + '%';
         const statusEl = document.getElementById('reserveResultStatus');
         statusEl.textContent = o.status === 'Won' ? 'You won +' + fmt(o.reward) + ' USDT' : 'Not won this time';
         statusEl.className = 'reserve-result-status ' + (o.status === 'Won' ? 'won' : 'lost');
         openModal('reserveResultModal');
         updateHeaderBalance();
+        refreshLevel();
       } catch (e) {
         toast(e.message, 'error');
-        btn.disabled = false; btn.textContent = 'Reserve Now';
+        lastReserveOrder = null;
       }
       loadReserve();
     });
+
+    // Confirm on the result popup: show today's orders, and celebrate a win with the shareable card.
+    function confirmReserveResult() {
+      closeAllModals();
+      const o = lastReserveOrder;
+      lastReserveOrder = null;
+      switchReserveTab('today');
+      if (o && o.status === 'Won' && o.reward >= 0.01) {
+        showRewardCard({ kind: 'reserve', amount: o.reward, detail: `${o.itemName} · Level ${o.level} · ${o.rewardPct}%` });
+      }
+    }
 
     // ---- ASSETS ----
     async function loadAssets() {
@@ -3504,7 +3701,7 @@
 
     function getInviteLink() {
       const uid = profileData?.uid || '';
-      return window.location.origin + '/signup.html?ref=' + uid;
+      return (window.MLK_SITE_URL || window.location.origin) + '/signup.html?ref=' + uid;
     }
 
     async function openInvitePage() {

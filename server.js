@@ -36,6 +36,21 @@ const authLimiter = rateLimit({
   message: { error: 'Too many attempts. Please try again later.' }
 });
 
+// The mobile app (Capacitor) bundles the frontend and calls the API from its own local origin.
+// Auth is a Bearer header, not cookies, so allowing these origins exposes nothing extra.
+const MOBILE_ORIGINS = new Set(['capacitor://localhost', 'https://localhost', 'http://localhost']);
+app.use(['/api', '/uploads'], (req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && MOBILE_ORIGINS.has(origin)) {
+    res.set('Access-Control-Allow-Origin', origin);
+    res.set('Vary', 'Origin');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '10mb' }));
 // Images in /assets and /uploads are embedded in emails and by other sites (link previews), which helmet's
 // default same-origin resource policy would block. Private deposit screenshots are never served from here.
@@ -1281,7 +1296,15 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
     const affordableLevels = RESERVE_LEVELS.filter(lv => lv.min <= balance);
     if (!affordableLevels.length) return { status: 400, body: { error: `Insufficient balance. Minimum reservation is ${RESERVE_LEVELS[0].min} USDT` } };
 
-    const level = affordableLevels[Math.floor(Math.random() * affordableLevels.length)];
+    // The user picks a level from the dropdown; without one (older app versions) a random affordable level is used.
+    let level;
+    if (req.body && req.body.level !== undefined && req.body.level !== null) {
+      level = RESERVE_LEVELS.find(lv => lv.level === Number(req.body.level));
+      if (!level) return { status: 400, body: { error: 'That reservation level is not available' } };
+      if (level.min > balance) return { status: 400, body: { error: `Your balance is too low for Level ${level.level}. You need at least ${level.min} USDT.` } };
+    } else {
+      level = affordableLevels[Math.floor(Math.random() * affordableLevels.length)];
+    }
     const maxAmount = Math.min(level.max, balance);
     const amount = parseFloat((level.min + Math.random() * (maxAmount - level.min)).toFixed(2));
 
