@@ -453,12 +453,26 @@
     .rv-round .reserve-cooldown-ring .ring-progress { stroke: #4F46E5; }
     .rv-round .reserve-cooldown-time { color: #0f0f1c; font-size: 1.05rem; }
     .rv-round-sub { font-size: 0.82rem; color: rgba(15,15,28,0.7); margin-top: 10px; }
+    /* Big round Reserve button: dark centre, gradient ring, gentle pulse while it's available. */
     .rv-reserve-btn {
-      margin-top: 16px; width: 100%; max-width: 320px; padding: 14px; border: none; border-radius: 30px;
-      background: #0f0f1c; color: #fff; font-family: var(--font); font-size: 1rem; font-weight: 800; cursor: pointer;
-      box-shadow: 0 6px 18px rgba(15,15,28,0.25);
+      --size: clamp(132px, 42vw, 176px);
+      margin: 6px auto 2px; width: var(--size); height: var(--size); padding: 12px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      border: 6px solid transparent; color: #fff; cursor: pointer;
+      background: linear-gradient(#0f0f1c, #0f0f1c) padding-box, linear-gradient(135deg, #7C3AED, #4F46E5, #14B8A6) border-box;
+      font-family: var(--font); font-size: clamp(1.05rem, 4.8vw, 1.3rem); font-weight: 800; line-height: 1.2;
+      box-shadow: 0 10px 30px rgba(79,70,229,0.45), inset 0 0 18px rgba(124,58,237,0.35);
+      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      animation: rvPulse 2.2s ease-in-out infinite;
     }
-    .rv-reserve-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .rv-reserve-btn:active:not(:disabled) { transform: scale(0.95); }
+    .rv-reserve-btn:disabled { animation: none; opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+    .rv-reserve-btn.hidden { display: none; }
+    @keyframes rvPulse {
+      0%, 100% { box-shadow: 0 10px 30px rgba(79,70,229,0.45), 0 0 0 0 rgba(124,58,237,0.45), inset 0 0 18px rgba(124,58,237,0.35); }
+      50% { box-shadow: 0 10px 30px rgba(79,70,229,0.45), 0 0 0 14px rgba(124,58,237,0), inset 0 0 18px rgba(124,58,237,0.35); }
+    }
+    @media (prefers-reduced-motion: reduce) { .rv-reserve-btn { animation: none; } }
     .rv-hint { font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 14px; line-height: 1.5; }
 
     .rv-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px 10px 30px; }
@@ -1334,6 +1348,7 @@
     }
     @media (max-width: 339px) {
       .rv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .rv-select .rv-tether { display: none; } /* room for 4-digit ranges like "1000 - 5000" */
     }
     @media (min-width: 600px) {
       .tab-page { max-width: 600px; margin: 0 auto; }
@@ -2946,6 +2961,7 @@
       document.getElementById('rvRingWrap').style.display = '';
       document.getElementById('rvRoundSub').style.display = '';
       btn.disabled = true;
+      btn.classList.add('hidden'); // the countdown circle takes its place until the round opens
 
       function tick() {
         const remaining = new Date(nextReservationAt).getTime() - Date.now();
@@ -2970,6 +2986,7 @@
       document.getElementById('rvRoundSub').style.display = 'none';
       const btn = document.getElementById('reserveBtn');
       btn.textContent = 'Reserve Now';
+      btn.classList.remove('hidden');
       const lv = selectedLevelObj();
       btn.disabled = !lv || lv.min > reserveBalance;
     }
