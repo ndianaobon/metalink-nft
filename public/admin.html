@@ -191,11 +191,12 @@
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>Status</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Status</th><th>Last Seen</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
                   <tbody>
                     ${users.map(u => `
                       <tr>
                         <td>${this.statusBadge(u)}</td>
+                        <td style="white-space:nowrap;font-size:0.82rem;">${this.lastSeenCell(u)}</td>
                         <td><strong>${escapeHtml(u.uid)}</strong></td>
                         <td>${escapeHtml(u.username)}</td>
                         <td>${escapeHtml(u.email)}</td>
@@ -215,6 +216,21 @@
               </div>
             </div>`;
         } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+      },
+
+      // Most recent sign of life: app activity (recorded about once a minute) or a login.
+      lastSeenCell(u) {
+        const times = [u.lastActiveAt, u.lastLoginAt].filter(Boolean).map(t => new Date(t).getTime());
+        if (!times.length) return '<span style="color:#aaa;">Never</span>';
+        const t = Math.max(...times);
+        const mins = Math.floor((Date.now() - t) / 60000);
+        const full = new Date(t).toLocaleString();
+        if (mins < 5) return `<span style="color:#16a34a;font-weight:700;" title="${full}">&#9679; Online now</span>`;
+        if (mins >= 43200) return `<span title="${full}">${full}</span>`; // over 30 days: just the date
+        const ago = mins < 60 ? `${mins} min ago`
+          : mins < 1440 ? `${Math.floor(mins / 60)} hr${Math.floor(mins / 60) > 1 ? 's' : ''} ago`
+          : `${Math.floor(mins / 1440)} day${Math.floor(mins / 1440) > 1 ? 's' : ''} ago`;
+        return `<span title="${full}">${ago}</span><br><span style="font-size:0.72rem;color:#999;">${full}</span>`;
       },
 
       statusBadge(u) {
@@ -421,9 +437,10 @@
               <span style="margin-left:auto;font-size:0.78rem;color:#888;">Last activity ${new Date(g.lastSeen).toLocaleString()}</span>
             </div>
             <div style="overflow-x:auto;"><table class="admin-table">
-              <thead><tr><th>Status</th><th>User</th><th>UID</th><th>Balance</th><th>Joined</th><th>First seen on this IP</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Status</th><th>Last Seen</th><th>User</th><th>UID</th><th>Balance</th><th>Joined</th><th>First seen on this IP</th><th>Actions</th></tr></thead>
               <tbody>${g.accounts.map(a => `<tr>
                 <td>${this.statusBadge(a)}</td>
+                <td style="white-space:nowrap;font-size:0.82rem;">${this.lastSeenCell(a)}</td>
                 <td><strong>${escapeHtml(a.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(a.email)}</span></td>
                 <td>${escapeHtml(a.uid)}</td>
                 <td>${Number(a.walletBalance || 0).toFixed(2)}</td>

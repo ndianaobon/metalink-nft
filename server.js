@@ -1678,7 +1678,7 @@ function accountSummary(u) {
     id: u.id, username: u.username, email: u.email, uid: u.uid, createdAt: u.createdAt,
     walletBalance: u.walletBalance, status: accountStatus(u), frozenUntil: u.frozenUntil || null,
     suspendReason: u.suspendReason || '', bannedAt: u.bannedAt || null, banReason: u.banReason || '',
-    referredBy: u.referredBy || null
+    referredBy: u.referredBy || null, lastActiveAt: u.lastActiveAt || null, lastLoginAt: u.lastLoginAt || null
   };
 }
 
