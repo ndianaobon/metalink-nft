@@ -5,12 +5,18 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "mobile:build": "node mobile/build-www.js && npx cap sync",
+    "mobile:android": "npm run mobile:build && npx cap open android",
+    "mobile:ios": "npm run mobile:build && npx cap open ios"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
@@ -19,5 +25,9 @@
     "otplib": "^13.4.1",
     "pg": "^8.22.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.5.2"
   }
 }
