@@ -170,20 +170,18 @@
     .nav-tab svg { width: 24px; height: 24px; }
     .nav-tab.active { color: var(--primary); }
 
-    /* Middle Reserve tab: a big raised circle. */
+    /* Middle Reserve tab: a dome rising out of the bar — rounded top, flat bottom. */
     .nav-tab-center { position: relative; justify-content: flex-end; padding-bottom: 8px; }
     .nav-center-circle {
-      position: absolute; left: 50%; top: -24px; transform: translateX(-50%);
-      width: 62px; height: 62px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; color: #fff;
-      background: linear-gradient(135deg, #7C3AED, #4F46E5 55%, #14B8A6);
-      border: 5px solid var(--bg); box-shadow: 0 8px 20px rgba(79,70,229,0.45);
-      transition: transform 0.15s ease, box-shadow 0.2s ease;
+      position: absolute; left: 50%; top: -26px; bottom: 0; transform: translateX(-50%); z-index: -1;
+      width: 74px; border-radius: 37px 37px 0 0;
+      display: flex; align-items: flex-start; justify-content: center; padding-top: 12px; color: #fff;
+      background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
+      box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
     }
     .nav-center-circle svg { width: 28px; height: 28px; }
-    .nav-tab-center:active .nav-center-circle { transform: translateX(-50%) scale(0.94); }
-    .nav-tab-center.active { color: var(--primary); font-weight: 700; }
-    .nav-tab-center.active .nav-center-circle { box-shadow: 0 0 0 3px rgba(124,58,237,0.35), 0 8px 22px rgba(79,70,229,0.6); }
+    .nav-tab-center:active .nav-center-circle { filter: brightness(1.1); }
+    .nav-tab-center, .nav-tab-center.active { color: #fff; font-weight: 700; z-index: 1; }
 
     /* ---- Shared ---- */
     .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }

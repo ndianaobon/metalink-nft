@@ -321,17 +321,17 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   }
   .home-nav-tab svg { width: 23px; height: 23px; }
   .home-nav-tab:active, .home-nav-tab:hover { color: var(--primary); }
-  /* Middle Reserve tab: a big raised circle (same as in the app). */
-  .home-nav-tab.nav-tab-center { position: relative; justify-content: flex-end; padding-bottom: 8px; }
+  /* Middle Reserve tab: a dome rising out of the bar — rounded top, flat bottom (same as in the app). */
+  .home-nav-tab.nav-tab-center { position: relative; justify-content: flex-end; padding-bottom: 8px; color: #fff; font-weight: 700; z-index: 1; }
   .nav-center-circle {
-    position: absolute; left: 50%; top: -24px; transform: translateX(-50%);
-    width: 62px; height: 62px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; color: #fff;
-    background: var(--gradient); border: 5px solid var(--bg); box-shadow: 0 8px 20px rgba(79,70,229,0.45);
-    transition: transform 0.15s ease;
+    position: absolute; left: 50%; top: -26px; bottom: 0; transform: translateX(-50%); z-index: -1;
+    width: 74px; border-radius: 37px 37px 0 0;
+    display: flex; align-items: flex-start; justify-content: center; padding-top: 12px; color: #fff;
+    background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
+    box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
   }
   .home-nav-tab .nav-center-circle svg { width: 28px; height: 28px; }
-  .nav-tab-center:active .nav-center-circle { transform: translateX(-50%) scale(0.94); }
+  .nav-tab-center:active .nav-center-circle { filter: brightness(1.1); }
   /* keep the footer clear of the bar */
   body.has-bottom-nav { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 }
