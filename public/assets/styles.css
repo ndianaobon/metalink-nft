@@ -321,16 +321,23 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   }
   .home-nav-tab svg { width: 23px; height: 23px; }
   .home-nav-tab:active, .home-nav-tab:hover { color: var(--primary); }
-  .home-bottom-nav { border-top: 0.5rem solid #9CA3AF; }
+  .home-bottom-nav { border-top: 0.3rem solid #9CA3AF; }
   /* Middle Reserve tab: dome with an exact half-circle top; icon + label stay together (same as in the app). */
   .home-nav-tab.nav-tab-center { justify-content: flex-start; padding: 0; overflow: visible; color: #fff; }
   .nav-center-circle {
-    flex: 1; width: 68px; margin-top: calc(-26px - 0.5rem); padding-top: 9px;
+    position: relative; flex: 1; width: 68px; margin-top: calc(-26px - 0.3rem); padding-top: 9px;
     border-radius: 34px 34px 0 0;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
     color: #fff; font-weight: 700;
     background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
     box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
+  }
+  /* The bar's grey top border curves up around the dome (half-circle outline cut where it meets the bar line). */
+  .nav-center-circle::before {
+    content: ''; position: absolute; z-index: -1; top: -0.3rem; left: -0.3rem; right: -0.3rem;
+    height: calc(34px + 0.3rem); border: 0.3rem solid #9CA3AF; border-bottom: none;
+    border-radius: calc(34px + 0.3rem) calc(34px + 0.3rem) 0 0;
+    clip-path: inset(0 0 calc(8px - 0.3rem) 0);
   }
   .home-nav-tab .nav-center-circle svg { width: 28px; height: 28px; flex-shrink: 0; }
   .nav-center-label { line-height: 1.1; }
