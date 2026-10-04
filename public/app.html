@@ -170,18 +170,24 @@
     .nav-tab svg { width: 24px; height: 24px; }
     .nav-tab.active { color: var(--primary); }
 
-    /* Middle Reserve tab: a dome rising out of the bar — rounded top, flat bottom. */
-    .nav-tab-center { position: relative; justify-content: flex-end; padding-bottom: 8px; }
+    .bottom-nav { border-top: 0.5rem solid #9CA3AF; }
+
+    /* Middle Reserve tab: a dome rising out of the bar. The top is an exact half circle (radius = half
+       the width) and the icon + label sit together at the top, so neither changes when the bar's height
+       does (e.g. the mobile browser toolbar showing/hiding while scrolling); only the flat bottom stretches. */
+    .nav-tab-center { justify-content: flex-start; padding: 0; overflow: visible; }
     .nav-center-circle {
-      position: absolute; left: 50%; top: -26px; bottom: 0; transform: translateX(-50%); z-index: -1;
-      width: 74px; border-radius: 37px 37px 0 0;
-      display: flex; align-items: flex-start; justify-content: center; padding-top: 12px; color: #fff;
+      flex: 1; width: 68px; margin-top: calc(-26px - 0.5rem); padding-top: 9px;
+      border-radius: 34px 34px 0 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
+      color: #fff; font-weight: 700;
       background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
       box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
     }
-    .nav-center-circle svg { width: 28px; height: 28px; }
+    .nav-center-circle svg { width: 28px; height: 28px; flex-shrink: 0; }
+    .nav-center-label { line-height: 1.1; }
     .nav-tab-center:active .nav-center-circle { filter: brightness(1.1); }
-    .nav-tab-center, .nav-tab-center.active { color: #fff; font-weight: 700; z-index: 1; }
+    .nav-tab-center, .nav-tab-center.active { color: #fff; }
 
     /* ---- Shared ---- */
     .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
@@ -2140,8 +2146,7 @@
       Earn
     </button>
     <button class="nav-tab nav-tab-center" data-tab="reserve">
-      <span class="nav-center-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg></span>
-      Reserve
+      <span class="nav-center-circle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg><span class="nav-center-label">Reserve</span></span>
     </button>
     <button class="nav-tab" data-tab="assets">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14" r="2"/></svg>
@@ -3383,7 +3388,7 @@
       const lang = LANGUAGES.find(l => l.code === code) || LANGUAGES[0];
       document.querySelectorAll('.nav-tab[data-tab="stake"]').forEach(el => { el.lastChild.textContent = t.navStake; });
       document.querySelectorAll('.nav-tab[data-tab="earn"]').forEach(el => { el.lastChild.textContent = t.navEarn; });
-      document.querySelectorAll('.nav-tab[data-tab="reserve"]').forEach(el => { el.lastChild.textContent = t.navReserve; });
+      document.querySelectorAll('.nav-tab[data-tab="reserve"]').forEach(el => { (el.querySelector('.nav-center-label') || el.lastChild).textContent = t.navReserve; });
       document.querySelectorAll('.nav-tab[data-tab="assets"]').forEach(el => { el.lastChild.textContent = t.navAssets; });
       document.querySelectorAll('.nav-tab[data-tab="my"]').forEach(el => { el.lastChild.textContent = t.navMy; });
       const earnTitle = document.querySelector('#page-earn .page-title'); if (earnTitle) earnTitle.textContent = t.titleEarn;
