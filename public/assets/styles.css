@@ -321,27 +321,31 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   }
   .home-nav-tab svg { width: 23px; height: 23px; }
   .home-nav-tab:active, .home-nav-tab:hover { color: var(--primary); }
-  .home-bottom-nav { border-top: 0.3rem solid #9CA3AF; }
-  /* Middle Reserve tab: dome with an exact half-circle top; icon + label stay together (same as in the app). */
-  .home-nav-tab.nav-tab-center { justify-content: flex-start; padding: 0; overflow: visible; color: #fff; }
+  /* Gradient top line; the Reserve dome is the bar bulging up, outlined by the same line (same as in the app). */
+  .home-bottom-nav { border-top: 0.3rem solid transparent; border-image: linear-gradient(90deg, #7C3AED, #4F46E5 50%, #14B8A6) 1; }
+  .home-nav-tab.nav-tab-center { justify-content: flex-start; padding: 0; overflow: visible; color: #8B5CF6; }
   .nav-center-circle {
     position: relative; flex: 1; width: 68px; margin-top: calc(-26px - 0.3rem); padding-top: 9px;
     border-radius: 34px 34px 0 0;
     display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
-    color: #fff; font-weight: 700;
-    background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
-    box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
+    color: #8B5CF6; font-weight: 700;
+    background: var(--surface);
   }
-  /* The bar's grey top border curves up around the dome (half-circle outline cut where it meets the bar line). */
+  /* Half-circle gradient ring behind the dome, cut where it meets the bar's line; gradient pinned to the
+     viewport so its colours line up with the full-width line underneath. */
   .nav-center-circle::before {
     content: ''; position: absolute; z-index: -1; top: -0.3rem; left: -0.3rem; right: -0.3rem;
-    height: calc(34px + 0.3rem); border: 0.3rem solid #9CA3AF; border-bottom: none;
+    height: calc(34px + 0.3rem); padding: 0.3rem 0.3rem 0;
     border-radius: calc(34px + 0.3rem) calc(34px + 0.3rem) 0 0;
+    background: linear-gradient(90deg, #7C3AED, #4F46E5 50%, #14B8A6) fixed;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
     clip-path: inset(0 0 calc(8px - 0.3rem) 0);
   }
   .home-nav-tab .nav-center-circle svg { width: 28px; height: 28px; flex-shrink: 0; }
   .nav-center-label { line-height: 1.1; }
-  .nav-tab-center:active .nav-center-circle { filter: brightness(1.1); }
+  .nav-tab-center:active .nav-center-circle { filter: brightness(1.15); }
   /* keep the footer clear of the bar */
   body.has-bottom-nav { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 }

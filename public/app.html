@@ -170,7 +170,8 @@
     .nav-tab svg { width: 24px; height: 24px; }
     .nav-tab.active { color: var(--primary); }
 
-    .bottom-nav { border-top: 0.3rem solid #9CA3AF; }
+    /* Gradient top line (the brand gradient that used to fill the Reserve dome). */
+    .bottom-nav { border-top: 0.3rem solid transparent; border-image: linear-gradient(90deg, #7C3AED, #4F46E5 50%, #14B8A6) 1; }
 
     /* Middle Reserve tab: a dome rising out of the bar. The top is an exact half circle (radius = half
        the width) and the icon + label sit together at the top, so neither changes when the bar's height
@@ -180,22 +181,26 @@
       position: relative; flex: 1; width: 68px; margin-top: calc(-26px - 0.3rem); padding-top: 9px;
       border-radius: 34px 34px 0 0;
       display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px;
-      color: #fff; font-weight: 700;
-      background: linear-gradient(160deg, #7C3AED, #4F46E5 55%, #14B8A6);
-      box-shadow: 0 -6px 16px rgba(79,70,229,0.35);
+      color: #8B5CF6; font-weight: 700;
+      background: var(--surface); /* same as the bar: the dome reads as the bar bulging upward */
     }
-    /* The bar's grey top border curves up around the dome: a half-circle outline behind it, cut off
-       where it meets the bar's own border line. */
+    /* The gradient line curves up around the dome: a half-circle ring behind it, cut off where it meets
+       the bar's own line. The gradient is pinned to the viewport ("fixed") so its colours line up with
+       the bar's full-width line underneath. */
     .nav-center-circle::before {
       content: ''; position: absolute; z-index: -1; top: -0.3rem; left: -0.3rem; right: -0.3rem;
-      height: calc(34px + 0.3rem); border: 0.3rem solid #9CA3AF; border-bottom: none;
+      height: calc(34px + 0.3rem); padding: 0.3rem 0.3rem 0;
       border-radius: calc(34px + 0.3rem) calc(34px + 0.3rem) 0 0;
+      background: linear-gradient(90deg, #7C3AED, #4F46E5 50%, #14B8A6) fixed;
+      -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
       clip-path: inset(0 0 calc(8px - 0.3rem) 0);
     }
     .nav-center-circle svg { width: 28px; height: 28px; flex-shrink: 0; }
     .nav-center-label { line-height: 1.1; }
-    .nav-tab-center:active .nav-center-circle { filter: brightness(1.1); }
-    .nav-tab-center, .nav-tab-center.active { color: #fff; }
+    .nav-tab-center:active .nav-center-circle { filter: brightness(1.15); }
+    .nav-tab-center, .nav-tab-center.active { color: #8B5CF6; }
 
     /* ---- Shared ---- */
     .page-title { font-size: 1.4rem; font-weight: 700; margin-bottom: 20px; }
