@@ -340,6 +340,19 @@
       el.style.display = 'block';
     }
 
+    // Where to land after signing in/up: the tab tapped in the home page's bottom bar (?next=reserve),
+    // remembered for the session so it survives switching between the login and sign-up forms.
+    const APP_TABS = ['stake', 'earn', 'reserve', 'assets', 'my'];
+    (function rememberNextTab() {
+      const next = new URLSearchParams(window.location.search).get('next');
+      try { if (APP_TABS.includes(next)) sessionStorage.setItem('mlk_next_tab', next); } catch (e) {}
+    })();
+    function appDestination() {
+      let next = null;
+      try { next = sessionStorage.getItem('mlk_next_tab'); sessionStorage.removeItem('mlk_next_tab'); } catch (e) {}
+      return APP_TABS.includes(next) ? '/app.html#' + next : '/app.html';
+    }
+
     function showRedirectLoader() {
       document.getElementById('redirectLoader').style.display = 'flex';
     }
@@ -438,7 +451,7 @@
           localStorage.setItem('mlk_token', data.token);
           localStorage.setItem('mlk_user', JSON.stringify(data.user));
           showRedirectLoader();
-          window.location.href = '/app.html';
+          window.location.href = appDestination();
         } else {
           submitBtn.textContent = 'Creating account...';
           const username = document.getElementById('signupUsername').value.trim();
@@ -501,7 +514,7 @@
         localStorage.setItem('mlk_token', data.token);
         localStorage.setItem('mlk_user', JSON.stringify(data.user));
         showRedirectLoader();
-        window.location.href = '/app.html';
+        window.location.href = appDestination();
       } catch (err) {
         showTwoFaLoginError(err.message);
       } finally {
@@ -550,7 +563,7 @@
         localStorage.setItem('mlk_token', data.token);
         localStorage.setItem('mlk_user', JSON.stringify(data.user));
         showRedirectLoader();
-        window.location.href = '/app.html';
+        window.location.href = appDestination();
       } catch (err) {
         showVerifyError(err.message);
       } finally {

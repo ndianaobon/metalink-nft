@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="/assets/styles.css">
   <noscript><style>.reveal { opacity: 1 !important; transform: none !important; }</style></noscript>
 </head>
-<body>
+<body class="has-bottom-nav">
   <!-- Navbar -->
   <nav class="navbar" id="navbar">
     <div class="container navbar-inner">
@@ -454,6 +454,30 @@
       </div>
     </div>
   </div>
+
+  <!-- Bottom navigation (phones): opens that tab in the app, or the login page if not signed in -->
+  <nav class="home-bottom-nav" aria-label="App sections">
+    <a class="home-nav-tab" data-app-tab="stake" href="/signup.html?next=stake#login">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      Stake
+    </a>
+    <a class="home-nav-tab" data-app-tab="earn" href="/signup.html?next=earn#login">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Earn
+    </a>
+    <a class="home-nav-tab" data-app-tab="reserve" href="/signup.html?next=reserve#login">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
+      Reserve
+    </a>
+    <a class="home-nav-tab" data-app-tab="assets" href="/signup.html?next=assets#login">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M2 10h20"/><circle cx="16" cy="14" r="2"/></svg>
+      Assets
+    </a>
+    <a class="home-nav-tab" data-app-tab="my" href="/signup.html?next=my#login">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      My
+    </a>
+  </nav>
 
   <script src="/assets/app.js"></script>
 </body>

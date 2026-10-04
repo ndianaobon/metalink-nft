@@ -35,7 +35,8 @@ if (mobileMenuBtn && navLinks) {
   });
 }
 
-// Already signed in: point the Log In buttons straight at the app instead.
+// Already signed in: point the Log In buttons and the bottom bar straight at the app.
+// (Signed-out visitors keep the default links, which go to the login page and then on to that tab.)
 try {
   if (localStorage.getItem('mlk_token')) {
     document.querySelectorAll('[data-auth-login]').forEach(a => {
@@ -43,6 +44,7 @@ try {
       const label = a.querySelector('span') || a;
       label.textContent = 'My Account';
     });
+    document.querySelectorAll('[data-app-tab]').forEach(a => { a.href = '/app.html#' + a.dataset.appTab; });
   }
 } catch (e) {}
 

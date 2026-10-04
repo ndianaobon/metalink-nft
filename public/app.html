@@ -2431,7 +2431,9 @@
     const TOKEN = localStorage.getItem('mlk_token');
     const USER = JSON.parse(localStorage.getItem('mlk_user') || '{}');
 
-    if (!TOKEN) window.location.href = '/signup.html#login';
+    // Tab requested in the URL (e.g. /app.html#reserve from the home page's bottom bar).
+    const REQUESTED_TAB = ['stake', 'earn', 'reserve', 'assets', 'my'].includes(location.hash.slice(1)) ? location.hash.slice(1) : null;
+    if (!TOKEN) window.location.href = '/signup.html' + (REQUESTED_TAB ? '?next=' + REQUESTED_TAB : '') + '#login';
 
     const saved = localStorage.getItem('theme');
     if (saved) document.documentElement.setAttribute('data-theme', saved);
@@ -4303,6 +4305,7 @@
       el.classList.add('fade-out');
       setTimeout(() => el.remove(), 400);
     }
+    if (REQUESTED_TAB && REQUESTED_TAB !== 'stake') switchTab(REQUESTED_TAB);
     Promise.race([
       Promise.all([loadPlatformInfo().then(loadStakes), updateHeaderBalance(), loadCheckin(), refreshLevel()]),
       new Promise(resolve => setTimeout(resolve, 4000)) // safety net so the loader never gets stuck on a slow/failed request
