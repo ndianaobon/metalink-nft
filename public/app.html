@@ -1467,7 +1467,7 @@
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/></svg>
           Telegram
         </button>
-        <button class="app-menu-item" onclick="menuUnavailable('Download')">
+        <button class="app-menu-item web-only" onclick="downloadApp()">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           Download
         </button>
@@ -3345,6 +3345,17 @@
     function menuUnavailable(name) {
       toast(name + ' is not available yet', 'error');
       closeHeaderDropdowns();
+    }
+
+    // iPhones can't install APKs, so point them to Safari's Add to Home Screen instead.
+    function downloadApp() {
+      closeHeaderDropdowns();
+      const ua = navigator.userAgent;
+      if (/iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1)) {
+        toast('On iPhone: open this site in Safari, tap Share, then "Add to Home Screen"');
+        return;
+      }
+      window.location.href = '/downloads/MetaLink-NFT.apk';
     }
 
     function openExternal(url) {
