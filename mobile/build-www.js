@@ -1,4 +1,4 @@
-// Builds the bundled frontend for the mobile app: copies public/ into www/ (minus the admin panel)
+// Builds the bundled frontend for the mobile app: copies public/ into www/ (minus the admin panel and the APK downloads)
 // and injects a small script that sends API calls to the live server instead of the app's local origin.
 const fs = require('fs');
 const path = require('path');
@@ -7,9 +7,10 @@ const SITE_URL = process.env.MLK_SITE_URL || 'https://metalinknft.com';
 const ROOT = path.join(__dirname, '..');
 const SRC = path.join(ROOT, 'public');
 const OUT = path.join(ROOT, 'www');
-const EXCLUDE = new Set(['admin.html']);
+const EXCLUDE = new Set(['admin.html', 'downloads']);
 
-const bridge = `<script>
+const bridge = `<style>.web-only { display: none !important; }</style>
+<script>
   window.MLK_SITE_URL = ${JSON.stringify(SITE_URL)};
   (function () {
     var base = window.MLK_SITE_URL, nativeFetch = window.fetch.bind(window);
