@@ -21,6 +21,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "express-rate-limit": "^7.5.1",
+    "geoip-country": "^5.0.202610030217",
     "helmet": "^7.2.0",
     "otplib": "^13.4.1",
     "pg": "^8.22.0",

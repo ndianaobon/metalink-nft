@@ -356,6 +356,16 @@ function getClientIp(req) {
   return chain[0] || normalizeIp(req.socket.remoteAddress) || 'unknown';
 }
 
+// Country for an IP from the offline GeoLite2 country database bundled with geoip-country, so no
+// user IPs are sent to a third-party lookup service. Country-level only: city data would need a
+// ~115 MB in-memory database.
+const geoipCountry = require('geoip-country');
+function ipLocation(ip) {
+  if (!ip || !net.isIP(ip) || isPrivateIp(ip)) return null;
+  const g = geoipCountry.lookup(ip);
+  return g ? { country: g.country, countryName: g.name } : null;
+}
+
 function recordUserIp(userId, ip, c = pool) {
   // A private address means we only saw an internal proxy, which every visitor would share;
   // recording it would flag all users as one group.
@@ -372,7 +382,9 @@ async function isIpBanned(ip) {
 }
 async function noteLogin(userId, req) {
   const ip = getClientIp(req);
-  await db.patchDoc(pool, 'users', userId, { lastIp: ip, lastLoginAt: new Date().toISOString() });
+  const now = new Date().toISOString();
+  // A login counts as activity too, so the admin's Online badge and Last Seen agree.
+  await db.patchDoc(pool, 'users', userId, { lastIp: ip, lastLoginAt: now, lastActiveAt: now });
   await recordUserIp(userId, ip);
 }
 
@@ -1683,7 +1695,7 @@ app.get('/api/admin/users', adminMiddleware, async (req, res) => {
   const sharedMap = Object.fromEntries(shared.map(r => [r.user_id, r.n]));
   const users = (await db.listDocs(pool, 'users')).map(u => {
     const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
-    return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0 };
+    return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0, location: ipLocation(u.lastIp || u.signupIp) };
   });
   res.json(users);
 });
@@ -1701,7 +1713,8 @@ function accountSummary(u) {
     id: u.id, username: u.username, email: u.email, uid: u.uid, createdAt: u.createdAt,
     walletBalance: u.walletBalance, status: accountStatus(u), frozenUntil: u.frozenUntil || null,
     suspendReason: u.suspendReason || '', bannedAt: u.bannedAt || null, banReason: u.banReason || '',
-    referredBy: u.referredBy || null, lastActiveAt: u.lastActiveAt || null, lastLoginAt: u.lastLoginAt || null
+    referredBy: u.referredBy || null, lastActiveAt: u.lastActiveAt || null, lastLoginAt: u.lastLoginAt || null,
+    avatar: u.avatar || '', lastIp: u.lastIp || null, location: ipLocation(u.lastIp || u.signupIp)
   };
 }
 
@@ -1722,6 +1735,7 @@ app.get('/api/admin/multi-accounts', adminMiddleware, async (req, res) => {
   userRows.forEach(r => { users[r.data.id] = r.data; });
   res.json(rows.map(r => ({
     ip: r.ip,
+    location: ipLocation(r.ip),
     lastSeen: r.last_seen,
     ipBanned: r.ip_banned,
     accounts: r.seen.filter(s => users[s.userId]).map(s => ({ ...accountSummary(users[s.userId]), firstSeenOnIp: s.firstSeen, lastSeenOnIp: s.lastSeen, hits: s.hits }))
@@ -1738,8 +1752,8 @@ app.get('/api/admin/users/:id/ips', adminMiddleware, async (req, res) => {
            EXISTS (SELECT 1 FROM app.banned_ips b WHERE b.ip = i.ip) AS ip_banned
     FROM app.user_ips i WHERE i.user_id = $1 ORDER BY i.last_seen DESC`, [user.id]);
   res.json({
-    user: { ...accountSummary(user), signupIp: user.signupIp || null, lastIp: user.lastIp || null },
-    ips: rows.map(r => ({ ip: r.ip, firstSeen: r.first_seen, lastSeen: r.last_seen, hits: r.hits, otherAccounts: r.other_accounts, ipBanned: r.ip_banned }))
+    user: { ...accountSummary(user), signupIp: user.signupIp || null, lastIp: user.lastIp || null, signupLocation: ipLocation(user.signupIp) },
+    ips: rows.map(r => ({ ip: r.ip, location: ipLocation(r.ip), firstSeen: r.first_seen, lastSeen: r.last_seen, hits: r.hits, otherAccounts: r.other_accounts, ipBanned: r.ip_banned }))
   });
 });
 

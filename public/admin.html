@@ -191,15 +191,15 @@
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>Status</th><th>Last Seen</th><th>UID</th><th>Username</th><th>Email</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Status</th><th>Last Seen</th><th>User</th><th>UID</th><th>Location</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
                   <tbody>
                     ${users.map(u => `
                       <tr>
                         <td>${this.statusBadge(u)}</td>
                         <td style="white-space:nowrap;font-size:0.82rem;">${this.lastSeenCell(u)}</td>
+                        <td>${this.userCell(u)}</td>
                         <td><strong>${escapeHtml(u.uid)}</strong></td>
-                        <td>${escapeHtml(u.username)}</td>
-                        <td>${escapeHtml(u.email)}</td>
+                        <td style="font-size:0.85rem;">${this.locationHtml(u.location)}</td>
                         <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
                         <td>${u.level}</td>
                         <td>${u.sharedIpAccounts ? `<button class="admin-btn admin-btn-reject" title="Other accounts have used this user's IP address" onclick="Admin.showUserIps('${escapeHtml(u.id)}')">&#9888; ${u.sharedIpAccounts} other${u.sharedIpAccounts > 1 ? 's' : ''}</button>` : '<span style="color:#ccc;">-</span>'}</td>
@@ -216,6 +216,40 @@
               </div>
             </div>`;
         } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+      },
+
+      // Profile picture (or the first letter of the username); click to see it full size.
+      avatarHtml(u, size = 36) {
+        const style = `width:${size}px;height:${size}px;border-radius:50%;flex-shrink:0;object-fit:cover;`;
+        if (u.avatar) {
+          return `<img src="${escapeHtml(u.avatar)}" alt="" style="${style}cursor:zoom-in;border:1px solid #e5e7eb;" onclick="Admin.showAvatar(this.src, '${escapeHtml(u.username)}')">`;
+        }
+        return `<span style="${style}display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#7C3AED,#14B8A6);color:#fff;font-weight:700;font-size:${Math.round(size * 0.42)}px;">${escapeHtml((u.username || '?').charAt(0).toUpperCase())}</span>`;
+      },
+
+      userCell(u) {
+        return `<div style="display:flex;align-items:center;gap:10px;">${this.avatarHtml(u)}<div style="min-width:0;"><strong>${escapeHtml(u.username)}</strong>${u.email ? `<br><span style="font-size:0.75rem;color:#888;">${escapeHtml(u.email)}</span>` : ''}</div></div>`;
+      },
+
+      showAvatar(src, username) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `<div class="admin-modal" style="max-width:420px;text-align:center;">
+          <h3>${escapeHtml(username)}</h3>
+          <img src="${escapeHtml(src)}" alt="Profile picture" style="width:100%;max-width:360px;border-radius:16px;margin:8px 0 14px;">
+          <button class="admin-btn" style="width:100%;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button></div>`;
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+      },
+
+      // Country flag + name. Flag images rather than flag emoji, which Windows shows as plain letters;
+      // if the image can't load, the 2-letter code shows instead.
+      locationHtml(loc) {
+        if (!loc || !/^[A-Z]{2}$/i.test(loc.country || '')) return '<span style="color:#aaa;">Unknown</span>';
+        const code = loc.country.toLowerCase();
+        return `<span style="white-space:nowrap;display:inline-flex;align-items:center;gap:6px;" title="${escapeHtml(loc.countryName)}">
+          <img src="https://flagcdn.com/w40/${code}.png" alt="${escapeHtml(loc.country)}" width="20" height="15" style="border-radius:2px;object-fit:cover;box-shadow:0 0 0 1px rgba(0,0,0,0.08);" onerror="this.replaceWith(document.createTextNode('${escapeHtml(loc.country)}'))">
+          ${escapeHtml(loc.countryName)}</span>`;
       },
 
       // Most recent sign of life: app activity (recorded about once a minute) or a login.
@@ -363,12 +397,16 @@
         try {
           const { user, ips } = await this.api(`/admin/users/${id}/ips`);
           modal.querySelector('.admin-modal').innerHTML = `
-            <h3>IP addresses &mdash; ${escapeHtml(user.username)}</h3>
-            <p style="font-size:0.82rem;color:#888;margin-bottom:12px;">Sign-up IP: <strong>${escapeHtml(user.signupIp) || 'not recorded'}</strong> &middot; Last IP: <strong>${escapeHtml(user.lastIp) || 'not recorded'}</strong></p>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+              ${this.avatarHtml(user, 52)}
+              <div><h3 style="margin:0;">${escapeHtml(user.username)}</h3><span style="font-size:0.8rem;color:#888;">${escapeHtml(user.email)} &middot; ${this.locationHtml(user.location)}</span></div>
+            </div>
+            <p style="font-size:0.82rem;color:#888;margin-bottom:12px;">Sign-up IP: <strong>${escapeHtml(user.signupIp) || 'not recorded'}</strong>${user.signupLocation ? ' (' + this.locationHtml(user.signupLocation) + ')' : ''} &middot; Last IP: <strong>${escapeHtml(user.lastIp) || 'not recorded'}</strong></p>
             ${ips.length ? `<div style="overflow-x:auto;"><table class="admin-table">
-              <thead><tr><th>IP</th><th>First seen</th><th>Last seen</th><th>Other accounts</th></tr></thead>
+              <thead><tr><th>IP</th><th>Location</th><th>First seen</th><th>Last seen</th><th>Other accounts</th></tr></thead>
               <tbody>${ips.map(i => `<tr>
                 <td style="font-family:monospace;">${escapeHtml(i.ip)}${i.ipBanned ? ' <span class="admin-badge admin-badge-rejected">Blocked</span>' : ''}</td>
+                <td style="font-size:0.82rem;">${this.locationHtml(i.location)}</td>
                 <td style="font-size:0.8rem;">${new Date(i.firstSeen).toLocaleString()}</td>
                 <td style="font-size:0.8rem;">${new Date(i.lastSeen).toLocaleString()}</td>
                 <td>${i.otherAccounts ? `<button class="admin-btn admin-btn-reject" onclick="Admin.openMultiAccounts('${escapeHtml(i.ip)}')">&#9888; ${i.otherAccounts}</button>` : '0'}</td>
@@ -432,6 +470,7 @@
           <div style="border:1px solid #eee;border-radius:10px;margin-bottom:16px;overflow:hidden;">
             <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#fafafa;border-bottom:1px solid #eee;">
               <strong style="font-family:monospace;font-size:0.95rem;">${escapeHtml(g.ip)}</strong>
+              <span style="font-size:0.85rem;">${this.locationHtml(g.location)}</span>
               <span class="admin-badge admin-badge-rejected">${g.accounts.length} accounts</span>
               ${g.ipBanned ? '<span class="admin-badge admin-badge-rejected">Sign-ups blocked</span>' : ''}
               <span style="margin-left:auto;font-size:0.78rem;color:#888;">Last activity ${new Date(g.lastSeen).toLocaleString()}</span>
@@ -441,7 +480,7 @@
               <tbody>${g.accounts.map(a => `<tr>
                 <td>${this.statusBadge(a)}</td>
                 <td style="white-space:nowrap;font-size:0.82rem;">${this.lastSeenCell(a)}</td>
-                <td><strong>${escapeHtml(a.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(a.email)}</span></td>
+                <td>${this.userCell(a)}</td>
                 <td>${escapeHtml(a.uid)}</td>
                 <td>${Number(a.walletBalance || 0).toFixed(2)}</td>
                 <td style="font-size:0.8rem;">${new Date(a.createdAt).toLocaleDateString()}</td>
