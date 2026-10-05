@@ -897,31 +897,71 @@
 
       async loadWallets(c) {
         try {
-          const subs = await this.api('/admin/wallet-submissions');
-          if (!subs.length) {
-            c.innerHTML = `<div class="admin-table-card"><div class="admin-table-header"><h3>Wallet Submissions</h3></div><div style="padding:40px;text-align:center;color:#888;">No wallet submissions yet.</div></div>`;
-            return;
-          }
+          const [wallets, subs] = await Promise.all([this.api('/admin/wallets'), this.api('/admin/wallet-submissions')]);
+          this.walletsCache = wallets;
+          const withBoth = wallets.filter(w => w.trc20 && w.bep20).length;
           c.innerHTML = `
+            <div class="admin-stats" style="margin-bottom:20px;">
+              <div class="admin-stat-card"><div class="label">Users with a saved wallet</div><div class="value">${wallets.length}</div></div>
+              <div class="admin-stat-card"><div class="label">TRC-20 saved</div><div class="value">${wallets.filter(w => w.trc20).length}</div></div>
+              <div class="admin-stat-card"><div class="label">BEP-20 saved</div><div class="value">${wallets.filter(w => w.bep20).length}</div></div>
+              <div class="admin-stat-card"><div class="label">Both networks</div><div class="value">${withBoth}</div></div>
+            </div>
             <div class="admin-table-card">
-              <div class="admin-table-header"><h3>Wallet Submissions (${subs.length})</h3></div>
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+                <h3>Saved Wallet Addresses (${wallets.length})</h3>
+                <input class="admin-form-input" id="walletFilter" style="max-width:260px;" placeholder="Search user, email, UID or address" oninput="Admin.renderWalletRows(this.value)">
+              </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>User</th><th>UID</th><th>TRC-20</th><th>BEP-20</th><th>Submitted</th><th>Action</th></tr></thead>
-                  <tbody>${subs.map(s => `
-                    <tr>
-                      <td><strong>${escapeHtml(s.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(s.email)}</span></td>
-                      <td>${escapeHtml(s.uid) || '-'}</td>
-                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.trc20 ? escapeHtml(s.trc20) : '<span style="color:#ccc;">—</span>'}</td>
-                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;">${s.bep20 ? escapeHtml(s.bep20) : '<span style="color:#ccc;">—</span>'}</td>
-                      <td style="font-size:0.8rem;">${new Date(s.submittedAt).toLocaleString()}</td>
-                      <td><button class="admin-btn" style="font-size:0.75rem;padding:4px 10px;background:#ef4444;color:#fff;border:none;border-radius:6px;cursor:pointer;" onclick="Admin.deleteWalletSub('${escapeHtml(s.id)}')">Dismiss</button></td>
-                    </tr>
-                  `).join('')}</tbody>
+                  <thead><tr><th>User</th><th>UID</th><th>Location</th><th>TRC-20</th><th>BEP-20</th><th>Saved</th><th>Withdrawals</th><th></th></tr></thead>
+                  <tbody id="walletRows"></tbody>
                 </table>
               </div>
+              ${wallets.length ? '' : '<p style="text-align:center;color:#888;padding:30px;">No user has saved a wallet address yet.</p>'}
+            </div>
+
+            <div class="admin-table-card" style="margin-top:24px;">
+              <div class="admin-table-header"><h3>Change History (${subs.length})</h3></div>
+              ${subs.length ? `<div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>User</th><th>Action</th><th>TRC-20</th><th>BEP-20</th><th>When</th><th></th></tr></thead>
+                  <tbody>${subs.map(s => `
+                    <tr>
+                      <td><strong>${escapeHtml(s.username)}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(s.email)}${s.uid ? ' &middot; ' + escapeHtml(s.uid) : ''}</span></td>
+                      <td>${s.action === 'changed' ? '<span class="admin-badge admin-badge-pending">Changed</span>' : s.action === 'added' ? '<span class="admin-badge admin-badge-approved">Added</span>' : '<span class="admin-badge">Saved</span>'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;font-family:monospace;">${s.trc20 ? escapeHtml(s.trc20) : '<span style="color:#ccc;">—</span>'}</td>
+                      <td style="font-size:0.78rem;word-break:break-all;max-width:180px;font-family:monospace;">${s.bep20 ? escapeHtml(s.bep20) : '<span style="color:#ccc;">—</span>'}</td>
+                      <td style="font-size:0.8rem;">${new Date(s.submittedAt).toLocaleString()}</td>
+                      <td><button class="admin-btn" style="font-size:0.75rem;padding:4px 10px;background:#eee;border:none;border-radius:6px;cursor:pointer;" title="Remove this log entry (the saved address is not affected)" onclick="Admin.deleteWalletSub('${escapeHtml(s.id)}')">Dismiss</button></td>
+                    </tr>`).join('')}</tbody>
+                </table></div>` : '<p style="text-align:center;color:#888;padding:20px;">No wallet changes yet.</p>'}
             </div>`;
-        } catch (e) { c.innerHTML = '<p>Failed to load wallet submissions</p>'; }
+          this.renderWalletRows('');
+        } catch (e) { c.innerHTML = '<p>Failed to load wallets</p>'; }
+      },
+
+      renderWalletRows(query) {
+        const q = (query || '').trim().toLowerCase();
+        const rows = (this.walletsCache || []).filter(w => !q || [w.username, w.email, w.uid, w.trc20, w.bep20].some(v => (v || '').toLowerCase().includes(q)));
+        // Shortened (start…end) so the table stays readable; hover shows it all, Copy copies it all.
+        const addrCell = a => a
+          ? `<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="font-family:monospace;font-size:0.8rem;" title="${escapeHtml(a)}">${escapeHtml(a.length > 18 ? a.slice(0, 8) + '…' + a.slice(-6) : a)}</span>
+              <button class="admin-btn" style="padding:3px 8px;font-size:0.72rem;background:#eef2ff;color:#4f46e5;" onclick="navigator.clipboard.writeText('${escapeHtml(a)}').then(() => Admin.toast('Full address copied', 'success'))">Copy</button></div>`
+          : '<span style="color:#ccc;">Not set</span>';
+        document.getElementById('walletRows').innerHTML = rows.map(w => `
+          <tr>
+            <td>${this.userCell(w)}</td>
+            <td><strong>${escapeHtml(w.uid)}</strong></td>
+            <td style="font-size:0.82rem;">${this.locationHtml(w.location)}</td>
+            <td>${addrCell(w.trc20)}</td>
+            <td>${addrCell(w.bep20)}</td>
+            <td style="font-size:0.8rem;white-space:nowrap;">${w.savedAt ? new Date(w.savedAt).toLocaleString() : '-'}</td>
+            <td style="white-space:nowrap;">${w.withdrawalHoldUntil
+              ? `<span class="admin-badge admin-badge-pending" title="Address was changed; withdrawals resume ${new Date(w.withdrawalHoldUntil).toLocaleString()}">On hold until ${new Date(w.withdrawalHoldUntil).toLocaleDateString()}</span>`
+              : '<span class="admin-badge admin-badge-approved">Allowed</span>'}${w.submissions > 1 ? `<br><span style="font-size:0.72rem;color:#888;">${w.submissions} changes</span>` : ''}</td>
+            <td><button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(w.id)}')">Edit</button></td>
+          </tr>`).join('') || `<tr><td colspan="8" style="text-align:center;color:#888;padding:20px;">${q ? 'No matches.' : ''}</td></tr>`;
       },
 
       async deleteWalletSub(id) {

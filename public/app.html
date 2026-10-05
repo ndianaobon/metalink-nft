@@ -1199,6 +1199,19 @@
 
     .badge-processing { background: rgba(245,158,11,0.15); color: var(--warning); }
 
+    /* Saved wallet address display */
+    .wallet-saved-tag { color: var(--positive); font-weight: 700; font-size: 0.75rem; margin-left: 6px; }
+    .wallet-dest {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+      padding: 12px 14px; margin-bottom: 14px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border);
+    }
+    .wallet-dest-label { font-size: 0.78rem; color: var(--text-secondary); }
+    .wallet-dest-addr { font-family: 'Courier New', monospace; font-size: 0.85rem; font-weight: 700; word-break: break-all; }
+    .wallet-dest-add {
+      border: none; border-radius: 8px; padding: 7px 12px; background: var(--primary); color: #fff;
+      font-family: var(--font); font-size: 0.78rem; font-weight: 700; cursor: pointer;
+    }
+
     /* ---- Deposit page (exchange-style, full screen) ---- */
     .dep-page {
       position: fixed; inset: 0; z-index: 210; background: var(--bg);
@@ -2276,11 +2289,12 @@
       </div>
       <div class="form-field">
         <label>Wallet Type</label>
-        <select id="withdrawWalletType">
+        <select id="withdrawWalletType" onchange="renderWithdrawDestination()">
           <option value="trc20">TRC-20</option>
           <option value="bep20">BEP-20</option>
         </select>
       </div>
+      <div class="wallet-dest" id="withdrawDestination"></div>
       <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:16px;" id="withdrawFeeNote">4% fee applies. Make sure your wallet address is set.</p>
       <button class="btn btn-primary" id="withdrawBtn">Submit Withdrawal</button>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
@@ -2292,16 +2306,17 @@
     <div class="modal-sheet">
       <div class="modal-handle"></div>
       <div class="modal-title">USDT Wallet Address</div>
-      <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;">Only USDT addresses are accepted. Choose your preferred network below.</p>
+      <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:16px;">Only USDT addresses are accepted. Your addresses stay saved on your account until you change them.</p>
       <div class="form-field">
-        <label>USDT Address (TRC-20)</label>
-        <input type="text" id="walletTrc20" placeholder="Enter TRC-20 USDT address">
+        <label>USDT Address (TRC-20) <span class="wallet-saved-tag" id="walletTrc20Tag"></span></label>
+        <input type="text" id="walletTrc20" placeholder="Starts with T… (34 characters)" autocomplete="off" spellcheck="false">
       </div>
       <div class="form-field">
-        <label>USDT Address (BEP-20)</label>
-        <input type="text" id="walletBep20" placeholder="Enter BEP-20 USDT address">
+        <label>USDT Address (BEP-20) <span class="wallet-saved-tag" id="walletBep20Tag"></span></label>
+        <input type="text" id="walletBep20" placeholder="Starts with 0x… (42 characters)" autocomplete="off" spellcheck="false">
       </div>
-      <p style="font-size:0.8rem;color:var(--warning);margin-bottom:16px;">Changing your wallet address will suspend withdrawals for 48 hours.</p>
+      <p style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;" id="walletSavedAt"></p>
+      <p style="font-size:0.8rem;color:var(--warning);margin-bottom:16px;">Adding an address is instant. Changing a saved address pauses withdrawals for 48 hours, for your security.</p>
       <button class="btn btn-primary" id="saveWalletBtn">Save Address</button>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
     </div>
@@ -3680,19 +3695,51 @@
       setAddrField(document.getElementById('assetAddrBep20'), addrs.bep20);
       setAddrField(document.getElementById('assetAddrTrc20'), addrs.trc20);
     }
+    // ---- Saved withdrawal addresses ----
+    function savedWallet() {
+      const w = (profileData && profileData.walletAddress) || {};
+      return { trc20: w.trc20 || '', bep20: w.bep20 || w.erc20 || '' };
+    }
+    const shortAddr = a => a.length > 16 ? a.slice(0, 8) + '…' + a.slice(-6) : a;
+
+    function renderWithdrawDestination() {
+      const net = document.getElementById('withdrawWalletType').value;
+      const addr = savedWallet()[net];
+      const label = net === 'bep20' ? 'BEP-20' : 'TRC-20';
+      document.getElementById('withdrawDestination').innerHTML = addr
+        ? `<span class="wallet-dest-label">Withdraw to your saved ${label} address</span><span class="wallet-dest-addr" title="${escapeHtml(addr)}">${escapeHtml(shortAddr(addr))}</span>`
+        : `<span class="wallet-dest-label">No ${label} address saved yet.</span><button type="button" class="wallet-dest-add" onclick="closeAllModals(); openWalletModal();">Add ${label} address</button>`;
+    }
+
     async function openWithdrawModal() {
       openModal('withdrawModal');
+      try { profileData = { ...(profileData || {}), ...(await api('/api/user/profile')) }; } catch (e) {}
+      const saved = savedWallet();
+      // Default to a network that actually has an address saved.
+      if (!saved.trc20 && saved.bep20) document.getElementById('withdrawWalletType').value = 'bep20';
+      renderWithdrawDestination();
       try {
         const info = await fetch('/api/platform/info').then(r => r.json());
-        document.getElementById('withdrawFeeNote').textContent = info.withdrawalFeePct + '% fee applies. Make sure your wallet address is set.';
+        document.getElementById('withdrawFeeNote').textContent = info.withdrawalFeePct + '% fee applies.';
       } catch(e) {}
     }
-    function openWalletModal() {
-      if (profileData) {
-        document.getElementById('walletTrc20').value = profileData.walletAddress?.trc20 || '';
-        document.getElementById('walletBep20').value = profileData.walletAddress?.bep20 || profileData.walletAddress?.erc20 || '';
-      }
+
+    function fillWalletForm() {
+      const saved = savedWallet();
+      document.getElementById('walletTrc20').value = saved.trc20;
+      document.getElementById('walletBep20').value = saved.bep20;
+      document.getElementById('walletTrc20Tag').textContent = saved.trc20 ? '✓ Saved' : '';
+      document.getElementById('walletBep20Tag').textContent = saved.bep20 ? '✓ Saved' : '';
+      const at = profileData && (profileData.walletAddressSavedAt || profileData.walletAddressUpdatedAt);
+      document.getElementById('walletSavedAt').textContent = at ? 'Last saved ' + new Date(at).toLocaleString() : '';
+    }
+
+    // Always load the latest saved addresses before showing the form, so the boxes show what's on the
+    // account (and a blank box never looks like a missing address).
+    async function openWalletModal() {
+      fillWalletForm();
       openModal('walletAddrModal');
+      try { profileData = { ...(profileData || {}), ...(await api('/api/user/profile')) }; fillWalletForm(); } catch (e) {}
     }
     function openTeamModal() { openTeamPage(); }
 
@@ -3745,11 +3792,19 @@
       const trc20 = document.getElementById('walletTrc20').value.trim();
       const bep20 = document.getElementById('walletBep20').value.trim();
       if (!trc20 && !bep20) return toast('Please enter at least one wallet address', 'error');
+      if (trc20 && !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(trc20)) return toast('That TRC-20 address doesn\'t look right — it should start with "T" and be 34 characters.', 'error');
+      if (bep20 && !/^0x[0-9a-fA-F]{40}$/.test(bep20)) return toast('That BEP-20 address doesn\'t look right — it should start with "0x" and be 42 characters.', 'error');
+      const saved = savedWallet();
+      // A blank box keeps the saved address, so only a different, non-empty value is a change.
+      if ((trc20 && saved.trc20 && trc20 !== saved.trc20) || (bep20 && saved.bep20 && bep20 !== saved.bep20)) {
+        if (!confirm('You are changing a saved wallet address. Withdrawals will be paused for 48 hours. Continue?')) return;
+      }
       const btn = document.getElementById('saveWalletBtn');
       btn.disabled = true;
       try {
-        await api('/api/user/wallet', { method: 'PUT', body: JSON.stringify({ trc20, bep20 }) });
-        toast('Wallet address submitted successfully!');
+        const r = await api('/api/user/wallet', { method: 'PUT', body: JSON.stringify({ trc20, bep20 }) });
+        profileData = { ...(profileData || {}), walletAddress: { ...((profileData && profileData.walletAddress) || {}), ...r.walletAddress } };
+        toast(r.message || 'Wallet address saved');
         closeAllModals();
         loadProfile();
       } catch (e) { toast(e.message, 'error'); }

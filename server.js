@@ -946,17 +946,39 @@ app.post('/api/admin/change-password', authLimiter, adminMiddleware, async (req,
   res.json({ message: 'Password changed successfully' });
 });
 
+const TRC20_RE = /^T[1-9A-HJ-NP-Za-km-z]{33}$/; // Tron base58 address
+const BEP20_RE = /^0x[0-9a-fA-F]{40}$/;          // BNB Smart Chain (EVM) address
+
+// Saved addresses stay on the account until the user changes them:
+//  - a blank field means "keep what's saved" (it never erases an address);
+//  - adding an address to an empty slot is always allowed and doesn't start the withdrawal hold;
+//  - changing an existing address starts the 48h security hold (and is blocked while one is running);
+//  - re-saving the same address changes nothing.
 app.put('/api/user/wallet', authMiddleware, async (req, res) => {
-  const { trc20, bep20 } = req.body;
+  const trc20 = typeof req.body.trc20 === 'string' ? req.body.trc20.trim() : '';
+  const bep20 = typeof req.body.bep20 === 'string' ? req.body.bep20.trim() : '';
+  if (trc20 && !TRC20_RE.test(trc20)) return res.status(400).json({ error: 'That TRC-20 address doesn\'t look right. It should start with "T" and be 34 characters long.' });
+  if (bep20 && !BEP20_RE.test(bep20)) return res.status(400).json({ error: 'That BEP-20 address doesn\'t look right. It should start with "0x" followed by 40 letters/numbers.' });
 
   const result = await tx(async c => {
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
+    user.walletAddress = user.walletAddress || {};
+    const current = { trc20: user.walletAddress.trc20 || '', bep20: user.walletAddress.bep20 || user.walletAddress.erc20 || '' };
+
+    const wanted = { trc20, bep20 };
+    const added = [], changed = [];
+    for (const net of ['trc20', 'bep20']) {
+      if (!wanted[net] || wanted[net] === current[net]) continue;
+      (current[net] ? changed : added).push(net);
+    }
+    if (!added.length && !changed.length) {
+      return { status: 400, body: { error: 'No changes — your saved wallet address is already up to date.', walletAddress: current } };
+    }
 
     const now = new Date();
-    const lastUpdate = user.walletAddressUpdatedAt ? new Date(user.walletAddressUpdatedAt) : null;
-    if (lastUpdate) {
-      const hoursSince = (now - lastUpdate) / (1000 * 60 * 60);
+    if (changed.length && user.walletAddressUpdatedAt) {
+      const hoursSince = (now - new Date(user.walletAddressUpdatedAt)) / (1000 * 60 * 60);
       if (hoursSince < 48) {
         const remaining = 48 - hoursSince;
         const days = Math.floor(remaining / 24);
@@ -964,16 +986,16 @@ app.put('/api/user/wallet', authMiddleware, async (req, res) => {
         const mins = Math.floor((remaining * 60) % 60);
         return {
           status: 400,
-          body: { error: `Withdrawal services will be suspended for ${days} days ${hours} hours ${mins} min after changing wallet address.`, cooldown: true }
+          body: { error: `You changed your wallet address recently. You can change it again in ${days} days ${hours} hours ${mins} min.`, cooldown: true }
         };
       }
     }
 
-    if (trc20 !== undefined) user.walletAddress.trc20 = trc20;
-    if (bep20 !== undefined) user.walletAddress.bep20 = bep20;
-    // Keep erc20 field in sync with bep20 for withdrawal compatibility
-    if (bep20 !== undefined) user.walletAddress.erc20 = bep20;
-    user.walletAddressUpdatedAt = now.toISOString();
+    for (const net of [...added, ...changed]) user.walletAddress[net] = wanted[net];
+    // Keep erc20 in sync with bep20 for withdrawal compatibility
+    if (wanted.bep20 && [...added, ...changed].includes('bep20')) user.walletAddress.erc20 = wanted.bep20;
+    if (changed.length) user.walletAddressUpdatedAt = now.toISOString(); // starts the 48h withdrawal hold
+    user.walletAddressSavedAt = now.toISOString();
     await db.saveUser(c, user);
 
     // Log wallet submission for admin review
@@ -985,10 +1007,17 @@ app.put('/api/user/wallet', authMiddleware, async (req, res) => {
       uid: user.uid,
       trc20: user.walletAddress.trc20 || '',
       bep20: user.walletAddress.bep20 || user.walletAddress.erc20 || '',
+      action: changed.length ? 'changed' : 'added',
+      networks: [...added, ...changed],
       submittedAt: now.toISOString()
     });
 
-    return { status: 200, body: { message: 'Wallet address updated', walletAddress: { trc20: user.walletAddress.trc20, bep20: user.walletAddress.bep20 || user.walletAddress.erc20 } } };
+    const holdStarted = changed.length > 0;
+    return { status: 200, body: {
+      message: holdStarted ? 'Wallet address changed. For your security, withdrawals are paused for 48 hours.' : 'Wallet address saved',
+      holdStarted,
+      walletAddress: { trc20: user.walletAddress.trc20 || '', bep20: user.walletAddress.bep20 || user.walletAddress.erc20 || '' }
+    } };
   });
 
   res.status(result.status).json(result.body);
@@ -1877,16 +1906,28 @@ app.put('/api/admin/users/:id', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/users/:id/wallet', adminMiddleware, async (req, res) => {
-  const { trc20, erc20 } = req.body;
-
-  const user = await tx(async c => {
+  // The admin form sends the BEP-20 address as `erc20` (older field name); accept either.
+  const trc20 = typeof req.body.trc20 === 'string' ? req.body.trc20.trim() : undefined;
+  const bep20Raw = req.body.bep20 !== undefined ? req.body.bep20 : req.body.erc20;
+  const bep20 = typeof bep20Raw === 'string' ? bep20Raw.trim() : undefined;
+  const result = await tx(async c => {
     const u = await db.getUser(c, req.params.id, { lock: true });
-    if (!u) return null;
-    if (trc20 !== undefined) u.walletAddress.trc20 = trc20;
-    if (erc20 !== undefined) u.walletAddress.erc20 = erc20;
-    return db.saveUser(c, u);
+    if (!u) return { status: 404, body: { error: 'User not found' } };
+    u.walletAddress = u.walletAddress || {};
+    const curTrc = u.walletAddress.trc20 || '';
+    const curBep = u.walletAddress.bep20 || u.walletAddress.erc20 || '';
+    // Admins may clear an address (empty string); a new value must be valid. Unchanged values are
+    // left alone even if an old one isn't in a valid format, so they never block other edits.
+    if (trc20 && trc20 !== curTrc && !TRC20_RE.test(trc20)) return { status: 400, body: { error: 'Invalid TRC-20 address (must start with "T", 34 characters)' } };
+    if (bep20 && bep20 !== curBep && !BEP20_RE.test(bep20)) return { status: 400, body: { error: 'Invalid BEP-20 address (must be "0x" + 40 hex characters)' } };
+    if (trc20 !== undefined && trc20 !== curTrc) u.walletAddress.trc20 = trc20;
+    // Set both fields: the app shows `bep20` first, so updating only `erc20` used to have no visible effect.
+    if (bep20 !== undefined && bep20 !== curBep) { u.walletAddress.bep20 = bep20; u.walletAddress.erc20 = bep20; }
+    await db.saveUser(c, u);
+    return { status: 200, user: u };
   });
-  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (result.status !== 200) return res.status(result.status).json(result.body);
+  const user = result.user;
 
   res.json({ message: 'Wallet updated', walletAddress: user.walletAddress });
 });
@@ -2111,6 +2152,31 @@ app.get('/api/admin/announcements', adminMiddleware, async (req, res) => {
 });
 
 // ===================== ADMIN WALLET SUBMISSIONS =====================
+
+// Every user who currently has a withdrawal address saved, most recently saved first.
+app.get('/api/admin/wallets', adminMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT u.data, (SELECT count(*)::int FROM app.wallet_submissions s WHERE s.user_id = u.id) AS submissions
+    FROM app.users u
+    WHERE coalesce(u.data->'walletAddress'->>'trc20', '') <> ''
+       OR coalesce(u.data->'walletAddress'->>'bep20', '') <> ''
+       OR coalesce(u.data->'walletAddress'->>'erc20', '') <> ''`);
+  const HOLD_MS = 48 * 60 * 60 * 1000;
+  const list = rows.map(({ data: u, submissions }) => {
+    const changedAt = u.walletAddressUpdatedAt ? new Date(u.walletAddressUpdatedAt).getTime() : 0;
+    return {
+      id: u.id, username: u.username, email: u.email, uid: u.uid, avatar: u.avatar || '',
+      status: accountStatus(u), location: ipLocation(u.lastIp || u.signupIp),
+      trc20: u.walletAddress.trc20 || '',
+      bep20: u.walletAddress.bep20 || u.walletAddress.erc20 || '',
+      savedAt: u.walletAddressSavedAt || u.walletAddressUpdatedAt || null,
+      withdrawalHoldUntil: changedAt && changedAt + HOLD_MS > Date.now() ? new Date(changedAt + HOLD_MS).toISOString() : null,
+      submissions
+    };
+  });
+  list.sort((a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0));
+  res.json(list);
+});
 
 app.get('/api/admin/wallet-submissions', adminMiddleware, async (req, res) => {
   const submissions = await db.listDocs(pool, 'wallet_submissions');
