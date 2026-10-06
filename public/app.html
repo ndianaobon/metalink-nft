@@ -2276,11 +2276,11 @@
           <label for="depositAmount">Amount sent (USDT)</label>
           <input type="number" id="depositAmount" placeholder="Minimum 50" min="0" step="0.01" inputmode="decimal">
         </div>
-        <div class="form-field">
+        <div class="form-field" id="depTxidField">
           <label for="depositTxid">Transaction ID / Hash <span style="font-weight:400;color:var(--text-muted);">(optional)</span></label>
           <input type="text" id="depositTxid" placeholder="Paste the TxID from your wallet" maxlength="120" autocomplete="off">
         </div>
-        <div class="form-field">
+        <div class="form-field" id="depScreenshotField">
           <label>Payment screenshot</label>
           <label class="dep-upload" id="depUploadBox" for="depositScreenshot">
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -3650,8 +3650,23 @@
       const min = addrs.minDeposit ?? 50;
       document.getElementById('depFactMin').textContent = min + ' USDT';
       document.getElementById('depositAmount').placeholder = 'Minimum ' + min;
+      applyDepositProofConfig();
       selectDepositNetwork(addrs.trc20 || !addrs.bep20 ? 'trc20' : 'bep20');
       loadDepositHistory();
+    }
+
+    // The admin can switch off the screenshot and/or transaction-hash fields (Settings); both default on.
+    function depositProofConfig() {
+      return {
+        screenshotEnabled: platformAddresses.screenshotEnabled !== false,
+        txidEnabled: platformAddresses.txidEnabled !== false
+      };
+    }
+
+    function applyDepositProofConfig() {
+      const cfg = depositProofConfig();
+      document.getElementById('depScreenshotField').style.display = cfg.screenshotEnabled ? '' : 'none';
+      document.getElementById('depTxidField').style.display = cfg.txidEnabled ? '' : 'none';
     }
 
     function closeDepositPage() {
@@ -3789,7 +3804,8 @@
       if (!platformAddresses[currentDepositNetwork]) return toast('This network is not available yet — choose another', 'error');
       if (!amount || amount <= 0) return toast('Enter the amount you sent', 'error');
       if (amount < min) return toast('Minimum deposit is ' + min + ' USDT', 'error');
-      if (!depositScreenshotDataUrl) return toast('Please upload a screenshot of your transfer', 'error');
+      const proofCfg = depositProofConfig();
+      if (proofCfg.screenshotEnabled && !depositScreenshotDataUrl) return toast('Please upload a screenshot of your transfer', 'error');
       const btn = document.getElementById('depositBtn');
       btn.disabled = true; btn.textContent = 'Submitting...';
       try {
@@ -3798,8 +3814,8 @@
           body: JSON.stringify({
             amount,
             network: currentDepositNetwork,
-            txid: document.getElementById('depositTxid').value.trim(),
-            screenshot: depositScreenshotDataUrl
+            txid: proofCfg.txidEnabled ? document.getElementById('depositTxid').value.trim() : '',
+            screenshot: proofCfg.screenshotEnabled ? depositScreenshotDataUrl : ''
           })
         });
         toast('Deposit submitted! You\'ll get an email once it is confirmed.');

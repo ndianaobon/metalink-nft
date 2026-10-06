@@ -1110,6 +1110,18 @@
                     </label>
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Off by default. When off, staking never charges a fee regardless of what's set per-plan.</p>
                   </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Deposit Form Fields</label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+                      <input type="checkbox" id="cfgDepositScreenshot" style="width:18px;height:18px;" ${config.depositScreenshotEnabled !== false ? 'checked' : ''}>
+                      <span style="font-size:0.9rem;">Payment screenshot (required when on)</span>
+                    </label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;">
+                      <input type="checkbox" id="cfgDepositTxid" style="width:18px;height:18px;" ${config.depositTxidEnabled !== false ? 'checked' : ''}>
+                      <span style="font-size:0.9rem;">Transaction ID / hash (optional for users)</span>
+                    </label>
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Untick to remove a field from the deposit page. With the screenshot off, users submit deposits without one &mdash; you'll need to verify payments another way.</p>
+                  </div>
                 </div>
                 <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.savePlatformSettings()">Save Settings</button>
               </div>
@@ -1211,7 +1223,9 @@
               withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value,
               reserveWinRatePct: document.getElementById('cfgReserveWinRate').value,
               dailyCheckinReward: document.getElementById('cfgDailyCheckin').value,
-              handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked
+              handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked,
+              depositScreenshotEnabled: document.getElementById('cfgDepositScreenshot').checked,
+              depositTxidEnabled: document.getElementById('cfgDepositTxid').checked
             })
           });
           this.toast('Platform settings saved!', 'success');

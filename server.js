@@ -1570,16 +1570,31 @@ function decodeImageDataUrl(dataUrl, maxBytes) {
   return { ext, contentType: 'image/' + (ext === 'jpg' ? 'jpeg' : ext), bytes };
 }
 
+// Which proof fields the deposit form shows/requires. Both default to on; the admin can switch either
+// off in Settings (e.g. to make depositing quicker).
+function depositProofSettings(config) {
+  return {
+    screenshotEnabled: config.depositScreenshotEnabled !== false,
+    txidEnabled: config.depositTxidEnabled !== false
+  };
+}
+
 app.post('/api/deposits', authMiddleware, async (req, res) => {
   const { amount, network, txid, screenshot } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
   if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Select a deposit network' });
-  const cleanTxid = typeof txid === 'string' ? txid.trim() : '';
-  if (cleanTxid.length > 120) return res.status(400).json({ error: 'Transaction ID is too long' });
-  const proof = decodeImageDataUrl(screenshot, MAX_PROOF_BYTES);
-  if (!proof) return res.status(400).json({ error: 'Please upload a screenshot of your transfer (PNG, JPG or WEBP, max 5 MB)' });
 
   const config = await getConfig();
+  const { screenshotEnabled, txidEnabled } = depositProofSettings(config);
+  const cleanTxid = txidEnabled && typeof txid === 'string' ? txid.trim() : '';
+  if (cleanTxid.length > 120) return res.status(400).json({ error: 'Transaction ID is too long' });
+  // With screenshots switched off, any image sent anyway (e.g. from an old open page) is ignored.
+  let proof = null;
+  if (screenshotEnabled) {
+    proof = decodeImageDataUrl(screenshot, MAX_PROOF_BYTES);
+    if (!proof) return res.status(400).json({ error: 'Please upload a screenshot of your transfer (PNG, JPG or WEBP, max 5 MB)' });
+  }
+
   const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
   if (amount < minDeposit) return res.status(400).json({ error: `Minimum deposit is $${minDeposit}` });
 
@@ -1589,12 +1604,12 @@ app.post('/api/deposits', authMiddleware, async (req, res) => {
     amount: parseFloat(amount),
     network,
     txid: cleanTxid,
-    proofName: PRIVATE_UPLOAD_PREFIX + generateId() + '.' + proof.ext,
+    ...(proof ? { proofName: PRIVATE_UPLOAD_PREFIX + generateId() + '.' + proof.ext } : {}),
     status: 'Pending',
     createdAt: new Date().toISOString()
   };
   await tx(async c => {
-    await c.query('INSERT INTO app.uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [deposit.proofName, proof.contentType, proof.bytes]);
+    if (proof) await c.query('INSERT INTO app.uploads (name, content_type, bytes) VALUES ($1, $2, $3)', [deposit.proofName, proof.contentType, proof.bytes]);
     await db.insertDoc(c, 'deposits', deposit);
   });
 
@@ -2264,7 +2279,8 @@ app.get('/api/platform/deposit-addresses', async (req, res) => {
       trc20: trc20 ? await QRCode.toDataURL(trc20, qrOpts) : '',
       bep20: bep20 ? await QRCode.toDataURL(bep20, qrOpts) : ''
     },
-    minDeposit: config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50
+    minDeposit: config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50,
+    ...depositProofSettings(config)
   });
 });
 
@@ -2301,7 +2317,7 @@ app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink, depositScreenshotEnabled, depositTxidEnabled } = req.body;
 
   const result = await tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(424244)');
@@ -2321,6 +2337,8 @@ app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
       if (link === null) return { status: 400, body: { error: `${label} must be a web link, e.g. https://t.me/yourchannel` } };
       config[key] = link; // '' falls back to the default link
     }
+    if (depositScreenshotEnabled !== undefined) config.depositScreenshotEnabled = depositScreenshotEnabled === true || depositScreenshotEnabled === 'true';
+    if (depositTxidEnabled !== undefined) config.depositTxidEnabled = depositTxidEnabled === true || depositTxidEnabled === 'true';
     if (dailyCheckinReward !== undefined) {
       const reward = parseFloat(dailyCheckinReward);
       if (isNaN(reward) || reward < 0 || reward > 100000) return { status: 400, body: { error: 'Daily check-in reward must be 0 or more (0 turns it off)' } };
