@@ -256,6 +256,13 @@ function withdrawalEmail(kind, withdrawal) {
       message: `You have successfully withdrawn <strong>${fmtMoney(withdrawal.netAmount)} USDT</strong> to the address below. Depending on network conditions, it may take a few minutes to arrive in your wallet.`
     }) };
   }
+  if (kind === 'cancelled') {
+    rows.push(['Status', '<span style="color:#707a8a;">Cancelled</span>'], ['Time', emailTime()]);
+    return { subject: `[MetaLink NFT] Withdrawal Cancelled - ${amount}`, html: transactionEmailHtml({
+      title: 'Withdrawal Cancelled', greeting, rows,
+      message: `You cancelled your withdrawal request of <strong>${amount}</strong>. The full amount has been returned to your MetaLink NFT balance.`
+    }) };
+  }
   rows.push(['Status', '<span style="color:#cf304a;">Rejected</span>'], ['Time', emailTime()]);
   return { subject: `[MetaLink NFT] Withdrawal Rejected - ${amount}`, html: transactionEmailHtml({
     title: 'Withdrawal Rejected', titleColor: '#cf304a', greeting, rows,
@@ -422,6 +429,7 @@ const TX_LABELS = {
   deposit: 'Deposit',
   withdrawal: 'Withdrawal',
   withdrawal_refund: 'Withdrawal Refund',
+  withdrawal_cancelled: 'Withdrawal Cancelled',
   stake: 'Stake',
   stake_return: 'Stake Principal Returned',
   stake_income: 'Stake Income',
@@ -1411,7 +1419,10 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
   const ledgerDeposits = new Set(txs.filter(t => t.type === 'deposit').map(t => t.refId));
   const ledgerWithdrawals = new Set(txs.filter(t => t.type === 'withdrawal').map(t => t.refId));
   const withdrawalById = Object.fromEntries(withdrawals.map(w => [w.id, w]));
-  const withdrawalStatus = w => !w ? 'Completed' : w.status === 'Approved' ? 'Completed' : w.status === 'Rejected' ? 'Rejected' : 'Processing';
+  const withdrawalStatus = w => !w ? 'Completed'
+    : w.status === 'Approved' ? 'Completed' : w.status === 'Rejected' ? 'Rejected' : w.status === 'Cancelled' ? 'Cancelled' : 'Processing';
+  // Pending withdrawals can still be cancelled by the user (see POST /api/withdrawals/:id/cancel).
+  const withdrawalExtras = w => w ? { withdrawalId: w.id, cancellable: w.status === 'Pending' } : {};
 
   const history = [
     ...txs.map(t => ({
@@ -1421,10 +1432,12 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
       amount: t.amount,
       balanceAfter: t.balanceAfter,
       date: t.createdAt,
-      status: t.type === 'withdrawal' ? withdrawalStatus(withdrawalById[t.refId]) : 'Completed'
+      status: t.type === 'withdrawal' ? withdrawalStatus(withdrawalById[t.refId]) : 'Completed',
+      ...(t.type === 'withdrawal' ? withdrawalExtras(withdrawalById[t.refId]) : {})
     })),
     ...withdrawals.filter(w => !ledgerWithdrawals.has(w.id)).map(w => ({
-      kind: 'withdrawal', type: TX_LABELS.withdrawal, description: '', amount: -w.amount, date: w.createdAt, status: withdrawalStatus(w)
+      kind: 'withdrawal', type: TX_LABELS.withdrawal, description: '', amount: -w.amount, date: w.createdAt, status: withdrawalStatus(w),
+      ...withdrawalExtras(w)
     })),
     ...deposits.filter(d => !ledgerDeposits.has(d.id)).map(d => ({
       kind: 'deposit', type: TX_LABELS.deposit,
@@ -1506,6 +1519,33 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   if (result.status === 200) {
     const { subject, html } = withdrawalEmail('submitted', result.body);
     sendEmail(result.body.email, subject, html).catch(() => {});
+  }
+  res.status(result.status).json(result.body);
+});
+
+// Users can cancel a withdrawal while it's still Pending; the full amount goes back to their balance.
+// Locks the withdrawal before the user, the same order the admin approve/reject route uses, so a cancel
+// racing an admin decision can't deadlock — whichever commits first wins and the other sees the new status.
+app.post('/api/withdrawals/:id/cancel', authMiddleware, async (req, res) => {
+  const result = await tx(async c => {
+    const w = await db.getDoc(c, 'withdrawals', req.params.id, { lock: true });
+    if (!w || w.userId !== req.userId) return { status: 404, body: { error: 'Withdrawal not found' } };
+    if (w.status !== 'Pending') return { status: 400, body: { error: `This withdrawal can no longer be cancelled (it is ${w.status.toLowerCase()}).` } };
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+
+    w.status = 'Cancelled';
+    w.cancelledAt = new Date().toISOString();
+    await db.saveDoc(c, 'withdrawals', w);
+    user.walletBalance += w.amount;
+    user.totalWithdrawn -= w.amount;
+    await recordTx(c, user, 'withdrawal_cancelled', w.amount, 'You cancelled this withdrawal — amount returned', w.id);
+    await db.saveUser(c, user);
+    return { status: 200, body: { message: 'Withdrawal cancelled. The amount is back in your balance.', withdrawal: w, walletBalance: user.walletBalance } };
+  });
+  if (result.status === 200) {
+    const { subject, html } = withdrawalEmail('cancelled', result.body.withdrawal);
+    sendEmail(result.body.withdrawal.email, subject, html).catch(() => {});
   }
   res.status(result.status).json(result.body);
 });
@@ -1983,6 +2023,8 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
     if (!w) return null;
 
     previousStatus = w.status;
+    // The user already got this money back; approving now would pay it out a second time.
+    if (previousStatus === 'Cancelled') return { cancelled: true };
     w.status = status;
     w.processedAt = new Date().toISOString();
 
@@ -2000,6 +2042,7 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
     return db.saveDoc(c, 'withdrawals', w);
   });
   if (!withdrawal) return res.status(404).json({ error: 'Withdrawal not found' });
+  if (withdrawal.cancelled) return res.status(400).json({ error: 'The user cancelled this withdrawal and the amount was already returned to their balance.' });
 
   if ((status === 'Approved' || status === 'Rejected') && status !== previousStatus) {
     const { subject, html } = withdrawalEmail(status === 'Approved' ? 'approved' : 'rejected', withdrawal);

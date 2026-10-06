@@ -1198,6 +1198,29 @@
     .brand-loader-overlay.fade-out { opacity: 0; pointer-events: none; }
 
     .badge-processing { background: rgba(245,158,11,0.15); color: var(--warning); }
+    .badge-cancelled { background: rgba(107,107,128,0.15); color: var(--text-muted); }
+    .h-cancel-btn {
+      display: block; margin: 6px 0 0 auto; padding: 4px 12px; border-radius: 8px; cursor: pointer;
+      border: 1px solid rgba(239,68,68,0.4); background: transparent; color: var(--negative);
+      font-family: var(--font); font-size: 0.72rem; font-weight: 700;
+    }
+    .h-cancel-btn:disabled { opacity: 0.6; cursor: default; }
+
+    /* Copy-UID button and hide-balance eye */
+    .uid-row { display: flex; align-items: center; gap: 6px; }
+    .uid-copy-btn {
+      display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0;
+      border: none; border-radius: 6px; background: rgba(79,70,229,0.12); color: var(--primary); cursor: pointer; padding: 0;
+    }
+    .invite-hero-uid .uid-copy-btn { background: rgba(255,255,255,0.15); color: #fff; }
+    .uid-copy-btn:active { transform: scale(0.92); }
+    .balance-eye-btn {
+      display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0;
+      border: none; border-radius: 8px; background: var(--surface-hover); color: var(--text-secondary); cursor: pointer;
+      vertical-align: middle;
+    }
+    .balance-eye-btn.on-gradient { background: rgba(255,255,255,0.18); color: #fff; margin-left: 6px; width: 28px; height: 28px; }
+    .my-wallet-label { display: flex; align-items: center; justify-content: center; }
 
     /* Saved wallet address display */
     .wallet-saved-tag { color: var(--positive); font-weight: 700; font-size: 0.75rem; margin-left: 6px; }
@@ -1453,7 +1476,7 @@
   <header class="app-header">
     <img src="/assets/images/MetaLink-NFT-icon.svg" alt="MetaLinkNFT" class="app-header-logo">
     <div class="app-header-right">
-      <span class="app-header-balance" id="headerBalance">0.00 USDT</span>
+      <span class="app-header-balance" id="headerBalance" data-money>0.00 USDT</span>
 
       <button class="app-header-icon-btn" onclick="toggleHeaderDropdown('notifDropdown', true)" title="Notifications">
         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -1635,7 +1658,7 @@
 
       <div class="earn-total">
         <div class="label">Total Income</div>
-        <div class="amount gradient-text" id="earnTotal">0.00</div>
+        <div class="amount gradient-text" id="earnTotal" data-money>0.00</div>
       </div>
 
       <div class="stake-category-tabs" id="earnCategoryTabs"></div>
@@ -1657,8 +1680,8 @@
         <div class="rv-stat accent-green"><div class="rv-stat-label">Cumulative Income</div><div class="rv-stat-val" id="reserveCumulative">0</div></div>
         <div class="rv-stat accent-grey"><div class="rv-stat-label">Team Benefits</div><div class="rv-stat-val" id="reserveTeamBenefits">0</div></div>
         <div class="rv-stat accent-orange"><div class="rv-stat-label">Reservation range</div><div class="rv-stat-val" id="reserveRange">0</div></div>
-        <div class="rv-stat accent-teal"><div class="rv-stat-label">Wallet Balance</div><div class="rv-stat-val" id="reserveBalance">0</div></div>
-        <div class="rv-stat accent-slate"><div class="rv-stat-label">Balance for Reservation</div><div class="rv-stat-val" id="reserveBalanceFor">0</div></div>
+        <div class="rv-stat accent-teal"><div class="rv-stat-label">Wallet Balance</div><div class="rv-stat-val" id="reserveBalance" data-money>0</div></div>
+        <div class="rv-stat accent-slate"><div class="rv-stat-label">Balance for Reservation</div><div class="rv-stat-val" id="reserveBalanceFor" data-money>0</div></div>
       </div>
 
       <!-- Tabs -->
@@ -1722,21 +1745,21 @@
 
     <!-- ===== ASSETS TAB ===== -->
     <div class="tab-page" id="page-assets">
-      <h1 class="page-title">Assets(USDT)</h1>
+      <h1 class="page-title" style="display:flex;align-items:center;gap:10px;"><span class="page-title-text">Assets(USDT)</span> <button type="button" class="balance-eye-btn" onclick="toggleBalanceVisibility()" aria-label="Hide or show balance" title="Hide / show balance"></button></h1>
       <div class="balance-card">
-        <div class="amount gradient-text" id="assetsBalance" style="font-size:2.8rem;">0.00</div>
+        <div class="amount gradient-text" id="assetsBalance" data-money style="font-size:2.8rem;">0.00</div>
         <div class="assets-summary">
           <div class="assets-summary-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M12 8v8M8 12l4-4 4 4" stroke="#fff" stroke-width="2" fill="none"/></svg>
-            <div><div class="val" id="assetsRevenue">0.00</div><div class="label">Earnings</div></div>
+            <div><div class="val" id="assetsRevenue" data-money>0.00</div><div class="label">Earnings</div></div>
           </div>
           <div class="assets-summary-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M12 16V8M8 12l4 4 4-4" stroke="#fff" stroke-width="2" fill="none"/></svg>
-            <div><div class="val" id="assetsWithdrawn">0.00</div><div class="label">Withdrawn</div></div>
+            <div><div class="val" id="assetsWithdrawn" data-money>0.00</div><div class="label">Withdrawn</div></div>
           </div>
           <div class="assets-summary-item">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="var(--positive)"/><path d="M8 12h8" stroke="#fff" stroke-width="2" fill="none"/></svg>
-            <div><div class="val" id="assetsNotWithdrawn" style="color:var(--positive)">0.00</div><div class="label">Undrawn</div></div>
+            <div><div class="val" id="assetsNotWithdrawn" data-money style="color:var(--positive)">0.00</div><div class="label">Undrawn</div></div>
           </div>
         </div>
       </div>
@@ -1797,7 +1820,7 @@
           </button>
           <div class="my-profile-info">
             <div class="profile-name" id="profileName">User</div>
-            <div class="profile-uid" id="profileUid">UID: ---</div>
+            <div class="profile-uid uid-row"><span id="profileUid">UID: ---</span><button type="button" class="uid-copy-btn" onclick="copyUid(event)" title="Copy UID" aria-label="Copy UID"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
             <div class="my-profile-badges">
               <span class="my-badge">LV <span id="profileLevelBadge">0</span></span>
               <span class="my-badge" id="profilePointsBadge">0 pts</span>
@@ -1812,8 +1835,8 @@
 
         <!-- Wallet Balance Card -->
         <div class="my-wallet-card">
-          <div class="my-wallet-label">Wallet Balance</div>
-          <div class="my-wallet-amount" id="profileBalance">$0.00</div>
+          <div class="my-wallet-label">Wallet Balance <button type="button" class="balance-eye-btn on-gradient" onclick="toggleBalanceVisibility()" aria-label="Hide or show balance" title="Hide / show balance"></button></div>
+          <div class="my-wallet-amount" id="profileBalance" data-money>$0.00</div>
           <div class="my-wallet-token">MLK Token / USDT</div>
         </div>
 
@@ -2030,7 +2053,7 @@
             <div class="invite-hero-avatar" id="inviteAvatar">U</div>
             <div>
               <div class="invite-hero-name" id="inviteUsername">User</div>
-              <div class="invite-hero-uid" id="inviteUid">ID: ---</div>
+              <div class="invite-hero-uid uid-row"><span id="inviteUid">ID: ---</span><button type="button" class="uid-copy-btn" onclick="copyUid(event)" title="Copy UID" aria-label="Copy UID"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
             </div>
           </div>
           <div class="invite-hero-tag">Referral Program</div>
@@ -2105,7 +2128,7 @@
           </button>
           <div class="settings-profile-info">
             <div class="settings-profile-name" id="settingsName">User</div>
-            <div class="settings-profile-uid" id="settingsUid">UID: ---</div>
+            <div class="settings-profile-uid uid-row"><span id="settingsUid">UID: ---</span><button type="button" class="uid-copy-btn" onclick="copyUid(event)" title="Copy UID" aria-label="Copy UID"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
           </div>
           <div class="settings-level-badge">LV <span id="settingsLevel">0</span></div>
         </div>
@@ -2734,7 +2757,7 @@
     async function loadEarn() {
       try {
         const [p, plans] = await Promise.all([api('/api/user/profile'), api('/api/earn/plans')]);
-        document.getElementById('earnTotal').textContent = fmt(p.totalIncome);
+        setMoney('earnTotal', fmt(p.totalIncome));
         earnPlansCache = plans;
         renderEarnCategoryTabs();
         renderEarnPlansGrid();
@@ -2902,8 +2925,8 @@
         document.getElementById('reserveCumulative').textContent = fmtNum(d.cumulativeIncome);
         document.getElementById('reserveTeamBenefits').textContent = fmtNum(d.teamBenefits);
         document.getElementById('reserveRange').textContent = String(d.reservationRange || '').replace(' - ', ' ~ ');
-        document.getElementById('reserveBalance').textContent = fmtNum(d.walletBalance);
-        document.getElementById('reserveBalanceFor').textContent = fmtNum(d.balanceForReservation);
+        setMoney('reserveBalance', fmtNum(d.walletBalance));
+        setMoney('reserveBalanceFor', fmtNum(d.balanceForReservation));
 
         // Keep the user's choice if it's still affordable; otherwise pick the best level they can afford.
         const affordable = reserveLevelsCache.filter(lv => lv.min <= reserveBalance);
@@ -3156,10 +3179,10 @@
     async function loadAssets() {
       try {
         const d = await api('/api/assets');
-        document.getElementById('assetsBalance').textContent = fmt(d.balance);
-        document.getElementById('assetsRevenue').textContent = fmt(d.totalRevenue);
-        document.getElementById('assetsWithdrawn').textContent = fmt(d.totalWithdrawn);
-        document.getElementById('assetsNotWithdrawn').textContent = fmt(d.notWithdrawn);
+        setMoney('assetsBalance', fmt(d.balance));
+        setMoney('assetsRevenue', fmt(d.totalRevenue));
+        setMoney('assetsWithdrawn', fmt(d.totalWithdrawn));
+        setMoney('assetsNotWithdrawn', fmt(d.notWithdrawn));
 
         loadAssetAddresses();
 
@@ -3175,13 +3198,14 @@
       all: { label: 'All', match: () => true },
       income: { label: 'Income', match: h => ['signup_bonus', 'checkin', 'stake_income', 'earn_income', 'reserve_reward', 'team_commission', 'admin_credit'].includes(h.kind) },
       deposit: { label: 'Deposits', match: h => h.kind === 'deposit' },
-      withdrawal: { label: 'Withdrawals', match: h => h.kind === 'withdrawal' || h.kind === 'withdrawal_refund' },
+      withdrawal: { label: 'Withdrawals', match: h => /^withdrawal/.test(h.kind) },
       invest: { label: 'Stake & Earn', match: h => /^(stake|earn)/.test(h.kind) }
     };
     const HISTORY_ICONS = {
       deposit: '<path d="M12 5v14M5 12l7 7 7-7"/>',
       withdrawal: '<path d="M12 19V5M5 12l7-7 7 7"/>',
       withdrawal_refund: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
+      withdrawal_cancelled: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
       checkin: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
       signup_bonus: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
       team_commission: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>',
@@ -3196,6 +3220,20 @@
     }
 
     function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
+
+    async function cancelWithdrawal(id, amount, btn) {
+      if (!confirm(`Cancel this withdrawal of ${fmt(amount)} USDT? The full amount will go back to your balance.`)) return;
+      btn.disabled = true; btn.textContent = 'Cancelling...';
+      try {
+        const r = await api('/api/withdrawals/' + encodeURIComponent(id) + '/cancel', { method: 'POST' });
+        toast(r.message);
+        loadAssets();
+        updateHeaderBalance();
+      } catch (e) {
+        toast(e.message, 'error');
+        loadAssets(); // e.g. an admin processed it a moment ago — show the real status
+      }
+    }
 
     function renderAssetsHistory() {
       document.getElementById('assetsHistoryTabs').innerHTML = Object.entries(HISTORY_FILTERS).map(([key, f]) =>
@@ -3214,10 +3252,11 @@
               <div class="h-date">${new Date(h.date).toLocaleString()}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
-              <div class="h-amount ${dir === 'pending' ? '' : h.amount >= 0 ? 'positive' : 'negative'}">${h.amount >= 0 ? '+' : ''}${fmt(h.amount)} USDT</div>
+              <div class="h-amount ${dir === 'pending' ? '' : h.amount >= 0 ? 'positive' : 'negative'}">${balanceHidden ? MONEY_MASK : (h.amount >= 0 ? '+' : '') + fmt(h.amount) + ' USDT'}</div>
               ${h.status === 'Completed' && h.balanceAfter != null
-                ? `<div class="h-balance">Balance ${fmt(h.balanceAfter)}</div>`
+                ? `<div class="h-balance">Balance ${balanceHidden ? MONEY_MASK : fmt(h.balanceAfter)}</div>`
                 : `<span class="badge badge-${h.status.toLowerCase()}">${escapeHtml(h.status)}</span>`}
+              ${h.cancellable ? `<button class="h-cancel-btn" onclick="cancelWithdrawal('${escapeHtml(h.withdrawalId)}', ${Math.abs(h.amount)}, this)">Cancel</button>` : ''}
             </div>
           </div>`;
       }).join('');
@@ -3234,7 +3273,7 @@
         checkLevelUp(p);
         document.getElementById('profileName').textContent = p.username;
         document.getElementById('profileUid').textContent = 'UID: ' + p.uid;
-        document.getElementById('profileBalance').textContent = '$' + fmt(p.walletBalance);
+        setMoney('profileBalance', '$' + fmt(p.walletBalance));
         document.getElementById('profileLevelBadge').textContent = p.level || 0;
         document.getElementById('profilePointsBadge').textContent = fmt(p.points) + ' pts';
         const avatar = document.getElementById('profileAvatar');
@@ -3330,7 +3369,7 @@
     async function updateHeaderBalance() {
       try {
         const d = await api('/api/assets');
-        document.getElementById('headerBalance').textContent = fmt(d.balance) + ' USDT';
+        setMoney('headerBalance', fmt(d.balance) + ' USDT');
       } catch (e) {}
     }
 
@@ -3432,7 +3471,8 @@
       document.querySelectorAll('.nav-tab[data-tab="my"]').forEach(el => { el.lastChild.textContent = t.navMy; });
       const earnTitle = document.querySelector('#page-earn .page-title'); if (earnTitle) earnTitle.textContent = t.titleEarn;
       const reserveTitle = document.querySelector('#page-reserve .page-title'); if (reserveTitle) reserveTitle.textContent = t.titleReserve;
-      const assetsTitle = document.querySelector('#page-assets .page-title'); if (assetsTitle) assetsTitle.textContent = t.titleAssets;
+      // Only the text span: the title also holds the hide-balance eye button.
+      const assetsTitle = document.querySelector('#page-assets .page-title-text'); if (assetsTitle) assetsTitle.textContent = t.titleAssets;
       document.getElementById('langModalTitle').textContent = t.chooseLanguage;
       document.getElementById('langModalSubtitle').textContent = t.languageSubtitle;
       document.getElementById('langSearchInput').placeholder = t.searchLanguages;
@@ -4256,6 +4296,61 @@
 
     async function refreshLevel() {
       try { profileData = { ...(profileData || {}), ...(await api('/api/user/profile')) }; checkLevelUp(profileData); } catch (e) {}
+    }
+
+    // ---- Hide balance ----
+    // Every balance figure is marked data-money and filled via setMoney(), which keeps the real value in
+    // data-real and shows a mask while hidden. The choice is remembered on this device.
+    const MONEY_MASK = '******';
+    let balanceHidden = false;
+    try { balanceHidden = localStorage.getItem('mlk_hide_balance') === '1'; } catch (e) {}
+
+    function setMoney(id, text) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.dataset.real = text;
+      el.textContent = balanceHidden ? MONEY_MASK : text;
+    }
+
+    const EYE_OPEN = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    const EYE_SHUT = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+
+    function applyBalanceVisibility() {
+      document.querySelectorAll('[data-money]').forEach(el => {
+        if (el.dataset.real === undefined) el.dataset.real = el.textContent; // initial placeholder value
+        el.textContent = balanceHidden ? MONEY_MASK : el.dataset.real;
+      });
+      document.querySelectorAll('.balance-eye-btn').forEach(b => {
+        b.innerHTML = balanceHidden ? EYE_SHUT : EYE_OPEN;
+        b.setAttribute('aria-pressed', String(balanceHidden));
+        b.title = balanceHidden ? 'Show balance' : 'Hide balance';
+      });
+    }
+
+    function toggleBalanceVisibility() {
+      balanceHidden = !balanceHidden;
+      try { localStorage.setItem('mlk_hide_balance', balanceHidden ? '1' : '0'); } catch (e) {}
+      applyBalanceVisibility();
+      if (assetsHistoryCache.length) renderAssetsHistory(); // activity amounts follow the same setting
+    }
+    applyBalanceVisibility();
+
+    // ---- Copy UID ----
+    async function copyUid(e) {
+      if (e) e.stopPropagation();
+      const uid = (profileData && profileData.uid) || (USER && USER.uid);
+      if (!uid) return toast('UID not loaded yet', 'error');
+      try {
+        await navigator.clipboard.writeText(uid);
+      } catch (err) {
+        // Fallback for older WebViews / non-secure contexts without the async clipboard API.
+        const ta = document.createElement('textarea');
+        ta.value = uid; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;opacity:0;';
+        document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (e2) {}
+        ta.remove();
+      }
+      toast('UID copied: ' + uid);
     }
 
     // ---- Profile picture ----

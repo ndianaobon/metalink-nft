@@ -183,17 +183,72 @@
 
       async loadUsers(c) {
         try {
-          const users = await this.api('/admin/users');
+          this.usersCache = await this.api('/admin/users');
+          this.userSort = this.userSort || 'newest';
+          this.userJoined = this.userJoined || 'all';
+          const DAY = 86400000, now = Date.now();
+          const count = ms => this.usersCache.filter(u => now - new Date(u.createdAt).getTime() < ms).length;
+          const chip = (key, label, n) => `<button class="admin-btn" data-joined="${key}" style="${this.userJoined === key ? 'background:#4f46e5;color:#fff;' : 'background:#eef2ff;color:#4f46e5;'}" onclick="Admin.setUserJoined('${key}')">${label}${n !== undefined ? ` (${n})` : ''}</button>`;
           c.innerHTML = `
             <div class="admin-table-card">
-              <div class="admin-table-header">
-                <h3>All Users (${users.length})</h3>
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:12px;">
+                <h3 id="usersCountTitle">All Users (${this.usersCache.length})</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                  <input class="admin-form-input" style="width:220px;" placeholder="Search name, email or UID" value="${escapeHtml(this.userQuery || '')}" oninput="Admin.userQuery=this.value;Admin.renderUserRows()">
+                  <select class="admin-form-input" style="width:auto;" onchange="Admin.userSort=this.value;Admin.renderUserRows()">
+                    <option value="newest" ${this.userSort === 'newest' ? 'selected' : ''}>Newest users first</option>
+                    <option value="oldest" ${this.userSort === 'oldest' ? 'selected' : ''}>Oldest users first</option>
+                    <option value="active" ${this.userSort === 'active' ? 'selected' : ''}>Recently active</option>
+                    <option value="balance" ${this.userSort === 'balance' ? 'selected' : ''}>Highest balance</option>
+                  </select>
+                </div>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;padding:12px 24px 0;" id="userJoinedChips">
+                ${chip('all', 'All')}${chip('today', 'Joined today', count(DAY))}${chip('week', 'This week', count(7 * DAY))}${chip('month', 'This month', count(30 * DAY))}${chip('older', 'Older than 30 days', this.usersCache.length - count(30 * DAY))}
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
                   <thead><tr><th>Status</th><th>Last Seen</th><th>User</th><th>UID</th><th>Location</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    ${users.map(u => `
+                  <tbody id="userRows"></tbody>
+                </table>
+              </div>
+            </div>`;
+          this.renderUserRows();
+        } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+      },
+
+      setUserJoined(key) {
+        this.userJoined = key;
+        document.querySelectorAll('#userJoinedChips [data-joined]').forEach(b => {
+          const on = b.dataset.joined === key;
+          b.style.background = on ? '#4f46e5' : '#eef2ff';
+          b.style.color = on ? '#fff' : '#4f46e5';
+        });
+        this.renderUserRows();
+      },
+
+      renderUserRows() {
+        const DAY = 86400000, now = Date.now();
+        const age = u => now - new Date(u.createdAt).getTime();
+        const lastSeen = u => Math.max(0, ...[u.lastActiveAt, u.lastLoginAt].filter(Boolean).map(t => new Date(t).getTime()));
+        const joinedOk = {
+          all: () => true, today: u => age(u) < DAY, week: u => age(u) < 7 * DAY,
+          month: u => age(u) < 30 * DAY, older: u => age(u) >= 30 * DAY
+        }[this.userJoined || 'all'];
+        const q = (this.userQuery || '').trim().toLowerCase();
+        const sorters = {
+          newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
+          oldest: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
+          active: (a, b) => lastSeen(b) - lastSeen(a),
+          balance: (a, b) => (b.walletBalance || 0) - (a.walletBalance || 0)
+        };
+        const users = (this.usersCache || [])
+          .filter(joinedOk)
+          .filter(u => !q || [u.username, u.email, u.uid].some(v => (v || '').toLowerCase().includes(q)))
+          .sort(sorters[this.userSort || 'newest']);
+        document.getElementById('usersCountTitle').textContent = users.length === this.usersCache.length
+          ? `All Users (${users.length})` : `Users (${users.length} of ${this.usersCache.length})`;
+        document.getElementById('userRows').innerHTML = users.map(u => `
                       <tr>
                         <td>${this.statusBadge(u)}</td>
                         <td style="white-space:nowrap;font-size:0.82rem;">${this.lastSeenCell(u)}</td>
@@ -204,18 +259,13 @@
                         <td>${u.level}</td>
                         <td>${u.sharedIpAccounts ? `<button class="admin-btn admin-btn-reject" title="Other accounts have used this user's IP address" onclick="Admin.showUserIps('${escapeHtml(u.id)}')">&#9888; ${u.sharedIpAccounts} other${u.sharedIpAccounts > 1 ? 's' : ''}</button>` : '<span style="color:#ccc;">-</span>'}</td>
                         <td style="font-size:0.78rem;">${escapeHtml(u.lastIp || u.signupIp) || '-'}</td>
-                        <td>${new Date(u.createdAt).toLocaleDateString()}</td>
+                        <td style="white-space:nowrap;font-size:0.82rem;">${new Date(u.createdAt).toLocaleDateString()}${age(u) < DAY ? ' <span class="admin-badge admin-badge-approved" style="font-size:0.65rem;">NEW</span>' : ''}<br><span style="color:#999;font-size:0.72rem;">${new Date(u.createdAt).toLocaleTimeString()}</span></td>
                         <td style="white-space:nowrap;">
                           <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(u.id)}')">Edit</button>
                           <button class="admin-btn admin-btn-approve" onclick="Admin.addBalance('${escapeHtml(u.id)}','${escapeHtml(u.username)}')">+ Balance</button>
                           ${this.moderationButtons(u)}
                         </td>
-                      </tr>`).join('')}
-                  </tbody>
-                </table>
-              </div>
-            </div>`;
-        } catch (e) { c.innerHTML = '<p>Failed to load users</p>'; }
+                      </tr>`).join('') || '<tr><td colspan="11" style="text-align:center;color:#888;padding:24px;">No users match.</td></tr>';
       },
 
       // Profile picture (or the first letter of the username); click to see it full size.
@@ -616,7 +666,7 @@
                           ${w.status === 'Pending' ? `
                             <button class="admin-btn admin-btn-approve" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Approved')">Approve</button>
                             <button class="admin-btn admin-btn-reject" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Rejected')">Reject</button>
-                          ` : `<span style="color:#888;">Processed</span>`}
+                          ` : `<span style="color:#888;">${w.status === 'Cancelled' ? 'Cancelled by user' : 'Processed'}</span>`}
                         </td>
                       </tr>`).join('')}
                   </tbody>

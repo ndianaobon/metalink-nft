@@ -626,6 +626,11 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   color: #dc2626;
 }
 
+.admin-badge-cancelled {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
 /* Admin Modal */
 .admin-modal-overlay {
   position: fixed;
