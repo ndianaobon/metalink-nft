@@ -1093,6 +1093,11 @@
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Fee deducted from withdrawal amount</p>
                   </div>
                   <div class="admin-form-group">
+                    <label class="admin-form-label">Minimum Withdrawal ($)</label>
+                    <input class="admin-form-input" id="cfgMinWithdrawal" type="number" step="0.01" min="0" value="${config.minWithdrawal !== undefined ? config.minWithdrawal : 0}" placeholder="0">
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Smallest amount a user can withdraw at once. Shown on the withdraw page. 0 = no minimum.</p>
+                  </div>
+                  <div class="admin-form-group">
                     <label class="admin-form-label">Reservation Win Rate (%)</label>
                     <input class="admin-form-input" id="cfgReserveWinRate" type="number" step="0.1" min="0" max="100" value="${config.reserveWinRatePct !== undefined ? config.reserveWinRatePct : 70}" placeholder="70">
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Chance a reservation draw wins (the rest lose, i.e. "Not Won")</p>
@@ -1221,6 +1226,7 @@
               referralBonusPctB: document.getElementById('cfgReferralPctB').value,
               referralBonusPctC: document.getElementById('cfgReferralPctC').value,
               withdrawalFeePct: document.getElementById('cfgWithdrawalFee').value,
+              minWithdrawal: document.getElementById('cfgMinWithdrawal').value,
               reserveWinRatePct: document.getElementById('cfgReserveWinRate').value,
               dailyCheckinReward: document.getElementById('cfgDailyCheckin').value,
               handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked,

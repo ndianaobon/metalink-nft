@@ -1459,9 +1459,17 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
 
 // ===================== WITHDRAWAL ROUTES =====================
 
+// Admin-set minimum per withdrawal (Settings); 0 / unset means no minimum.
+function minWithdrawalOf(config) {
+  const v = parseFloat(config.minWithdrawal);
+  return v > 0 ? v : 0;
+}
+
 app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   const { amount, walletType } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
+  const minWithdrawal = minWithdrawalOf(await getConfig());
+  if (amount < minWithdrawal) return res.status(400).json({ error: `The minimum withdrawal is ${fmtMoney(minWithdrawal)} USDT.`, minWithdrawal });
 
   const result = await tx(async c => {
     const user = await db.getUser(c, req.userId, { lock: true });
@@ -2306,6 +2314,7 @@ app.get('/api/platform/info', async (req, res) => {
     referralBonusPctB: config.referralBonusPctB !== undefined ? config.referralBonusPctB : 8,
     referralBonusPctC: config.referralBonusPctC !== undefined ? config.referralBonusPctC : 3,
     withdrawalFeePct: config.withdrawalFeePct !== undefined ? config.withdrawalFeePct : 4,
+    minWithdrawal: minWithdrawalOf(config),
     handlingFeeEnabled: config.handlingFeeEnabled === true,
     telegramLink: config.telegramLink || DEFAULT_TELEGRAM_LINK,
     groupLink: config.groupLink || DEFAULT_GROUP_LINK
@@ -2317,7 +2326,7 @@ app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink, depositScreenshotEnabled, depositTxidEnabled } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink, depositScreenshotEnabled, depositTxidEnabled, minWithdrawal } = req.body;
 
   const result = await tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(424244)');
@@ -2330,6 +2339,11 @@ app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
     if (referralBonusPctB !== undefined) config.referralBonusPctB = parseFloat(referralBonusPctB);
     if (referralBonusPctC !== undefined) config.referralBonusPctC = parseFloat(referralBonusPctC);
     if (withdrawalFeePct !== undefined) config.withdrawalFeePct = parseFloat(withdrawalFeePct);
+    if (minWithdrawal !== undefined) {
+      const v = minWithdrawal === '' ? 0 : parseFloat(minWithdrawal);
+      if (isNaN(v) || v < 0 || v > 1000000) return { status: 400, body: { error: 'Minimum withdrawal must be 0 or more (0 means no minimum)' } };
+      config.minWithdrawal = v;
+    }
     if (handlingFeeEnabled !== undefined) config.handlingFeeEnabled = handlingFeeEnabled === true || handlingFeeEnabled === 'true';
     for (const [key, value, label] of [['telegramLink', telegramLink, 'Telegram link'], ['groupLink', groupLink, 'Group link']]) {
       if (value === undefined) continue;
