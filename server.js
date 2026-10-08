@@ -1083,6 +1083,32 @@ app.get('/api/user/team/rebates', authMiddleware, async (req, res) => {
   })));
 });
 
+// Orders placed by the user's team (reservations, stakes and Earn plans), newest first.
+// Each branch filters by member id first so the user_id indexes are used.
+app.get('/api/user/team/orders', authMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`
+    WITH m AS (SELECT member_id, data->>'tier' AS tier FROM app.teams WHERE user_id = $1)
+    SELECT o.kind, o.data, o.at, m.tier, u.data->>'username' AS username FROM (
+      SELECT 'reserve' AS kind, user_id, data, data->>'reservationDate' AS at FROM app.reserve_orders WHERE user_id IN (SELECT member_id FROM m)
+      UNION ALL
+      SELECT 'stake', user_id, data, data->>'startDate' FROM app.user_stakes WHERE user_id IN (SELECT member_id FROM m)
+      UNION ALL
+      SELECT 'earn', user_id, data, data->>'startDate' FROM app.earn_positions WHERE user_id IN (SELECT member_id FROM m)
+    ) o
+    JOIN m ON m.member_id = o.user_id
+    LEFT JOIN app.users u ON u.id = o.user_id
+    ORDER BY o.at DESC
+    LIMIT 2000`, [req.userId]);
+
+  res.json(rows.map(r => {
+    const d = r.data || {};
+    const base = { type: r.kind, username: r.username || 'Unknown', tier: r.tier, date: r.at, status: d.status || '' };
+    if (r.kind === 'reserve') return { ...base, name: d.itemName || `LV${d.level}`, orderNumber: d.orderNumber || '', amount: d.reservationAmount || 0, profit: d.reward || 0 };
+    if (r.kind === 'stake') return { ...base, name: `${d.nftName || 'Stake'} ${d.nftNumber || ''}`.trim(), orderNumber: '', amount: d.pledgeValue || 0, profit: d.income || 0 };
+    return { ...base, name: d.planName || 'Earn', orderNumber: '', amount: d.amount || 0, profit: d.income || 0 };
+  }));
+});
+
 // ===================== STAKE ROUTES =====================
 
 app.get('/api/stakes/catalog', authMiddleware, async (req, res) => {

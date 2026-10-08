@@ -951,6 +951,56 @@
       .contrib-tab { font-size: 0.82rem; }
       .contrib-table-head, .contrib-row { padding: 12px 6px; }
     }
+    .orders-filter-row { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 10px; margin-top: 14px; }
+    .orders-filter-row-2 { grid-template-columns: minmax(0, 1fr) auto; margin-top: 10px; }
+    .orders-control {
+      width: 100%; height: 48px; padding: 0 14px; border-radius: 14px; border: 1.5px solid var(--border);
+      background-color: transparent; color: var(--text); font-family: var(--font); font-size: 0.88rem; outline: none;
+      -webkit-appearance: none; appearance: none; min-width: 0;
+    }
+    .orders-control:focus { border-color: var(--primary); }
+    .orders-control::placeholder { color: var(--text-muted); }
+    select.orders-control {
+      padding-right: 34px; cursor: pointer; color-scheme: dark;
+      background: transparent no-repeat right 12px center / 14px
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239CA3AF' stroke-width='2.5'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    }
+    select.orders-control option { background: var(--surface); color: var(--text); }
+    .orders-sort-btn {
+      width: 64px; height: 48px; border-radius: 14px; cursor: pointer; color: #14B8A6;
+      display: flex; align-items: center; justify-content: center;
+      border: 1.5px solid transparent;
+      background-image: linear-gradient(var(--surface), var(--surface)), linear-gradient(90deg, #7C3AED, #14B8A6);
+      background-origin: border-box; background-clip: padding-box, border-box;
+    }
+    .orders-sort-btn svg { transition: transform var(--transition); }
+    .orders-sort-btn.asc svg { transform: scaleY(-1); }
+    .orders-summary { font-size: 0.78rem; color: var(--text-muted); margin: 16px 2px 10px; }
+    .team-order-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px; margin-bottom: 12px;
+    }
+    .team-order-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-width: 0; }
+    .team-order-user { font-weight: 700; font-size: 0.9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .team-order-tier { flex-shrink: 0; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; background: rgba(124,58,237,0.15); color: #A78BFA; }
+    .team-order-type { margin-left: auto; flex-shrink: 0; font-size: 0.7rem; font-weight: 700; padding: 3px 9px; border-radius: 20px; }
+    .team-order-type.reserve { background: rgba(124,58,237,0.15); color: #A78BFA; }
+    .team-order-type.stake { background: rgba(59,130,246,0.15); color: #60A5FA; }
+    .team-order-type.earn { background: rgba(20,184,166,0.15); color: #2DD4BF; }
+    .team-order-name { font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 10px; overflow-wrap: anywhere; }
+    .team-order-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 8px; }
+    .team-order-grid .k { font-size: 0.68rem; color: var(--text-muted); }
+    .team-order-grid .v { font-size: 0.85rem; font-weight: 700; overflow-wrap: break-word; }
+    .team-order-grid .v.pos { color: var(--positive); }
+    .team-order-date { font-size: 0.7rem; color: var(--text-muted); margin-top: 10px; }
+    @media (max-width: 360px) {
+      .orders-filter-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+      .team-order-grid .v { font-size: 0.78rem; }
+      .orders-filter-row-2 { grid-template-columns: minmax(0, 1fr) auto; }
+      .orders-control { font-size: 0.78rem; padding: 0 8px; }
+      select.orders-control { padding-right: 28px; background-position: right 8px center; }
+      .orders-sort-btn { width: 52px; }
+    }
     .team-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-bottom: 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
     .team-tab-btn {
       padding: 12px 8px; font-family: var(--font); font-size: 0.82rem; font-weight: 600;
@@ -2004,7 +2054,7 @@
               <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></span>
               <span class="my-team-label">Community contributions</span>
             </button>
-            <button class="my-team-action" onclick="switchTab('reserve')">
+            <button class="my-team-action" onclick="openCommunityOrders()">
               <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
               <span class="my-team-label">Community orders</span>
             </button>
@@ -2165,6 +2215,52 @@
         </div>
         <div class="contrib-table-head"><span id="contribTierHead">AMember</span><span>Rebate</span></div>
         <div id="contribList"></div>
+      </div>
+
+      <!-- Community Orders Full Page View -->
+      <div class="team-page" id="teamOrdersPageView">
+        <button class="team-back-btn" onclick="closeTeamPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+
+        <div class="team-date-wrap">
+          <input type="date" class="team-date-input" id="ordersDateInput" onchange="setOrdersPeriod(this.value ? 'date' : 'all')" aria-label="Select date">
+          <span class="team-date-placeholder">Select Date</span>
+          <button class="team-date-clear" onclick="setOrdersPeriod('all')" aria-label="Clear date">&times;</button>
+        </div>
+
+        <div class="team-period-tabs">
+          <button class="team-period-btn orders-period-btn active" data-period="all" onclick="setOrdersPeriod('all')">All</button>
+          <button class="team-period-btn orders-period-btn" data-period="today" onclick="setOrdersPeriod('today')">Today</button>
+          <button class="team-period-btn orders-period-btn" data-period="yesterday" onclick="setOrdersPeriod('yesterday')">Yesterday</button>
+          <button class="team-period-btn orders-period-btn" data-period="week" onclick="setOrdersPeriod('week')">Week</button>
+          <button class="team-period-btn orders-period-btn" data-period="month" onclick="setOrdersPeriod('month')">Month</button>
+        </div>
+
+        <div class="orders-filter-row">
+          <select class="orders-control" id="ordersLevel" onchange="renderTeamOrders()" aria-label="Level">
+            <option value="">All levels</option>
+            <option value="A">Level A</option>
+            <option value="B">Level B</option>
+            <option value="C">Level C</option>
+          </select>
+          <input class="orders-control" id="ordersNickname" type="search" placeholder="Nickname" oninput="renderTeamOrders()" aria-label="Nickname">
+        </div>
+        <div class="orders-filter-row orders-filter-row-2">
+          <select class="orders-control" id="ordersType" onchange="renderTeamOrders()" aria-label="Order type">
+            <option value="">All orders</option>
+            <option value="reserve">Reserve</option>
+            <option value="stake">Stake</option>
+            <option value="earn">Earn</option>
+          </select>
+          <button class="orders-sort-btn" id="ordersSortBtn" onclick="toggleOrdersSort()" title="Newest first" aria-label="Sort order">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V4"/><path d="M4 8l4-4 4 4"/><path d="M16 4v16"/><path d="M12 16l4 4 4-4"/></svg>
+          </button>
+        </div>
+
+        <div class="orders-summary" id="ordersSummary"></div>
+        <div id="teamOrdersList"></div>
       </div>
 
       <!-- Invite Full Page View -->
@@ -3347,10 +3443,76 @@
     }
 
     function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
+    async function openCommunityOrders() {
+      document.getElementById('myMainView').style.display = 'none';
+      document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.add('active');
+      document.getElementById('teamOrdersList').innerHTML = '<div class="contrib-empty">Loading...</div>';
+      try { teamOrders = await api('/api/user/team/orders'); }
+      catch (e) { teamOrders = []; toast(e.message, 'error'); }
+      setOrdersPeriod('all');
+    }
+
+    // Community orders: the team's reservations, stakes and Earn plans, filtered by period,
+    // level, nickname and type, newest or oldest first.
+    let teamOrders = [], ordersPeriod = 'all', ordersAsc = false;
+    const ORDER_TYPE_LABELS = { reserve: 'Reserve', stake: 'Stake', earn: 'Earn' };
+    function setOrdersPeriod(period) {
+      ordersPeriod = period;
+      const input = document.getElementById('ordersDateInput');
+      if (period !== 'date') input.value = '';
+      const hasDate = period === 'date' && !!input.value;
+      input.classList.toggle('has-value', hasDate);
+      input.parentElement.classList.toggle('has-value', hasDate);
+      document.querySelectorAll('.orders-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+      renderTeamOrders();
+    }
+    function toggleOrdersSort() {
+      ordersAsc = !ordersAsc;
+      const btn = document.getElementById('ordersSortBtn');
+      btn.classList.toggle('asc', ordersAsc);
+      btn.title = ordersAsc ? 'Oldest first' : 'Newest first';
+      renderTeamOrders();
+    }
+    function renderTeamOrders() {
+      const range = periodRange(ordersPeriod, document.getElementById('ordersDateInput').value);
+      const tier = document.getElementById('ordersLevel').value;
+      const type = document.getElementById('ordersType').value;
+      const nick = document.getElementById('ordersNickname').value.trim().toLowerCase();
+      let list = teamOrders.filter(o => {
+        if (range) { const t = new Date(o.date).getTime(); if (!(t >= range[0] && t < range[1])) return false; }
+        return (!tier || o.tier === tier) && (!type || o.type === type) && (!nick || o.username.toLowerCase().includes(nick));
+      });
+      if (ordersAsc) list = list.slice().reverse();
+      const total = list.reduce((s, o) => s + (Number(o.amount) || 0), 0);
+      document.getElementById('ordersSummary').textContent = list.length
+        ? `${list.length} order${list.length === 1 ? '' : 's'} · ${balanceHidden ? MONEY_MASK : fmt(total) + ' USDT'}` : '';
+      const el = document.getElementById('teamOrdersList');
+      if (!list.length) { el.innerHTML = '<div class="contrib-empty">No orders found</div>'; return; }
+      el.innerHTML = list.map(o => `
+        <div class="team-order-card">
+          <div class="team-order-top">
+            <span class="team-order-user">${escapeHtml(o.username)}</span>
+            ${o.tier ? `<span class="team-order-tier">${escapeHtml(o.tier)}</span>` : ''}
+            <span class="team-order-type ${escapeHtml(o.type)}">${ORDER_TYPE_LABELS[o.type] || ''}</span>
+          </div>
+          <div class="team-order-name">${escapeHtml(o.name)}${o.orderNumber ? ` · #${escapeHtml(o.orderNumber)}` : ''}</div>
+          <div class="team-order-grid">
+            <div><div class="k">Amount</div><div class="v">${balanceHidden ? MONEY_MASK : fmt(o.amount)}</div></div>
+            <div><div class="k">${o.type === 'reserve' ? 'Reward' : 'Income'}</div><div class="v ${o.profit > 0 ? 'pos' : ''}">${balanceHidden ? MONEY_MASK : fmt(o.profit)}</div></div>
+            <div><div class="k">Status</div><div class="v">${escapeHtml(o.status ? o.status.charAt(0).toUpperCase() + o.status.slice(1) : '-')}</div></div>
+          </div>
+          <div class="team-order-date">${new Date(o.date).toLocaleString()}</div>
+        </div>`).join('');
+    }
+
     async function openCommunityContributions() {
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.add('active');
       try {
         const [rebates, team] = await Promise.all([api('/api/user/team/rebates'), api('/api/user/team')]);
@@ -3496,6 +3658,7 @@
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('teamPageView').classList.add('active');
       try {
         teamDataCache = await api('/api/user/team');
@@ -3549,6 +3712,7 @@
     function closeTeamPage() {
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('myMainView').style.display = '';
     }
@@ -3751,6 +3915,7 @@
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.remove('active');
       document.getElementById('announcementPageView').classList.add('active');
@@ -4121,6 +4286,7 @@
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.add('active');
 
       const p = profileData;
@@ -4163,6 +4329,7 @@
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.add('active');
 
