@@ -1060,6 +1060,29 @@ app.get('/api/user/team', authMiddleware, async (req, res) => {
   res.json({ members, stats });
 });
 
+// Every team commission the user has earned, with the member whose deposit paid it and that
+// member's level (A/B/C). The commission's refId is the deposit id, which identifies the member.
+app.get('/api/user/team/rebates', authMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`
+    SELECT t.data->>'amount' AS amount, t.data->>'createdAt' AS created_at, t.data->>'description' AS description,
+           d.user_id AS member_id, u.data->>'username' AS username, tm.data->>'tier' AS tier
+    FROM app.transactions t
+    LEFT JOIN app.deposits d ON d.id = t.data->>'refId'
+    LEFT JOIN app.users u ON u.id = d.user_id
+    LEFT JOIN app.teams tm ON tm.user_id = t.user_id AND tm.member_id = d.user_id
+    WHERE t.user_id = $1 AND t.data->>'type' = 'team_commission'
+    ORDER BY t.seq DESC`, [req.userId]);
+
+  res.json(rows.map(r => ({
+    memberId: r.member_id,
+    username: r.username || 'Unknown',
+    // Older rows may predate the team link; the description always names the level.
+    tier: r.tier || (/Level ([ABC])/.exec(r.description || '') || [])[1] || null,
+    amount: parseFloat(r.amount) || 0,
+    date: r.created_at
+  })));
+});
+
 // ===================== STAKE ROUTES =====================
 
 app.get('/api/stakes/catalog', authMiddleware, async (req, res) => {

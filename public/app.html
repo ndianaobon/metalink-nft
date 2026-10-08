@@ -929,6 +929,28 @@
       .team-stat { padding: 16px 2px; }
       .team-stat .label { font-size: 0.74rem; }
     }
+    .team-stat .val .rv-tether { vertical-align: -3px; }
+    .contrib-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 2px solid var(--border); margin-bottom: 6px; }
+    .contrib-tab {
+      position: relative; padding: 12px 4px; background: none; border: none; cursor: pointer;
+      font-family: var(--font); font-size: 0.95rem; font-weight: 600; color: var(--text-muted);
+    }
+    .contrib-tab.active { color: var(--text); font-weight: 800; }
+    .contrib-tab.active::after {
+      content: ''; position: absolute; left: 0; right: 0; bottom: -2px; height: 3px; border-radius: 3px; background: var(--gradient);
+    }
+    .contrib-table-head, .contrib-row {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 14px 16px; text-align: center;
+    }
+    .contrib-table-head { font-size: 0.95rem; font-weight: 800; }
+    .contrib-row { border-bottom: 1px solid var(--border); font-size: 0.88rem; align-items: center; }
+    .contrib-row .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .contrib-row .amt { font-weight: 700; color: var(--positive); }
+    .contrib-empty { text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 32px 16px; }
+    @media (max-width: 360px) {
+      .contrib-tab { font-size: 0.82rem; }
+      .contrib-table-head, .contrib-row { padding: 12px 6px; }
+    }
     .team-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-bottom: 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
     .team-tab-btn {
       padding: 12px 8px; font-family: var(--font); font-size: 0.82rem; font-weight: 600;
@@ -2106,6 +2128,43 @@
             <p style="color:var(--text-muted);font-size:0.85rem;">No members found in Level A</p>
           </div>
         </div>
+      </div>
+
+      <!-- Community Contributions Full Page View -->
+      <div class="team-page" id="contribPageView">
+        <button class="team-back-btn" onclick="closeTeamPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+
+        <div class="team-date-wrap">
+          <input type="date" class="team-date-input" id="contribDateInput" onchange="setContribPeriod(this.value ? 'date' : 'all')" aria-label="Select date">
+          <span class="team-date-placeholder">Select Date</span>
+          <button class="team-date-clear" onclick="setContribPeriod('all')" aria-label="Clear date">&times;</button>
+        </div>
+
+        <div class="team-period-tabs">
+          <button class="team-period-btn contrib-period-btn active" data-period="all" onclick="setContribPeriod('all')">All</button>
+          <button class="team-period-btn contrib-period-btn" data-period="today" onclick="setContribPeriod('today')">Today</button>
+          <button class="team-period-btn contrib-period-btn" data-period="yesterday" onclick="setContribPeriod('yesterday')">Yesterday</button>
+          <button class="team-period-btn contrib-period-btn" data-period="week" onclick="setContribPeriod('week')">Week</button>
+          <button class="team-period-btn contrib-period-btn" data-period="month" onclick="setContribPeriod('month')">Month</button>
+        </div>
+
+        <div class="team-stat-grid">
+          <div class="team-stat"><div class="val"><span class="rv-tether"></span> <span id="contribAll" data-money>0</span></div><div class="label">All rebates</div></div>
+          <div class="team-stat"><div class="val"><span class="rv-tether"></span> <span id="contribA" data-money>0</span></div><div class="label">Rebate A</div></div>
+          <div class="team-stat"><div class="val"><span class="rv-tether"></span> <span id="contribB" data-money>0</span></div><div class="label">Rebate B</div></div>
+          <div class="team-stat"><div class="val"><span class="rv-tether"></span> <span id="contribC" data-money>0</span></div><div class="label">Rebate C</div></div>
+        </div>
+
+        <div class="contrib-tabs">
+          <button class="contrib-tab active" data-tier="A" onclick="setContribTier('A')">AMember</button>
+          <button class="contrib-tab" data-tier="B" onclick="setContribTier('B')">BMember</button>
+          <button class="contrib-tab" data-tier="C" onclick="setContribTier('C')">CMember</button>
+        </div>
+        <div class="contrib-table-head"><span id="contribTierHead">AMember</span><span>Rebate</span></div>
+        <div id="contribList"></div>
       </div>
 
       <!-- Invite Full Page View -->
@@ -3288,7 +3347,54 @@
     }
 
     function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
-    function openCommunityContributions() { assetsHistoryFilter = 'team'; switchTab('assets'); }
+    async function openCommunityContributions() {
+      document.getElementById('myMainView').style.display = 'none';
+      document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.add('active');
+      try {
+        const [rebates, team] = await Promise.all([api('/api/user/team/rebates'), api('/api/user/team')]);
+        contribRebates = rebates; teamDataCache = team;
+      } catch (e) { console.error(e); }
+      setContribPeriod('all');
+    }
+
+    // Community contributions: team commissions grouped by level and by member, for a period.
+    let contribRebates = [], contribInRange = [], contribPeriod = 'all', contribTier = 'A';
+    function setContribPeriod(period) {
+      contribPeriod = period;
+      const input = document.getElementById('contribDateInput');
+      if (period !== 'date') input.value = '';
+      const hasDate = period === 'date' && !!input.value;
+      input.classList.toggle('has-value', hasDate);
+      input.parentElement.classList.toggle('has-value', hasDate);
+      document.querySelectorAll('.contrib-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+      const range = periodRange(period, input.value);
+      contribInRange = range ? contribRebates.filter(r => { const t = new Date(r.date).getTime(); return t >= range[0] && t < range[1]; }) : contribRebates;
+      const sum = tier => contribInRange.filter(r => !tier || r.tier === tier).reduce((s, r) => s + r.amount, 0);
+      setMoney('contribAll', fmt(sum(null)));
+      setMoney('contribA', fmt(sum('A')));
+      setMoney('contribB', fmt(sum('B')));
+      setMoney('contribC', fmt(sum('C')));
+      setContribTier(contribTier);
+    }
+    function setContribTier(tier) {
+      contribTier = tier;
+      document.querySelectorAll('.contrib-tab').forEach(b => b.classList.toggle('active', b.dataset.tier === tier));
+      document.getElementById('contribTierHead').textContent = tier + 'Member';
+      // Every member of this level, with what they contributed in the period (highest first).
+      const totals = new Map();
+      ((teamDataCache && teamDataCache.members) || []).filter(m => m.tier === tier).forEach(m => totals.set(m.id, { name: m.username, amount: 0 }));
+      contribInRange.filter(r => r.tier === tier).forEach(r => {
+        const key = r.memberId || r.username;
+        const row = totals.get(key) || { name: r.username, amount: 0 };
+        row.amount += r.amount; totals.set(key, row);
+      });
+      const rows = [...totals.values()].sort((a, b) => b.amount - a.amount);
+      document.getElementById('contribList').innerHTML = rows.length
+        ? rows.map(r => `<div class="contrib-row"><span class="name">${escapeHtml(r.name)}</span><span class="amt">${balanceHidden ? MONEY_MASK : fmt(r.amount)}</span></div>`).join('')
+        : `<div class="contrib-empty">No ${tier} members yet</div>`;
+    }
 
     async function cancelWithdrawal(id, amount, btn) {
       if (!confirm(`Cancel this withdrawal of ${fmt(amount)} USDT? The full amount will go back to your balance.`)) return;
@@ -3389,6 +3495,7 @@
     async function openTeamPage() {
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamPageView').classList.add('active');
       try {
         teamDataCache = await api('/api/user/team');
@@ -3396,19 +3503,20 @@
       } catch (e) { console.error(e); }
     }
 
-    // Date filter for the team page: counts members who joined in the chosen period
+    // Date filter for the team and contributions pages: counts members who joined in the chosen period
     // (local time). Week = last 7 days, Month = last 30 days, both including today.
     let teamPeriod = 'all';
-    function teamPeriodRange() {
+    function teamPeriodRange() { return periodRange(teamPeriod, document.getElementById('teamDateInput').value); }
+    function periodRange(period, dateValue) {
       const day = 86400000;
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const t = today.getTime();
-      if (teamPeriod === 'today') return [t, t + day];
-      if (teamPeriod === 'yesterday') return [t - day, t];
-      if (teamPeriod === 'week') return [t - 6 * day, t + day];
-      if (teamPeriod === 'month') return [t - 29 * day, t + day];
-      if (teamPeriod === 'date') {
-        const v = document.getElementById('teamDateInput').value;
+      if (period === 'today') return [t, t + day];
+      if (period === 'yesterday') return [t - day, t];
+      if (period === 'week') return [t - 6 * day, t + day];
+      if (period === 'month') return [t - 29 * day, t + day];
+      if (period === 'date') {
+        const v = dateValue;
         if (v) { const [y, m, d] = v.split('-').map(Number); const s = new Date(y, m - 1, d).getTime(); return [s, s + day]; }
       }
       return null;
@@ -3440,6 +3548,7 @@
 
     function closeTeamPage() {
       document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('myMainView').style.display = '';
     }
@@ -3641,6 +3750,7 @@
       switchTab('my');
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.remove('active');
       document.getElementById('announcementPageView').classList.add('active');
@@ -4010,6 +4120,7 @@
       }
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.add('active');
 
       const p = profileData;
@@ -4051,6 +4162,7 @@
       }
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.add('active');
 
