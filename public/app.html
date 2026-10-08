@@ -1001,6 +1001,42 @@
       select.orders-control { padding-right: 28px; background-position: right 8px center; }
       .orders-sort-btn { width: 52px; }
     }
+    .guide-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+    .guide-title { font-size: 1.2rem; font-weight: 800; }
+    .guide-sub { font-size: 0.75rem; color: var(--text-muted); }
+    .guide-download {
+      display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 9px 14px; border-radius: 12px;
+      background: var(--gradient); color: #fff; font-size: 0.82rem; font-weight: 700; text-decoration: none;
+    }
+    .guide-pages { display: flex; flex-direction: column; gap: 12px; }
+    .guide-page {
+      display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 12px; border: 1px solid var(--border);
+      background: #0B0F1A; cursor: zoom-in; object-fit: contain;
+    }
+    .guide-viewer {
+      display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.94);
+      align-items: center; justify-content: center; overflow: hidden;
+    }
+    .guide-viewer.active { display: flex; }
+    .guide-viewer img { max-width: 100vw; max-height: 100vh; object-fit: contain; }
+    /* Upright phones: turn the landscape page sideways so it fills the screen */
+    @media (orientation: portrait) and (max-width: 767px) {
+      .guide-viewer img { max-width: none; max-height: none; width: min(100vh, 177.7vw); width: min(100dvh, 177.7vw); height: auto; transform: rotate(90deg); }
+      .guide-viewer .guide-viewer-nav.prev { top: 14px; bottom: auto; left: 50%; right: auto; transform: translateX(-50%) rotate(90deg); }
+      .guide-viewer .guide-viewer-nav.next { top: auto; bottom: 14px; left: 50%; right: auto; transform: translateX(-50%) rotate(90deg); }
+      .guide-viewer .guide-viewer-count { top: 50%; bottom: auto; left: -12px; right: auto; width: auto; padding: 4px 10px; border-radius: 20px; background: rgba(0,0,0,0.7); transform: translateY(-50%) rotate(90deg); white-space: nowrap; }
+    }
+    .guide-viewer-close {
+      position: absolute; top: 14px; right: 14px; width: 42px; height: 42px; border-radius: 50%; border: none;
+      background: rgba(255,255,255,0.14); color: #fff; font-size: 1.6rem; line-height: 1; cursor: pointer;
+    }
+    .guide-viewer-nav {
+      position: absolute; top: 50%; transform: translateY(-50%); width: 44px; height: 44px; border-radius: 50%; border: none;
+      background: rgba(255,255,255,0.14); color: #fff; font-size: 1.8rem; line-height: 1; cursor: pointer;
+    }
+    .guide-viewer-nav.prev { left: 12px; }
+    .guide-viewer-nav.next { right: 12px; }
+    .guide-viewer-count { position: absolute; bottom: 16px; left: 0; right: 0; text-align: center; color: rgba(255,255,255,0.8); font-size: 0.8rem; font-weight: 600; }
     .team-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-bottom: 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
     .team-tab-btn {
       padding: 12px 8px; font-family: var(--font); font-size: 0.82rem; font-weight: 600;
@@ -2101,7 +2137,7 @@
         <div class="my-section-card">
           <div class="my-section-title">Common Functions</div>
           <div class="my-functions-grid">
-            <button class="my-func-btn" onclick="switchTab('earn')">
+            <button class="my-func-btn" onclick="openTutorialPage()">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
               <span>Tutorials</span>
             </button>
@@ -2261,6 +2297,33 @@
 
         <div class="orders-summary" id="ordersSummary"></div>
         <div id="teamOrdersList"></div>
+      </div>
+
+      <!-- Tutorials: the MetaLink NFT platform guide (PDF pages as images) -->
+      <div class="team-page" id="tutorialPageView">
+        <button class="team-back-btn" onclick="closeTeamPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+        <div class="guide-head">
+          <div>
+            <div class="guide-title">Platform Guide</div>
+            <div class="guide-sub">10 pages · tap a page to enlarge</div>
+          </div>
+          <a class="guide-download" href="/downloads/MetaLink-NFT-Platform-Guide.pdf" download="MetaLink-NFT-Platform-Guide.pdf">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            PDF
+          </a>
+        </div>
+        <div class="guide-pages" id="guidePages"></div>
+      </div>
+
+      <div class="guide-viewer" id="guideViewer" onclick="closeGuidePage()">
+        <img id="guideViewerImg" alt="">
+        <button class="guide-viewer-close" aria-label="Close">&times;</button>
+        <button class="guide-viewer-nav prev" onclick="event.stopPropagation(); stepGuidePage(-1)" aria-label="Previous page">&#8249;</button>
+        <button class="guide-viewer-nav next" onclick="event.stopPropagation(); stepGuidePage(1)" aria-label="Next page">&#8250;</button>
+        <div class="guide-viewer-count" id="guideViewerCount"></div>
       </div>
 
       <!-- Invite Full Page View -->
@@ -3443,11 +3506,41 @@
     }
 
     function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
+    // ---- Tutorials (platform guide) ----
+    const GUIDE_PAGES = 10;
+    let guideIndex = 0;
+    function openTutorialPage() {
+      document.getElementById('myMainView').style.display = 'none';
+      document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('teamPageView').classList.remove('active');
+      document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.add('active');
+      const el = document.getElementById('guidePages');
+      if (!el.children.length) {
+        el.innerHTML = Array.from({ length: GUIDE_PAGES }, (_, i) =>
+          `<img class="guide-page" src="${guidePageUrl(i)}" alt="Platform guide page ${i + 1}" ${i > 1 ? 'loading="lazy"' : ''} onclick="openGuidePage(${i})">`).join('');
+      }
+      document.querySelector('.app-body').scrollTop = 0;
+    }
+    function guidePageUrl(i) { return '/assets/guide/page-' + String(i + 1).padStart(2, '0') + '.jpg'; }
+    function openGuidePage(i) {
+      guideIndex = i;
+      const viewer = document.getElementById('guideViewer');
+      if (viewer.parentElement !== document.body) document.body.appendChild(viewer); // above the header and bottom bar
+      document.getElementById('guideViewerImg').src = guidePageUrl(i);
+      document.getElementById('guideViewerCount').textContent = (i + 1) + ' / ' + GUIDE_PAGES;
+      document.getElementById('guideViewer').classList.add('active');
+    }
+    function stepGuidePage(d) { openGuidePage((guideIndex + d + GUIDE_PAGES) % GUIDE_PAGES); }
+    function closeGuidePage() { document.getElementById('guideViewer').classList.remove('active'); }
+
     async function openCommunityOrders() {
       document.getElementById('myMainView').style.display = 'none';
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.add('active');
       document.getElementById('teamOrdersList').innerHTML = '<div class="contrib-empty">Loading...</div>';
       try { teamOrders = await api('/api/user/team/orders'); }
@@ -3513,6 +3606,7 @@
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.add('active');
       try {
         const [rebates, team] = await Promise.all([api('/api/user/team/rebates'), api('/api/user/team')]);
@@ -3659,6 +3753,7 @@
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('teamPageView').classList.add('active');
       try {
         teamDataCache = await api('/api/user/team');
@@ -3713,6 +3808,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('myMainView').style.display = '';
     }
@@ -3916,6 +4012,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.remove('active');
       document.getElementById('announcementPageView').classList.add('active');
@@ -4287,6 +4384,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.add('active');
 
       const p = profileData;
@@ -4330,6 +4428,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.add('active');
 
