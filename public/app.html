@@ -645,7 +645,7 @@
     .my-wallet-token { font-size: 0.75rem; color: rgba(255,255,255,0.6); margin-top: 8px; position: relative; z-index: 1; }
 
     .my-quick-actions {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px;
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 20px;
     }
     .my-quick-btn {
       display: flex; flex-direction: column; align-items: center; gap: 8px;
@@ -661,7 +661,13 @@
     .my-quick-icon.withdraw { background: rgba(79,70,229,0.12); color: var(--primary); }
     .my-quick-icon.invite { background: rgba(245,158,11,0.12); color: var(--warning); }
     .my-quick-icon.settings { background: rgba(156,163,175,0.12); color: var(--text-secondary); }
-    .my-quick-btn span { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); }
+    .my-quick-btn span { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    @media (max-width: 360px) {
+      #page-my .my-quick-actions { gap: 6px; }
+      #page-my .my-quick-btn { padding: 10px 2px; }
+      #page-my .my-quick-icon { width: 32px; height: 32px; border-radius: 10px; }
+      #page-my .my-quick-btn span { font-size: 0.66rem; }
+    }
 
     .my-section-card {
       background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
@@ -1441,7 +1447,9 @@
       .my-income-row .label { font-size: 0.72rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .checkin-btn { width: 100%; }
       .dep-qr { width: 150px; height: 150px; }
-      .my-quick-actions { grid-template-columns: repeat(2, 1fr); }
+      .my-quick-actions { gap: 8px; }
+      .my-quick-btn { padding: 12px 2px; gap: 6px; }
+      .my-quick-icon { width: 36px; height: 36px; }
       .my-actions-row { grid-template-columns: repeat(2, 1fr); }
       .my-stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .team-level-grid { grid-template-columns: 1fr; }
