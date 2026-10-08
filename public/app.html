@@ -700,6 +700,27 @@
     .my-info-box .val { font-size: 1.2rem; font-weight: 800; color: var(--primary); }
     .my-info-box .label { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
 
+    .my-team-title { padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+    .my-team-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 18px; text-align: center; }
+    .my-team-stat .val { font-size: 1.15rem; font-weight: 800; color: var(--text); overflow-wrap: anywhere; }
+    .my-team-stat .label { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; line-height: 1.3; }
+    .my-team-actions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+    .my-team-action {
+      display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 4px 2px;
+      background: none; border: none; cursor: pointer; font-family: var(--font); color: var(--text);
+    }
+    .my-team-icon {
+      width: 46px; height: 46px; border-radius: 14px; display: flex; align-items: center; justify-content: center;
+      background: rgba(124,58,237,0.12); color: var(--primary); transition: transform var(--transition);
+    }
+    .my-team-action:hover .my-team-icon { transform: translateY(-2px); }
+    .my-team-label { font-size: 0.7rem; font-weight: 500; color: var(--text-secondary); line-height: 1.3; text-align: center; }
+    @media (max-width: 360px) {
+      .my-team-stat .val { font-size: 1rem; }
+      .my-team-stat .label, .my-team-label { font-size: 0.64rem; }
+      .my-team-icon { width: 40px; height: 40px; }
+    }
+
     .my-tier-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
     .my-tier-box {
       background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm);
@@ -1898,30 +1919,29 @@
 
         <!-- My Team -->
         <div class="my-section-card">
-          <div class="my-section-header">
-            <div class="my-section-title">My Team</div>
-            <button class="my-section-link" onclick="openTeamPage()">View All &rarr;</button>
+          <div class="my-section-title my-team-title">My Team</div>
+          <div class="my-team-stats">
+            <div class="my-team-stat"><div class="val" id="myTeamRewards" data-money>0</div><div class="label">Community rewards</div></div>
+            <div class="my-team-stat"><div class="val" id="myTeamValid">0</div><div class="label">Valid Members</div></div>
+            <div class="my-team-stat"><div class="val" id="myTeamA">0</div><div class="label">A enthusiast</div></div>
+            <div class="my-team-stat"><div class="val" id="myTeamBC">0</div><div class="label">B+C enthusiasts</div></div>
           </div>
-          <div class="my-info-grid">
-            <div class="my-info-box"><div class="val" id="myTeamCommunity">0</div><div class="label">Community</div></div>
-            <div class="my-info-box"><div class="val" id="myTeamValid">0</div><div class="label">Valid Members</div></div>
-          </div>
-          <div class="my-actions-row">
-            <button class="my-action-btn" onclick="openTeamPage()">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-              <span>Members</span>
+          <div class="my-team-actions">
+            <button class="my-team-action" onclick="openTeamPage()">
+              <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+              <span class="my-team-label">Community enthusiasts</span>
             </button>
-            <button class="my-action-btn" onclick="copyReferral()">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-              <span>Invite</span>
+            <button class="my-team-action" onclick="openCommunityContributions()">
+              <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></span>
+              <span class="my-team-label">Community contributions</span>
             </button>
-            <button class="my-action-btn" onclick="switchTab('reserve')">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-              <span>Orders</span>
+            <button class="my-team-action" onclick="switchTab('reserve')">
+              <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>
+              <span class="my-team-label">Community orders</span>
             </button>
-            <button class="my-action-btn" onclick="copyReferral()">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-              <span>Refer</span>
+            <button class="my-team-action" onclick="openInvitePage()">
+              <span class="my-team-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></span>
+              <span class="my-team-label">Referral</span>
             </button>
           </div>
         </div>
@@ -3212,7 +3232,8 @@
       income: { label: 'Income', match: h => ['signup_bonus', 'checkin', 'stake_income', 'earn_income', 'reserve_reward', 'team_commission', 'admin_credit'].includes(h.kind) },
       deposit: { label: 'Deposits', match: h => h.kind === 'deposit' },
       withdrawal: { label: 'Withdrawals', match: h => /^withdrawal/.test(h.kind) },
-      invest: { label: 'Stake & Earn', match: h => /^(stake|earn)/.test(h.kind) }
+      invest: { label: 'Stake & Earn', match: h => /^(stake|earn)/.test(h.kind) },
+      team: { label: 'Community', match: h => h.kind === 'team_commission' }
     };
     const HISTORY_ICONS = {
       deposit: '<path d="M12 5v14M5 12l7 7 7-7"/>',
@@ -3233,6 +3254,7 @@
     }
 
     function filterAssetsHistory(key) { assetsHistoryFilter = key; renderAssetsHistory(); }
+    function openCommunityContributions() { assetsHistoryFilter = 'team'; switchTab('assets'); }
 
     async function cancelWithdrawal(id, amount, btn) {
       if (!confirm(`Cancel this withdrawal of ${fmt(amount)} USDT? The full amount will go back to your balance.`)) return;
@@ -3307,12 +3329,15 @@
         document.getElementById('myTotalReserve').textContent = '$' + fmt(di.reserve || 0);
         document.getElementById('myTotalTeam').textContent = '$' + fmt(di.team || 0);
         document.getElementById('myTotalActivity').textContent = '$' + fmt(di.activity || 0);
+        setMoney('myTeamRewards', fmt(di.team || 0));
 
         try {
           const team = await api('/api/user/team');
           teamDataCache = team;
-          document.getElementById('myTeamCommunity').textContent = team.stats?.totalRegistered || 0;
-          document.getElementById('myTeamValid').textContent = team.stats?.totalValid || 0;
+          const ts = team.stats || {};
+          document.getElementById('myTeamValid').textContent = ts.totalValid || 0;
+          document.getElementById('myTeamA').textContent = ts.aTier?.registered || 0;
+          document.getElementById('myTeamBC').textContent = (ts.bTier?.registered || 0) + (ts.cTier?.registered || 0);
         } catch (e) {}
 
         try {
