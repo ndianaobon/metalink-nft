@@ -896,3 +896,79 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
   opacity: 0;
   pointer-events: none;
 }
+
+/* ---- Home: Stake & Earn Rewards (collection tabs + NFT cards) ---- */
+.se-tabs-wrap { display: flex; align-items: center; gap: 4px; max-width: 560px; margin: -16px auto 28px; }
+.se-tabs-arrow {
+  flex-shrink: 0; width: 36px; height: 36px; border: none; background: none; cursor: pointer;
+  color: var(--text-muted); font-size: 1.8rem; line-height: 1; transition: color var(--transition);
+}
+.se-tabs-arrow:hover { color: var(--text); }
+.se-tabs { flex: 1; display: flex; justify-content: space-around; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.se-tabs::-webkit-scrollbar { display: none; }
+.se-tab {
+  position: relative; flex-shrink: 0; padding: 10px 14px 14px; border: none; background: none; cursor: pointer;
+  font-family: inherit; font-size: 1.1rem; font-weight: 700; color: var(--text-muted); white-space: nowrap;
+  transition: color var(--transition);
+}
+.se-tab.active { color: var(--text); }
+.se-tab.active::after {
+  content: ''; position: absolute; left: 6px; right: 6px; bottom: 0; height: 4px; border-radius: 4px;
+  background: linear-gradient(90deg, #14B8A6, #7DD3FC, #7C3AED);
+}
+.se-grid { display: none; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; max-width: 960px; margin: 0 auto; }
+.se-grid.active { display: grid; animation: seFade 0.35s ease; }
+@keyframes seFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.se-card {
+  display: block; padding: 12px 12px 18px; border-radius: 24px; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); text-decoration: none; transition: transform var(--transition), border-color var(--transition), box-shadow var(--transition);
+}
+.se-card-img { aspect-ratio: 8 / 9; overflow: hidden; border-radius: 6px; background: var(--bg-alt); }
+.se-card-img img { width: 100%; height: 100%; object-fit: cover; object-position: center top; display: block; transition: transform 0.5s ease; }
+.se-card-name { margin: 16px 4px 10px; font-size: 1.05rem; font-weight: 800; letter-spacing: 0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.se-card-price { display: flex; align-items: center; gap: 8px; margin: 0 4px; font-size: 1rem; font-weight: 800; white-space: nowrap; }
+.se-tether {
+  flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%;
+  background-position: center; background-repeat: no-repeat; background-size: 14px, cover;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13.5 8.5V10.7C15.7 10.9 17.4 11.5 17.4 12.3C17.4 13.1 15.7 13.7 13.5 13.9V17H10.5V13.9C8.3 13.7 6.6 13.1 6.6 12.3C6.6 11.5 8.3 10.9 10.5 10.7V8.5H7V6.5H17V8.5H13.5Z' fill='%23134E4A'/%3E%3C/svg%3E"), linear-gradient(135deg, #5EEAD4, #A5F3FC);
+}
+@media (hover: hover) and (pointer: fine) {
+  .se-card:hover { transform: translateY(-4px); border-color: rgba(124,58,237,0.5); box-shadow: 0 12px 32px rgba(0,0,0,0.25); }
+  .se-card:hover .se-card-img img { transform: scale(1.05); }
+}
+.se-more {
+  display: block; max-width: 560px; margin: 40px auto 0; padding: 18px; text-align: center; text-decoration: none;
+  font-size: 1.3rem; font-weight: 800; color: var(--text); border-radius: 4px;
+  border: 2px solid transparent;
+  background: linear-gradient(var(--surface), var(--surface)) padding-box, linear-gradient(90deg, #7C3AED, #4F46E5, #14B8A6) border-box;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+.se-more:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(79,70,229,0.3); }
+@media (max-width: 768px) {
+  .se-tabs-wrap { margin-top: -20px; }
+  .se-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .se-card { padding: 10px 10px 16px; border-radius: 20px; }
+  .se-card-name { margin: 14px 4px 8px; font-size: 0.95rem; }
+  .se-card-price { font-size: 0.9rem; gap: 6px; }
+  .se-tether { width: 20px; height: 20px; background-size: 12px, cover; }
+  .se-tabs { justify-content: space-between; gap: 2px; }
+  .se-tab { font-size: 1rem; padding: 8px 8px 12px; }
+  .se-more { margin-top: 32px; font-size: 1.15rem; padding: 16px; }
+}
+@media (max-width: 360px) {
+  .se-grid { gap: 10px; }
+  .se-card { padding: 8px 8px 12px; border-radius: 16px; }
+  .se-card-name { font-size: 0.8rem; margin: 10px 2px 6px; }
+  .se-card-price { font-size: 0.78rem; margin: 0 2px; gap: 5px; }
+  .se-tether { width: 17px; height: 17px; background-size: 10px, cover; }
+  .se-tab { font-size: 0.9rem; padding: 8px 6px 12px; }
+  .se-tabs-arrow { width: 26px; }
+}
+@media (max-width: 300px) {
+  .se-grid { gap: 8px; }
+  .se-card { padding: 6px 6px 10px; }
+  .se-card-name { font-size: 0.72rem; }
+  .se-card-price { font-size: 0.7rem; gap: 4px; }
+  .se-tether { width: 15px; height: 15px; background-size: 9px, cover; }
+  .se-tab { font-size: 0.85rem; padding: 8px 4px 12px; }
+}

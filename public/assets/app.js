@@ -167,3 +167,18 @@ if (canvas) {
   }
   drawParticles();
 }
+
+// Home "Stake & Earn Rewards": collection tabs and the ‹ › arrows that step between them.
+(function () {
+  const tabs = [...document.querySelectorAll('.se-tab')];
+  if (!tabs.length) return;
+  function show(id) {
+    tabs.forEach(t => { const on = t.dataset.seTab === id; t.classList.toggle('active', on); t.setAttribute('aria-selected', on); if (on) t.scrollIntoView({ block: 'nearest', inline: 'center' }); });
+    document.querySelectorAll('[data-se-panel]').forEach(p => p.classList.toggle('active', p.dataset.sePanel === id));
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.seTab)));
+  document.querySelectorAll('[data-se-step]').forEach(b => b.addEventListener('click', () => {
+    const i = tabs.findIndex(t => t.classList.contains('active'));
+    show(tabs[(i + Number(b.dataset.seStep) + tabs.length) % tabs.length].dataset.seTab);
+  }));
+})();
