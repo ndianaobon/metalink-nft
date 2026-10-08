@@ -136,9 +136,13 @@
     .lang-english { font-size: 0.75rem; color: var(--text-muted); margin-top: 1px; }
     .lang-check { flex-shrink: 0; color: var(--primary); }
 
+    /* Only the content scrolls, never the page itself. If the page scrolled, mobile browsers would
+       hide/show their address and tool bars, dragging the fixed bottom nav up and down with them. */
+    html, body { overflow: hidden; overscroll-behavior: none; }
     .app-body {
-      padding: 56px 0 var(--bottom-nav);
-      min-height: 100vh;
+      position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto;
+      -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
+      padding: 56px 0 calc(var(--bottom-nav) + env(safe-area-inset-bottom, 0px));
     }
 
     .tab-page {
@@ -888,6 +892,43 @@
     .team-level-card .level-num { font-size: 1.2rem; font-weight: 800; color: var(--primary); }
     .team-level-card .level-sub { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
     .team-level-card .level-divider { height: 1px; background: var(--border); margin: 8px 0; }
+    .team-date-wrap { position: relative; margin-bottom: 14px; }
+    .team-date-input {
+      width: 100%; height: 48px; padding: 0 40px 0 16px; border-radius: 14px;
+      background: transparent; border: 1.5px solid var(--border); color: var(--text);
+      font-family: var(--font); font-size: 0.9rem; color-scheme: dark; cursor: pointer;
+    }
+    .team-date-input:focus { outline: none; border-color: var(--primary); }
+    .team-date-input:not(.has-value) { color: transparent; }
+    .team-date-placeholder {
+      position: absolute; left: 17px; top: 50%; transform: translateY(-50%);
+      font-size: 0.9rem; color: var(--text-muted); pointer-events: none;
+    }
+    .team-date-wrap.has-value .team-date-placeholder { display: none; }
+    .team-date-clear {
+      display: none; position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      width: 30px; height: 30px; border-radius: 50%; border: none; background: var(--surface-hover);
+      color: var(--text); font-size: 1.1rem; line-height: 1; cursor: pointer;
+    }
+    .team-date-wrap.has-value .team-date-clear { display: block; }
+    .team-period-tabs { display: flex; gap: 8px; margin-bottom: 8px; }
+    .team-period-btn {
+      flex: 1 1 auto; padding: 9px 10px; border-radius: 10px; border: 1.5px solid var(--border); background: transparent;
+      color: var(--text); font-family: var(--font); font-size: 0.82rem; font-weight: 500; cursor: pointer;
+      white-space: nowrap; transition: all var(--transition);
+    }
+    .team-period-btn:hover { border-color: var(--primary); }
+    .team-period-btn.active { background: var(--gradient); border-color: transparent; color: #fff; font-weight: 700; }
+    .team-stat-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 8px; column-gap: 12px; margin-bottom: 20px; }
+    .team-stat { text-align: center; padding: 22px 4px; }
+    .team-stat .val { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+    .team-stat .label { font-size: 0.82rem; color: var(--text-muted); margin-top: 6px; line-height: 1.3; }
+    @media (max-width: 360px) {
+      .team-period-tabs { gap: 5px; }
+      .team-period-btn { font-size: 0.72rem; padding: 8px 4px; }
+      .team-stat { padding: 16px 2px; }
+      .team-stat .label { font-size: 0.74rem; }
+    }
     .team-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; margin-bottom: 16px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
     .team-tab-btn {
       padding: 12px 8px; font-family: var(--font); font-size: 0.82rem; font-weight: 600;
@@ -1453,8 +1494,6 @@
       .my-actions-row { grid-template-columns: repeat(2, 1fr); }
       .my-stats-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
       .team-level-grid { grid-template-columns: 1fr; }
-      .team-tabs { grid-template-columns: 1fr; }
-      .team-tab-btn:not(:last-child) { border-right: none; border-bottom: 1px solid var(--border); }
     }
     @media (max-width: 339px) {
       .rv-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1572,7 +1611,7 @@
       <!-- Stake catalog -->
       <div class="stake-sub-page active" id="stakeSubStake">
         <div class="stake-category-tabs" id="stakeCategoryTabs"></div>
-        <div id="nftCatalog"></div>
+        <div id="nftCatalog" class="nft-catalog"></div>
       </div>
 
       <!-- Collection: catalog grouped by collection -->
@@ -2031,42 +2070,29 @@
           Back to My
         </button>
 
-        <div class="team-summary-grid">
-          <div class="team-summary-box">
-            <div class="val" id="teamTotalReg">0</div>
-            <div class="label">Total Registered</div>
-          </div>
-          <div class="team-summary-box">
-            <div class="val" id="teamTotalValid">0</div>
-            <div class="label">Total Valid</div>
-          </div>
+        <div class="team-date-wrap">
+          <input type="date" class="team-date-input" id="teamDateInput" onchange="setTeamPeriod(this.value ? 'date' : 'all')" aria-label="Select date">
+          <span class="team-date-placeholder" id="teamDatePlaceholder">Select date</span>
+          <button class="team-date-clear" id="teamDateClear" onclick="setTeamPeriod('all')" aria-label="Clear date">&times;</button>
         </div>
 
-        <div class="team-level-grid">
-          <div class="team-level-card">
-            <div class="level-title">Level A</div>
-            <div class="level-num" id="teamLevelAReg">0</div>
-            <div class="level-sub">Registered</div>
-            <div class="level-divider"></div>
-            <div class="level-num" id="teamLevelAValid">0</div>
-            <div class="level-sub">Valid</div>
-          </div>
-          <div class="team-level-card">
-            <div class="level-title">Level B</div>
-            <div class="level-num" id="teamLevelBReg">0</div>
-            <div class="level-sub">Registered</div>
-            <div class="level-divider"></div>
-            <div class="level-num" id="teamLevelBValid">0</div>
-            <div class="level-sub">Valid</div>
-          </div>
-          <div class="team-level-card">
-            <div class="level-title">Level C</div>
-            <div class="level-num" id="teamLevelCReg">0</div>
-            <div class="level-sub">Registered</div>
-            <div class="level-divider"></div>
-            <div class="level-num" id="teamLevelCValid">0</div>
-            <div class="level-sub">Valid</div>
-          </div>
+        <div class="team-period-tabs" id="teamPeriodTabs">
+          <button class="team-period-btn active" data-period="all" onclick="setTeamPeriod('all')">All</button>
+          <button class="team-period-btn" data-period="today" onclick="setTeamPeriod('today')">Today</button>
+          <button class="team-period-btn" data-period="yesterday" onclick="setTeamPeriod('yesterday')">Yesterday</button>
+          <button class="team-period-btn" data-period="week" onclick="setTeamPeriod('week')">Week</button>
+          <button class="team-period-btn" data-period="month" onclick="setTeamPeriod('month')">Month</button>
+        </div>
+
+        <div class="team-stat-grid">
+          <div class="team-stat"><div class="val" id="teamTotalReg">0</div><div class="label">Total Registered Member</div></div>
+          <div class="team-stat"><div class="val" id="teamTotalValid">0</div><div class="label">Total Valid Member</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelAReg">0</div><div class="label">Member A</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelAValid">0</div><div class="label">Valid A</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelBReg">0</div><div class="label">Member B</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelBValid">0</div><div class="label">Valid B</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelCReg">0</div><div class="label">Member C</div></div>
+          <div class="team-stat"><div class="val" id="teamLevelCValid">0</div><div class="label">Valid C</div></div>
         </div>
 
         <div class="team-tabs">
@@ -3365,18 +3391,51 @@
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('teamPageView').classList.add('active');
       try {
-        if (!teamDataCache) teamDataCache = await api('/api/user/team');
-        const s = teamDataCache.stats || {};
-        document.getElementById('teamTotalReg').textContent = s.totalRegistered || 0;
-        document.getElementById('teamTotalValid').textContent = s.totalValid || 0;
-        document.getElementById('teamLevelAReg').textContent = s.aTier?.registered || 0;
-        document.getElementById('teamLevelAValid').textContent = s.aTier?.valid || 0;
-        document.getElementById('teamLevelBReg').textContent = s.bTier?.registered || 0;
-        document.getElementById('teamLevelBValid').textContent = s.bTier?.valid || 0;
-        document.getElementById('teamLevelCReg').textContent = s.cTier?.registered || 0;
-        document.getElementById('teamLevelCValid').textContent = s.cTier?.valid || 0;
-        filterTeamLevel('A', document.querySelector('.team-tab-btn'));
+        teamDataCache = await api('/api/user/team');
+        setTeamPeriod('all');
       } catch (e) { console.error(e); }
+    }
+
+    // Date filter for the team page: counts members who joined in the chosen period
+    // (local time). Week = last 7 days, Month = last 30 days, both including today.
+    let teamPeriod = 'all';
+    function teamPeriodRange() {
+      const day = 86400000;
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const t = today.getTime();
+      if (teamPeriod === 'today') return [t, t + day];
+      if (teamPeriod === 'yesterday') return [t - day, t];
+      if (teamPeriod === 'week') return [t - 6 * day, t + day];
+      if (teamPeriod === 'month') return [t - 29 * day, t + day];
+      if (teamPeriod === 'date') {
+        const v = document.getElementById('teamDateInput').value;
+        if (v) { const [y, m, d] = v.split('-').map(Number); const s = new Date(y, m - 1, d).getTime(); return [s, s + day]; }
+      }
+      return null;
+    }
+    function teamMembersInPeriod() {
+      const members = (teamDataCache && teamDataCache.members) || [];
+      const range = teamPeriodRange();
+      if (!range) return members;
+      return members.filter(m => { const j = new Date(m.joinedAt).getTime(); return j >= range[0] && j < range[1]; });
+    }
+    function setTeamPeriod(period) {
+      teamPeriod = period;
+      const input = document.getElementById('teamDateInput');
+      if (period !== 'date') input.value = '';
+      const hasDate = period === 'date' && !!input.value;
+      input.classList.toggle('has-value', hasDate);
+      input.parentElement.classList.toggle('has-value', hasDate);
+      document.querySelectorAll('.team-period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+      const members = teamMembersInPeriod();
+      const count = (tier, validOnly) => members.filter(m => (!tier || m.tier === tier) && (!validOnly || m.isValid)).length;
+      document.getElementById('teamTotalReg').textContent = count(null, false);
+      document.getElementById('teamTotalValid').textContent = count(null, true);
+      for (const t of ['A', 'B', 'C']) {
+        document.getElementById('teamLevel' + t + 'Reg').textContent = count(t, false);
+        document.getElementById('teamLevel' + t + 'Valid').textContent = count(t, true);
+      }
+      filterTeamLevel(currentTeamFilter || 'A');
     }
 
     function closeTeamPage() {
@@ -3387,14 +3446,13 @@
 
     function filterTeamLevel(tier, btn) {
       currentTeamFilter = tier;
-      document.querySelectorAll('.team-tab-btn').forEach(b => b.classList.remove('active'));
-      if (btn) btn.classList.add('active');
+      document.querySelectorAll('.team-tab-btn').forEach(b => b.classList.toggle('active', b.textContent.trim() === 'Level ' + tier));
       const el = document.getElementById('teamMembersList');
       if (!teamDataCache || !teamDataCache.members) {
         el.innerHTML = '<div class="my-section-card" style="text-align:center;padding:32px 16px;"><p style="color:var(--text-muted);font-size:0.85rem;">No members found in Level ' + tier + '</p></div>';
         return;
       }
-      const filtered = teamDataCache.members.filter(m => m.tier === tier);
+      const filtered = teamMembersInPeriod().filter(m => m.tier === tier);
       if (!filtered.length) {
         el.innerHTML = '<div class="my-section-card" style="text-align:center;padding:32px 16px;"><p style="color:var(--text-muted);font-size:0.85rem;">No members found in Level ' + tier + '</p></div>';
         return;
