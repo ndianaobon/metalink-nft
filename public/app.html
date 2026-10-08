@@ -140,8 +140,8 @@
        hide/show their address and tool bars, dragging the fixed bottom nav up and down with them. */
     html, body { overflow: hidden; overscroll-behavior: none; }
     .app-body {
-      position: fixed; inset: 0; overflow-x: hidden; overflow-y: auto;
-      -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; overflow-x: hidden; overflow-y: auto;
+      overscroll-behavior-y: contain;
       padding: 56px 0 calc(var(--bottom-nav) + env(safe-area-inset-bottom, 0px));
     }
 
