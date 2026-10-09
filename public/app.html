@@ -1529,6 +1529,48 @@
     }
     .avatar-edit.uploading .profile-avatar { opacity: 0.5; }
 
+    /* ---- Gift button + Rewards page ---- */
+    .my-profile-actions { flex-direction: column; }
+    .my-profile-actions .my-gift-btn {
+      position: relative; background: linear-gradient(135deg, #3B82F6, #2563EB); border-color: transparent; color: #fff;
+      box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+    }
+    .my-profile-actions .my-gift-btn:hover { color: #fff; border-color: transparent; filter: brightness(1.1); }
+    .my-gift-dot {
+      position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%;
+      background: #EF4444; border: 2px solid var(--surface);
+    }
+    .my-gift-btn:not(.has-dot) .my-gift-dot { display: none; }
+    .gift-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+    .gift-hero-icon {
+      width: 56px; height: 56px; border-radius: 18px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #3B82F6, #2563EB); color: #fff; box-shadow: 0 6px 18px rgba(37,99,235,0.4);
+    }
+    .gift-hero-title { font-size: 1.3rem; font-weight: 800; }
+    .gift-hero-sub { font-size: 0.8rem; color: var(--text-muted); }
+    .gift-section-title { font-size: 0.95rem; font-weight: 800; margin: 6px 0 12px; }
+    .gift-reward {
+      display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 12px;
+      border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border);
+    }
+    .gift-reward-icon {
+      width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(59,130,246,0.15); color: #60A5FA;
+    }
+    .gift-reward-info { flex: 1; min-width: 0; }
+    .gift-reward-title { font-size: 0.92rem; font-weight: 800; overflow-wrap: anywhere; }
+    .gift-reward-desc { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; overflow-wrap: anywhere; }
+    .gift-reward-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 4px; }
+    .gift-reward-meta strong { color: var(--positive); }
+    .gift-reward.claimed { opacity: 0.6; }
+    .gift-reward .checkin-btn { width: auto; flex-shrink: 0; }
+    .gift-empty { text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 28px 16px; border: 1px dashed var(--border); border-radius: var(--radius); }
+    @media (max-width: 360px) {
+      .gift-reward { padding: 12px; gap: 10px; }
+      .gift-reward-icon { width: 38px; height: 38px; }
+      .gift-reward .checkin-btn { padding: 9px 12px; }
+    }
+
     /* ---- Daily check-in ---- */
     .checkin-card {
       display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 16px;
@@ -2016,8 +2058,12 @@
             </div>
           </div>
           <div class="my-profile-actions">
-            <button onclick="openSettingsPage()" title="Settings">
+            <button onclick="openSettingsPage()" title="Settings" aria-label="Settings">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <button class="my-gift-btn" onclick="openGiftPage()" title="Rewards" aria-label="Rewards">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>
+              <span class="my-gift-dot" id="giftDot" hidden></span>
             </button>
           </div>
         </div>
@@ -2028,8 +2074,6 @@
           <div class="my-wallet-amount" id="profileBalance" data-money>$0.00</div>
           <div class="my-wallet-token">MLK Token / USDT</div>
         </div>
-
-        <div class="checkin-slot"></div>
 
         <!-- Quick Actions -->
         <div class="my-quick-actions">
@@ -2324,6 +2368,24 @@
         <button class="guide-viewer-nav prev" onclick="event.stopPropagation(); stepGuidePage(-1)" aria-label="Previous page">&#8249;</button>
         <button class="guide-viewer-nav next" onclick="event.stopPropagation(); stepGuidePage(1)" aria-label="Next page">&#8250;</button>
         <div class="guide-viewer-count" id="guideViewerCount"></div>
+      </div>
+
+      <!-- Rewards (gift icon) Full Page View -->
+      <div class="team-page" id="giftPageView">
+        <button class="team-back-btn" onclick="closeTeamPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+        <div class="gift-hero">
+          <div class="gift-hero-icon"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+          <div>
+            <div class="gift-hero-title">Rewards</div>
+            <div class="gift-hero-sub">Claim your daily check-in and special rewards</div>
+          </div>
+        </div>
+        <div class="checkin-slot"></div>
+        <div class="gift-section-title">More rewards</div>
+        <div id="giftRewardsList"></div>
       </div>
 
       <!-- Invite Full Page View -->
@@ -2850,7 +2912,7 @@
       else if (tab === 'earn') loadEarn();
       else if (tab === 'reserve') loadReserve();
       else if (tab === 'assets') loadAssets();
-      else if (tab === 'my') { loadProfile(); loadCheckin(); }
+      else if (tab === 'my') { loadProfile(); loadCheckin(); loadGiftRewards(); }
       if (tab === 'stake') loadCheckin();
     }
 
@@ -3481,7 +3543,7 @@
     let assetsHistoryFilter = 'all';
     const HISTORY_FILTERS = {
       all: { label: 'All', match: () => true },
-      income: { label: 'Income', match: h => ['signup_bonus', 'checkin', 'stake_income', 'earn_income', 'reserve_reward', 'team_commission', 'admin_credit'].includes(h.kind) },
+      income: { label: 'Income', match: h => ['signup_bonus', 'checkin', 'gift_reward', 'stake_income', 'earn_income', 'reserve_reward', 'team_commission', 'admin_credit'].includes(h.kind) },
       deposit: { label: 'Deposits', match: h => h.kind === 'deposit' },
       withdrawal: { label: 'Withdrawals', match: h => /^withdrawal/.test(h.kind) },
       invest: { label: 'Stake & Earn', match: h => /^(stake|earn)/.test(h.kind) },
@@ -3493,6 +3555,7 @@
       withdrawal_refund: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
       withdrawal_cancelled: '<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>',
       checkin: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
+      gift_reward: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
       signup_bonus: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/>',
       team_commission: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/>',
       reserve_reward: '<circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/>',
@@ -3515,6 +3578,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.add('active');
       const el = document.getElementById('guidePages');
       if (!el.children.length) {
@@ -3541,6 +3605,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.add('active');
       document.getElementById('teamOrdersList').innerHTML = '<div class="contrib-empty">Loading...</div>';
       try { teamOrders = await api('/api/user/team/orders'); }
@@ -3607,6 +3672,7 @@
       document.getElementById('teamPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('contribPageView').classList.add('active');
       try {
         const [rebates, team] = await Promise.all([api('/api/user/team/rebates'), api('/api/user/team')]);
@@ -3754,6 +3820,7 @@
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('teamPageView').classList.add('active');
       try {
         teamDataCache = await api('/api/user/team');
@@ -3809,6 +3876,7 @@
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('myMainView').style.display = '';
     }
@@ -4013,6 +4081,7 @@
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.remove('active');
       document.getElementById('announcementPageView').classList.add('active');
@@ -4385,6 +4454,7 @@
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.add('active');
 
       const p = profileData;
@@ -4429,6 +4499,7 @@
       document.getElementById('contribPageView').classList.remove('active');
       document.getElementById('teamOrdersPageView').classList.remove('active');
       document.getElementById('tutorialPageView').classList.remove('active');
+      document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('settingsPageView').classList.add('active');
 
@@ -4593,6 +4664,7 @@
     // Drawn on a canvas so it's a real image users can share or save and post to Telegram.
     const REWARD_KINDS = {
       checkin: { icon: '🎁', title: "You've won today's reward!" },
+      gift: { icon: '🎁', title: 'Gift reward claimed!' },
       stake: { icon: '💎', title: 'Stake reward claimed!' },
       earn: { icon: '📈', title: 'Earn plan income claimed!' },
       reserve: { icon: '🏆', title: 'You won the reservation draw!' },
@@ -4939,12 +5011,65 @@
       return [h, m, s].map(n => String(n).padStart(2, '0')).join(':');
     }
 
+    // ---- Rewards (gift icon) ----
+    let giftRewards = [];
+    function openGiftPage() {
+      document.getElementById('myMainView').style.display = 'none';
+      ['invitePageView', 'teamPageView', 'contribPageView', 'teamOrdersPageView', 'tutorialPageView'].forEach(id => document.getElementById(id).classList.remove('active'));
+      document.getElementById('giftPageView').classList.add('active');
+      document.querySelector('.app-body').scrollTop = 0;
+      renderCheckin();
+      renderGiftRewards();
+      loadCheckin();
+      loadGiftRewards();
+    }
+    async function loadGiftRewards() {
+      try { giftRewards = await api('/api/rewards'); } catch (e) { giftRewards = []; }
+      renderGiftRewards();
+    }
+    function renderGiftRewards() {
+      const el = document.getElementById('giftRewardsList');
+      if (el) el.innerHTML = giftRewards.length ? giftRewards.map(r => `
+        <div class="gift-reward${r.claimed ? ' claimed' : ''}">
+          <div class="gift-reward-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+          <div class="gift-reward-info">
+            <div class="gift-reward-title">${escapeHtml(r.title)}</div>
+            ${r.description ? `<div class="gift-reward-desc">${escapeHtml(r.description)}</div>` : ''}
+            <div class="gift-reward-meta"><strong>+${fmt(r.amount)} USDT</strong>${r.endsAt ? ' &middot; ends ' + new Date(r.endsAt).toLocaleDateString() : ''}</div>
+          </div>
+          <button class="checkin-btn" ${r.claimed ? 'disabled' : ''} onclick="claimGiftReward('${escapeHtml(r.id)}', this)">${r.claimed ? 'Claimed' : 'Claim'}</button>
+        </div>`).join('') : '<div class="gift-empty">No other rewards right now. Check back soon!</div>';
+      updateGiftDot();
+    }
+    async function claimGiftReward(id, btn) {
+      btn.disabled = true; btn.textContent = 'Claiming...';
+      try {
+        const r = await api('/api/rewards/' + encodeURIComponent(id) + '/claim', { method: 'POST' });
+        const g = giftRewards.find(x => x.id === id); if (g) g.claimed = true;
+        renderGiftRewards();
+        showRewardCard({ kind: 'gift', amount: r.claimed, detail: r.title });
+        updateHeaderBalance();
+        refreshLevel();
+      } catch (e) {
+        toast(e.message, 'error');
+        loadGiftRewards();
+      }
+    }
+    function updateGiftDot() {
+      const btn = document.querySelector('.my-gift-btn');
+      if (!btn) return;
+      const any = (checkinState && checkinState.enabled && checkinState.canClaim) || giftRewards.some(r => !r.claimed);
+      btn.classList.toggle('has-dot', !!any);
+      document.getElementById('giftDot').hidden = !any;
+    }
+
     async function loadCheckin() {
       try { checkinState = await api('/api/checkin'); renderCheckin(); } catch (e) {}
     }
 
     function renderCheckin() {
       clearInterval(checkinTimer);
+      updateGiftDot();
       const s = checkinState;
       document.querySelectorAll('.checkin-slot').forEach(slot => {
         if (!s || !s.enabled || (slot.dataset.onlyClaimable && !s.canClaim)) { slot.innerHTML = ''; return; }

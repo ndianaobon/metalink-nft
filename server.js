@@ -426,6 +426,7 @@ function checkAndApplyLevelUpgrade(user, config, emails) {
 const TX_LABELS = {
   signup_bonus: 'Sign-up Bonus',
   checkin: 'Daily Check-in Reward',
+  gift_reward: 'Gift Reward',
   deposit: 'Deposit',
   withdrawal: 'Withdrawal',
   withdrawal_refund: 'Withdrawal Refund',
@@ -1735,6 +1736,121 @@ app.post('/api/checkin', authMiddleware, async (req, res) => {
 
   sendQueuedEmails(emails);
   res.status(result.status).json(result.body);
+});
+
+// ===================== GIFT REWARDS =====================
+// Admin-created rewards shown behind the gift icon on the My page. Each one can be claimed
+// once per user while it is active and not expired; claimed ids are kept on the user row,
+// which is locked while claiming so a double tap can't pay twice.
+
+async function getGiftRewards(c = pool) {
+  return (await db.getSetting(c, 'gift_rewards')).rewards || [];
+}
+
+function giftRewardOpen(r) {
+  return r.active !== false && (!r.endsAt || new Date(r.endsAt).getTime() > Date.now());
+}
+
+app.get('/api/rewards', authMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const claimed = new Set(user.claimedRewards || []);
+  res.json((await getGiftRewards()).filter(giftRewardOpen).map(r => ({
+    id: r.id, title: r.title, description: r.description || '', amount: r.amount, endsAt: r.endsAt || null,
+    claimed: claimed.has(r.id)
+  })));
+});
+
+app.post('/api/rewards/:id/claim', authMiddleware, async (req, res) => {
+  const emails = [];
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    const reward = (await getGiftRewards(c)).find(r => r.id === req.params.id);
+    if (!reward || !giftRewardOpen(reward)) return { status: 404, body: { error: 'This reward is no longer available' } };
+    user.claimedRewards = user.claimedRewards || [];
+    if (user.claimedRewards.includes(reward.id)) return { status: 400, body: { error: 'You have already claimed this reward' } };
+
+    const amount = parseFloat(Number(reward.amount).toFixed(2));
+    user.claimedRewards.push(reward.id);
+    user.walletBalance += amount;
+    await recordTx(c, user, 'gift_reward', amount, reward.title, reward.id);
+    user.totalIncome += amount;
+    user.dailyIncome = user.dailyIncome || {};
+    user.dailyIncome.activity = (user.dailyIncome.activity || 0) + amount;
+    checkAndApplyLevelUpgrade(user, await getConfig(c), emails);
+    await db.saveUser(c, user);
+    return { status: 200, body: { claimed: amount, title: reward.title, walletBalance: user.walletBalance } };
+  });
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
+});
+
+app.get('/api/admin/rewards', adminMiddleware, async (req, res) => {
+  const rewards = await getGiftRewards();
+  const { rows } = await pool.query(`
+    SELECT data->>'refId' AS id, COUNT(*)::int AS claims, COALESCE(SUM((data->>'amount')::numeric), 0)::float AS paid
+    FROM app.transactions WHERE data->>'type' = 'gift_reward' GROUP BY 1`);
+  const stats = Object.fromEntries(rows.map(r => [r.id, r]));
+  res.json(rewards.map(r => ({ ...r, claims: stats[r.id]?.claims || 0, paid: stats[r.id]?.paid || 0 })));
+});
+
+function validateGiftReward(body) {
+  const title = String(body.title || '').trim().slice(0, 80);
+  const description = String(body.description || '').trim().slice(0, 300);
+  const amount = parseFloat(body.amount);
+  if (!title) return { error: 'Give the reward a title' };
+  if (!(amount > 0) || amount > 100000) return { error: 'Amount must be between 0.01 and 100,000 USDT' };
+  let endsAt = null;
+  if (body.endsAt) {
+    const t = new Date(body.endsAt);
+    if (isNaN(t)) return { error: 'Invalid end date' };
+    endsAt = t.toISOString();
+  }
+  return { reward: { title, description, amount: parseFloat(amount.toFixed(2)), endsAt, active: body.active !== false } };
+}
+
+app.post('/api/admin/rewards', adminMiddleware, async (req, res) => {
+  const { reward, error } = validateGiftReward(req.body);
+  if (error) return res.status(400).json({ error });
+  const saved = await tx(async c => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const r = { id: generateId(), ...reward, createdAt: new Date().toISOString() };
+    rewards.unshift(r);
+    await db.setSetting(c, 'gift_rewards', { rewards });
+    return r;
+  });
+  res.json(saved);
+});
+
+app.put('/api/admin/rewards/:id', adminMiddleware, async (req, res) => {
+  const { reward, error } = validateGiftReward(req.body);
+  if (error) return res.status(400).json({ error });
+  const saved = await tx(async c => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const i = rewards.findIndex(r => r.id === req.params.id);
+    if (i < 0) return null;
+    rewards[i] = { ...rewards[i], ...reward };
+    await db.setSetting(c, 'gift_rewards', { rewards });
+    return rewards[i];
+  });
+  if (!saved) return res.status(404).json({ error: 'Reward not found' });
+  res.json(saved);
+});
+
+app.delete('/api/admin/rewards/:id', adminMiddleware, async (req, res) => {
+  const removed = await tx(async c => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const left = rewards.filter(r => r.id !== req.params.id);
+    if (left.length === rewards.length) return false;
+    await db.setSetting(c, 'gift_rewards', { rewards: left });
+    return true;
+  });
+  if (!removed) return res.status(404).json({ error: 'Reward not found' });
+  res.json({ success: true });
 });
 
 // ===================== PROFILE PICTURE =====================

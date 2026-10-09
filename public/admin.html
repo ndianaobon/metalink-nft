@@ -109,6 +109,7 @@
               <button class="admin-nav-item" data-page="reservations">&#127915; Reservations</button>
               <button class="admin-nav-item" data-page="wallets">&#128092; Wallets</button>
               <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
+              <button class="admin-nav-item" data-page="rewards">&#127873; Rewards</button>
               <button class="admin-nav-item" data-page="settings">&#9881; Settings</button>
               <button class="admin-nav-item" style="margin-top:auto;" onclick="Admin.logout()">&#128682; Logout</button>
             </aside>
@@ -163,6 +164,7 @@
         else if (this.currentPage === 'reservations') await this.loadReservations(c);
         else if (this.currentPage === 'wallets') await this.loadWallets(c);
         else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
+        else if (this.currentPage === 'rewards') await this.loadRewards(c);
         else if (this.currentPage === 'settings') await this.loadSettings(c);
       },
 
@@ -830,6 +832,95 @@
           this.toast(`Deposit ${status.toLowerCase()}!`, 'success');
           this.loadPage();
         } catch (e) { this.toast(e.message); }
+      },
+
+      // Gift rewards: shown to users behind the gift icon on the My page; each one is claimable once per user.
+      async loadRewards(c) {
+        try {
+          const rewards = await this.api('/admin/rewards');
+          this.rewardsCache = rewards;
+          const status = r => r.active === false ? '<span class="admin-badge admin-badge-cancelled">Off</span>'
+            : r.endsAt && new Date(r.endsAt) <= new Date() ? '<span class="admin-badge admin-badge-cancelled">Ended</span>'
+            : '<span class="admin-badge admin-badge-approved">Live</span>';
+          c.innerHTML = `
+            <div class="admin-table-card">
+              <div class="admin-table-header">
+                <h3>Gift Rewards (${rewards.length})</h3>
+                <button class="admin-btn admin-btn-primary" onclick="Admin.showRewardForm()">+ New Reward</button>
+              </div>
+              <p style="color:#888;font-size:0.85rem;margin:0 0 12px;">Users see live rewards when they tap the blue gift icon on their My page. Each user can claim each reward once; the amount goes straight to their balance. The daily check-in reward is set under Settings.</p>
+              <div style="overflow-x:auto;">
+                <table class="admin-table">
+                  <thead><tr><th>Title</th><th>Amount</th><th>Ends</th><th>Status</th><th>Claims</th><th>Paid out</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    ${rewards.map(r => `
+                      <tr>
+                        <td style="max-width:260px;"><strong>${escapeHtml(r.title)}</strong>${r.description ? `<div style="color:#888;font-size:0.8rem;">${escapeHtml(r.description)}</div>` : ''}</td>
+                        <td>${Number(r.amount).toFixed(2)} USDT</td>
+                        <td>${r.endsAt ? new Date(r.endsAt).toLocaleString() : 'No end'}</td>
+                        <td>${status(r)}</td>
+                        <td>${r.claims}</td>
+                        <td>${Number(r.paid).toFixed(2)} USDT</td>
+                        <td style="white-space:nowrap;">
+                          <button class="admin-btn admin-btn-edit" onclick="Admin.showRewardForm('${r.id}')">Edit</button>
+                          <button class="admin-btn admin-btn-delete" onclick="Admin.deleteReward('${r.id}')">Delete</button>
+                        </td>
+                      </tr>`).join('')}
+                  </tbody>
+                </table>
+              </div>
+              ${rewards.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No rewards yet. Create one!</p>' : ''}
+            </div>`;
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      showRewardForm(id = null) {
+        const r = id ? (this.rewardsCache || []).find(x => x.id === id) : null;
+        const pad = n => String(n).padStart(2, '0');
+        const local = d => { d = new Date(d); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3>${r ? 'Edit' : 'New'} Reward</h3>
+            <div class="admin-form-group"><label class="admin-form-label">Title</label><input class="admin-form-input" id="rwTitle" maxlength="80" value="${escapeHtml(r?.title || '')}" placeholder="e.g. Weekend Bonus"></div>
+            <div class="admin-form-group"><label class="admin-form-label">Description (optional)</label><textarea class="admin-form-input admin-form-textarea" id="rwDesc" maxlength="300" placeholder="Shown under the title">${escapeHtml(r?.description || '')}</textarea></div>
+            <div class="admin-form-group"><label class="admin-form-label">Amount (USDT)</label><input class="admin-form-input" id="rwAmount" type="number" min="0.01" step="0.01" value="${r?.amount ?? ''}" placeholder="e.g. 2"></div>
+            <div class="admin-form-group"><label class="admin-form-label">Ends (optional — leave empty for no end)</label><input class="admin-form-input" id="rwEnds" type="datetime-local" value="${r?.endsAt ? local(r.endsAt) : ''}"></div>
+            <div class="admin-form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="rwActive" ${r?.active === false ? '' : 'checked'}> Live (users can see and claim it)</label></div>
+            <div style="display:flex;gap:10px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
+              <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveReward('${r?.id || ''}', this)">${r ? 'Update' : 'Create'}</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      },
+
+      async saveReward(id, btn) {
+        const ends = document.getElementById('rwEnds').value;
+        const body = {
+          title: document.getElementById('rwTitle').value,
+          description: document.getElementById('rwDesc').value,
+          amount: document.getElementById('rwAmount').value,
+          endsAt: ends ? new Date(ends).toISOString() : null,
+          active: document.getElementById('rwActive').checked
+        };
+        btn.disabled = true;
+        try {
+          await this.api('/admin/rewards' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
+          btn.closest('.admin-modal-overlay').remove();
+          this.toast(id ? 'Reward updated' : 'Reward created', 'success');
+          this.loadPage();
+        } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
+      },
+
+      async deleteReward(id) {
+        if (!confirm('Delete this reward? Users who have not claimed it yet will no longer see it.')) return;
+        try {
+          await this.api('/admin/rewards/' + id, { method: 'DELETE' });
+          this.toast('Reward deleted', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message, 'error'); }
       },
 
       async loadAnnouncements(c) {
