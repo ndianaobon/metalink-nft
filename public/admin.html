@@ -856,7 +856,7 @@
                   <tbody>
                     ${rewards.map(r => `
                       <tr>
-                        <td style="max-width:260px;"><strong>${escapeHtml(r.title)}</strong>${r.description ? `<div style="color:#888;font-size:0.8rem;">${escapeHtml(r.description)}</div>` : ''}</td>
+                        <td style="max-width:260px;"><strong>${escapeHtml(r.title)}</strong>${r.description ? `<div style="color:#888;font-size:0.8rem;">${escapeHtml(r.description)}</div>` : ''}${r.requirement ? `<div style="color:#b45309;font-size:0.78rem;margin-top:2px;">Requirement: ${escapeHtml(r.requirement)}</div>` : ''}${r.locked && r.unlockedUsers.length ? `<div style="color:#059669;font-size:0.78rem;margin-top:2px;">Unlocked for ${r.unlockedUsers.length} user${r.unlockedUsers.length === 1 ? '' : 's'}</div>` : ''}</td>
                         <td>${Number(r.amount).toFixed(2)} USDT</td>
                         <td>${r.endsAt ? new Date(r.endsAt).toLocaleString() : 'No end'}</td>
                         <td>${status(r)}</td>
@@ -864,6 +864,7 @@
                         <td>${Number(r.paid).toFixed(2)} USDT</td>
                         <td style="white-space:nowrap;">
                           <button class="admin-btn admin-btn-edit" onclick="Admin.setRewardLock('${r.id}', ${!r.locked}, this)">${r.locked ? '&#128275; Unlock' : '&#128274; Lock'}</button>
+                          ${r.locked ? `<button class="admin-btn admin-btn-edit" onclick="Admin.showRewardUsers('${r.id}')">&#128100; Unlock for user</button>` : ''}
                           <button class="admin-btn admin-btn-edit" onclick="Admin.showRewardForm('${r.id}')">Edit</button>
                           <button class="admin-btn admin-btn-delete" onclick="Admin.deleteReward('${r.id}')">Delete</button>
                         </td>
@@ -887,6 +888,7 @@
             <h3>${r ? 'Edit' : 'New'} Reward</h3>
             <div class="admin-form-group"><label class="admin-form-label">Title</label><input class="admin-form-input" id="rwTitle" maxlength="80" value="${escapeHtml(r?.title || '')}" placeholder="e.g. Weekend Bonus"></div>
             <div class="admin-form-group"><label class="admin-form-label">Description (optional)</label><textarea class="admin-form-input admin-form-textarea" id="rwDesc" maxlength="300" placeholder="Shown under the title">${escapeHtml(r?.description || '')}</textarea></div>
+            <div class="admin-form-group"><label class="admin-form-label">Requirement to unlock (optional — shown to users while it's locked)</label><input class="admin-form-input" id="rwReq" maxlength="200" value="${escapeHtml(r?.requirement || '')}" placeholder="e.g. Invite 5 friends who make a deposit"></div>
             <div class="admin-form-group"><label class="admin-form-label">Amount (USDT)</label><input class="admin-form-input" id="rwAmount" type="number" min="0.01" step="0.01" value="${r?.amount ?? ''}" placeholder="e.g. 2"></div>
             <div class="admin-form-group"><label class="admin-form-label">Ends (optional — leave empty for no end)</label><input class="admin-form-input" id="rwEnds" type="datetime-local" value="${r?.endsAt ? local(r.endsAt) : ''}"></div>
             <div class="admin-form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="rwActive" ${r?.active === false ? '' : 'checked'}> Live (users can see it)</label></div>
@@ -910,6 +912,7 @@
         const body = {
           title: document.getElementById('rwTitle').value,
           description: document.getElementById('rwDesc').value,
+          requirement: document.getElementById('rwReq').value,
           amount: document.getElementById('rwAmount').value,
           endsAt: ends ? new Date(ends).toISOString() : null,
           active: document.getElementById('rwActive').checked,
@@ -921,6 +924,61 @@
           btn.closest('.admin-modal-overlay').remove();
           this.toast(id ? 'Reward updated' : 'Reward created', 'success');
           this.loadPage();
+        } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
+      },
+
+      // Unlock a locked reward for individual users who met its requirement.
+      showRewardUsers(id) {
+        const r = (this.rewardsCache || []).find(x => x.id === id);
+        if (!r) return;
+        document.querySelectorAll('.admin-modal-overlay').forEach(m => m.remove());
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = `
+          <div class="admin-modal">
+            <h3>Unlock "${escapeHtml(r.title)}" for a user</h3>
+            <p style="color:#666;font-size:0.85rem;margin:0 0 12px;">${r.requirement ? 'Requirement: <strong>' + escapeHtml(r.requirement) + '</strong><br>' : ''}The reward stays locked for everyone else. Users you add here can claim it straight away.</p>
+            <div class="admin-form-group" style="display:flex;gap:8px;">
+              <input class="admin-form-input" id="rwUnlockUser" placeholder="User UID, email or username" style="flex:1;" onkeydown="if(event.key==='Enter')Admin.unlockRewardForUser('${r.id}', this.nextElementSibling)">
+              <button class="admin-btn admin-btn-primary" onclick="Admin.unlockRewardForUser('${r.id}', this)">Unlock</button>
+            </div>
+            <div class="admin-form-label" style="margin-top:6px;">Unlocked for (${r.unlockedUsers.length})</div>
+            <div style="max-height:260px;overflow:auto;">
+              ${r.unlockedUsers.length ? r.unlockedUsers.map(u => `
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #eee;">
+                  <span><strong>${escapeHtml(u.username)}</strong> <span style="color:#888;font-size:0.8rem;">${escapeHtml(u.uid || '')}</span></span>
+                  <button class="admin-btn admin-btn-delete" onclick="Admin.relockRewardForUser('${r.id}', '${escapeHtml(u.id)}', this)">Lock again</button>
+                </div>`).join('') : '<p style="color:#888;font-size:0.85rem;">Nobody yet.</p>'}
+            </div>
+            <div style="display:flex;margin-top:14px;"><button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button></div>
+          </div>`;
+        document.body.appendChild(modal);
+        setTimeout(() => document.getElementById('rwUnlockUser')?.focus(), 50);
+      },
+
+      async refreshRewardUsers(id) {
+        this.rewardsCache = await this.api('/admin/rewards');
+        this.showRewardUsers(id);
+        if (this.currentPage === 'rewards') this.loadRewards(document.getElementById('adminContent'));
+      },
+
+      async unlockRewardForUser(id, btn) {
+        const user = document.getElementById('rwUnlockUser').value.trim();
+        if (!user) return this.toast('Enter a UID, email or username', 'error');
+        btn.disabled = true;
+        try {
+          const res = await this.api('/admin/rewards/' + id + '/unlock-user', { method: 'POST', body: JSON.stringify({ user }) });
+          this.toast('Unlocked for ' + res.user.username, 'success');
+          await this.refreshRewardUsers(id);
+        } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
+      },
+
+      async relockRewardForUser(id, userId, btn) {
+        btn.disabled = true;
+        try {
+          await this.api('/admin/rewards/' + id + '/unlock-user/' + encodeURIComponent(userId), { method: 'DELETE' });
+          this.toast('Locked again for that user', 'success');
+          await this.refreshRewardUsers(id);
         } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
       },
 

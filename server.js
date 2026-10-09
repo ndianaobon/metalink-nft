@@ -1747,6 +1747,11 @@ async function getGiftRewards(c = pool) {
   return (await db.getSetting(c, 'gift_rewards')).rewards || [];
 }
 
+// A locked reward can still be opened for individual users (e.g. once they meet its requirement).
+function giftRewardLockedFor(r, userId) {
+  return !!r.locked && !(r.unlockedFor || []).includes(userId);
+}
+
 function giftRewardOpen(r) {
   return r.active !== false && (!r.endsAt || new Date(r.endsAt).getTime() > Date.now());
 }
@@ -1757,7 +1762,7 @@ app.get('/api/rewards', authMiddleware, async (req, res) => {
   const claimed = new Set(user.claimedRewards || []);
   res.json((await getGiftRewards()).filter(giftRewardOpen).map(r => ({
     id: r.id, title: r.title, description: r.description || '', amount: r.amount, endsAt: r.endsAt || null,
-    locked: !!r.locked, claimed: claimed.has(r.id)
+    requirement: r.requirement || '', locked: giftRewardLockedFor(r, user.id), claimed: claimed.has(r.id)
   })));
 });
 
@@ -1768,7 +1773,7 @@ app.post('/api/rewards/:id/claim', authMiddleware, async (req, res) => {
     if (!user) return { status: 404, body: { error: 'User not found' } };
     const reward = (await getGiftRewards(c)).find(r => r.id === req.params.id);
     if (!reward || !giftRewardOpen(reward)) return { status: 404, body: { error: 'This reward is no longer available' } };
-    if (reward.locked) return { status: 400, body: { error: 'This reward is locked. It will open soon.' } };
+    if (giftRewardLockedFor(reward, user.id)) return { status: 400, body: { error: reward.requirement ? 'This reward is locked. To unlock it: ' + reward.requirement : 'This reward is locked. It will open soon.' } };
     user.claimedRewards = user.claimedRewards || [];
     if (user.claimedRewards.includes(reward.id)) return { status: 400, body: { error: 'You have already claimed this reward' } };
 
@@ -1793,12 +1798,23 @@ app.get('/api/admin/rewards', adminMiddleware, async (req, res) => {
     SELECT data->>'refId' AS id, COUNT(*)::int AS claims, COALESCE(SUM((data->>'amount')::numeric), 0)::float AS paid
     FROM app.transactions WHERE data->>'type' = 'gift_reward' GROUP BY 1`);
   const stats = Object.fromEntries(rows.map(r => [r.id, r]));
-  res.json(rewards.map(r => ({ ...r, claims: stats[r.id]?.claims || 0, paid: stats[r.id]?.paid || 0 })));
+  // names for the users each reward was unlocked for
+  const ids = [...new Set(rewards.flatMap(r => r.unlockedFor || []))];
+  const names = {};
+  if (ids.length) {
+    const u = await pool.query("SELECT id, uid, data->>'username' AS username FROM app.users WHERE id = ANY($1)", [ids]);
+    u.rows.forEach(x => { names[x.id] = { id: x.id, uid: x.uid, username: x.username }; });
+  }
+  res.json(rewards.map(r => ({
+    ...r, claims: stats[r.id]?.claims || 0, paid: stats[r.id]?.paid || 0,
+    unlockedUsers: (r.unlockedFor || []).map(id => names[id] || { id, uid: '', username: '(deleted user)' })
+  })));
 });
 
 function validateGiftReward(body) {
   const title = String(body.title || '').trim().slice(0, 80);
   const description = String(body.description || '').trim().slice(0, 300);
+  const requirement = String(body.requirement || '').trim().slice(0, 200);
   const amount = parseFloat(body.amount);
   if (!title) return { error: 'Give the reward a title' };
   if (!(amount > 0) || amount > 100000) return { error: 'Amount must be between 0.01 and 100,000 USDT' };
@@ -1808,7 +1824,7 @@ function validateGiftReward(body) {
     if (isNaN(t)) return { error: 'Invalid end date' };
     endsAt = t.toISOString();
   }
-  return { reward: { title, description, amount: parseFloat(amount.toFixed(2)), endsAt, active: body.active !== false, locked: !!body.locked } };
+  return { reward: { title, description, amount: parseFloat(amount.toFixed(2)), endsAt, active: body.active !== false, locked: !!body.locked, requirement } };
 }
 
 app.post('/api/admin/rewards', adminMiddleware, async (req, res) => {
@@ -1853,6 +1869,46 @@ app.put('/api/admin/rewards/:id/lock', adminMiddleware, async (req, res) => {
   });
   if (!saved) return res.status(404).json({ error: 'Reward not found' });
   res.json(saved);
+});
+
+// Unlock a locked reward for one user (found by UID, email or username), or lock it for them again.
+async function findUserForAdmin(c, query) {
+  const q = String(query || '').trim();
+  if (!q) return null;
+  return (await db.findUserBy(c, 'uid', q.toUpperCase())) || (await db.findUserBy(c, 'uid', q))
+    || (await db.findUserBy(c, 'username_lower', q.toLowerCase()))
+    || (await c.query('SELECT data FROM app.users WHERE lower(email) = lower($1) ORDER BY seq LIMIT 1', [q])).rows[0]?.data || null;
+}
+
+app.post('/api/admin/rewards/:id/unlock-user', adminMiddleware, async (req, res) => {
+  const result = await tx(async c => {
+    const user = await findUserForAdmin(c, req.body.user);
+    if (!user) return { status: 404, body: { error: 'No user found with that UID, email or username' } };
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const r = rewards.find(x => x.id === req.params.id);
+    if (!r) return { status: 404, body: { error: 'Reward not found' } };
+    r.unlockedFor = r.unlockedFor || [];
+    if (r.unlockedFor.includes(user.id)) return { status: 400, body: { error: user.username + ' already has this reward unlocked' } };
+    r.unlockedFor.push(user.id);
+    await db.setSetting(c, 'gift_rewards', { rewards });
+    return { status: 200, body: { success: true, user: { id: user.id, uid: user.uid, username: user.username } } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+app.delete('/api/admin/rewards/:id/unlock-user/:userId', adminMiddleware, async (req, res) => {
+  const ok = await tx(async c => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const r = rewards.find(x => x.id === req.params.id);
+    if (!r || !(r.unlockedFor || []).includes(req.params.userId)) return false;
+    r.unlockedFor = r.unlockedFor.filter(id => id !== req.params.userId);
+    await db.setSetting(c, 'gift_rewards', { rewards });
+    return true;
+  });
+  if (!ok) return res.status(404).json({ error: 'Not unlocked for that user' });
+  res.json({ success: true });
 });
 
 app.delete('/api/admin/rewards/:id', adminMiddleware, async (req, res) => {

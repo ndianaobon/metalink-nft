@@ -1570,6 +1570,11 @@
       font-size: 0.66rem; font-weight: 700; background: rgba(245,158,11,0.15); color: #FBBF24; white-space: nowrap;
     }
     .gift-locked-btn { display: inline-flex; align-items: center; gap: 5px; }
+    .gift-reward-req {
+      margin-top: 6px; padding: 6px 9px; border-radius: 8px; font-size: 0.72rem; line-height: 1.4; overflow-wrap: anywhere;
+      background: rgba(245,158,11,0.1); color: #FCD34D; border: 1px solid rgba(245,158,11,0.25);
+    }
+    .gift-reward-req strong { color: #FBBF24; }
     .gift-empty { text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 28px 16px; border: 1px dashed var(--border); border-radius: var(--radius); }
     @media (max-width: 360px) {
       .gift-reward { padding: 12px; gap: 10px; }
@@ -5041,6 +5046,7 @@
           <div class="gift-reward-info">
             <div class="gift-reward-title">${escapeHtml(r.title)}${r.locked && !r.claimed ? ' <span class="gift-lock-badge">&#128274; Locked</span>' : ''}</div>
             ${r.description ? `<div class="gift-reward-desc">${escapeHtml(r.description)}</div>` : ''}
+            ${r.locked && !r.claimed && r.requirement ? `<div class="gift-reward-req"><strong>To unlock:</strong> ${escapeHtml(r.requirement)}</div>` : ''}
             <div class="gift-reward-meta"><strong>+${fmt(r.amount)} USDT</strong>${r.endsAt ? ' &middot; ends ' + new Date(r.endsAt).toLocaleDateString() : ''}</div>
           </div>
           ${r.claimed ? '<button class="checkin-btn" disabled>Claimed</button>'
