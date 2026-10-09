@@ -839,9 +839,10 @@
         try {
           const rewards = await this.api('/admin/rewards');
           this.rewardsCache = rewards;
-          const status = r => r.active === false ? '<span class="admin-badge admin-badge-cancelled">Off</span>'
+          const status = r => (r.active === false ? '<span class="admin-badge admin-badge-cancelled">Off</span>'
             : r.endsAt && new Date(r.endsAt) <= new Date() ? '<span class="admin-badge admin-badge-cancelled">Ended</span>'
-            : '<span class="admin-badge admin-badge-approved">Live</span>';
+            : '<span class="admin-badge admin-badge-approved">Live</span>')
+            + (r.locked ? ' <span class="admin-badge admin-badge-pending">&#128274; Locked</span>' : ' <span class="admin-badge admin-badge-approved">&#128275; Unlocked</span>');
           c.innerHTML = `
             <div class="admin-table-card">
               <div class="admin-table-header">
@@ -862,6 +863,7 @@
                         <td>${r.claims}</td>
                         <td>${Number(r.paid).toFixed(2)} USDT</td>
                         <td style="white-space:nowrap;">
+                          <button class="admin-btn admin-btn-edit" onclick="Admin.setRewardLock('${r.id}', ${!r.locked}, this)">${r.locked ? '&#128275; Unlock' : '&#128274; Lock'}</button>
                           <button class="admin-btn admin-btn-edit" onclick="Admin.showRewardForm('${r.id}')">Edit</button>
                           <button class="admin-btn admin-btn-delete" onclick="Admin.deleteReward('${r.id}')">Delete</button>
                         </td>
@@ -887,7 +889,14 @@
             <div class="admin-form-group"><label class="admin-form-label">Description (optional)</label><textarea class="admin-form-input admin-form-textarea" id="rwDesc" maxlength="300" placeholder="Shown under the title">${escapeHtml(r?.description || '')}</textarea></div>
             <div class="admin-form-group"><label class="admin-form-label">Amount (USDT)</label><input class="admin-form-input" id="rwAmount" type="number" min="0.01" step="0.01" value="${r?.amount ?? ''}" placeholder="e.g. 2"></div>
             <div class="admin-form-group"><label class="admin-form-label">Ends (optional — leave empty for no end)</label><input class="admin-form-input" id="rwEnds" type="datetime-local" value="${r?.endsAt ? local(r.endsAt) : ''}"></div>
-            <div class="admin-form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="rwActive" ${r?.active === false ? '' : 'checked'}> Live (users can see and claim it)</label></div>
+            <div class="admin-form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="rwActive" ${r?.active === false ? '' : 'checked'}> Live (users can see it)</label></div>
+            <div class="admin-form-group">
+              <label class="admin-form-label">Claiming</label>
+              <div style="display:flex;gap:16px;flex-wrap:wrap;">
+                <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="rwLock" value="unlocked" ${r?.locked ? '' : 'checked'}> &#128275; Unlocked — users can claim now</label>
+                <label style="display:flex;align-items:center;gap:6px;"><input type="radio" name="rwLock" value="locked" ${r?.locked ? 'checked' : ''}> &#128274; Locked — users see it but can't claim yet</label>
+              </div>
+            </div>
             <div style="display:flex;gap:10px;">
               <button class="admin-btn" style="flex:1;background:#eee;" onclick="this.closest('.admin-modal-overlay').remove()">Cancel</button>
               <button class="admin-btn admin-btn-primary" style="flex:1;" onclick="Admin.saveReward('${r?.id || ''}', this)">${r ? 'Update' : 'Create'}</button>
@@ -903,13 +912,23 @@
           description: document.getElementById('rwDesc').value,
           amount: document.getElementById('rwAmount').value,
           endsAt: ends ? new Date(ends).toISOString() : null,
-          active: document.getElementById('rwActive').checked
+          active: document.getElementById('rwActive').checked,
+          locked: document.querySelector('input[name="rwLock"]:checked').value === 'locked'
         };
         btn.disabled = true;
         try {
           await this.api('/admin/rewards' + (id ? '/' + id : ''), { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
           btn.closest('.admin-modal-overlay').remove();
           this.toast(id ? 'Reward updated' : 'Reward created', 'success');
+          this.loadPage();
+        } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
+      },
+
+      async setRewardLock(id, locked, btn) {
+        btn.disabled = true;
+        try {
+          await this.api('/admin/rewards/' + id + '/lock', { method: 'PUT', body: JSON.stringify({ locked }) });
+          this.toast(locked ? 'Reward locked' : 'Reward unlocked — users can claim it now', 'success');
           this.loadPage();
         } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
       },

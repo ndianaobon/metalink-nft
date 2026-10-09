@@ -1757,7 +1757,7 @@ app.get('/api/rewards', authMiddleware, async (req, res) => {
   const claimed = new Set(user.claimedRewards || []);
   res.json((await getGiftRewards()).filter(giftRewardOpen).map(r => ({
     id: r.id, title: r.title, description: r.description || '', amount: r.amount, endsAt: r.endsAt || null,
-    claimed: claimed.has(r.id)
+    locked: !!r.locked, claimed: claimed.has(r.id)
   })));
 });
 
@@ -1768,6 +1768,7 @@ app.post('/api/rewards/:id/claim', authMiddleware, async (req, res) => {
     if (!user) return { status: 404, body: { error: 'User not found' } };
     const reward = (await getGiftRewards(c)).find(r => r.id === req.params.id);
     if (!reward || !giftRewardOpen(reward)) return { status: 404, body: { error: 'This reward is no longer available' } };
+    if (reward.locked) return { status: 400, body: { error: 'This reward is locked. It will open soon.' } };
     user.claimedRewards = user.claimedRewards || [];
     if (user.claimedRewards.includes(reward.id)) return { status: 400, body: { error: 'You have already claimed this reward' } };
 
@@ -1807,7 +1808,7 @@ function validateGiftReward(body) {
     if (isNaN(t)) return { error: 'Invalid end date' };
     endsAt = t.toISOString();
   }
-  return { reward: { title, description, amount: parseFloat(amount.toFixed(2)), endsAt, active: body.active !== false } };
+  return { reward: { title, description, amount: parseFloat(amount.toFixed(2)), endsAt, active: body.active !== false, locked: !!body.locked } };
 }
 
 app.post('/api/admin/rewards', adminMiddleware, async (req, res) => {
@@ -1835,6 +1836,20 @@ app.put('/api/admin/rewards/:id', adminMiddleware, async (req, res) => {
     rewards[i] = { ...rewards[i], ...reward };
     await db.setSetting(c, 'gift_rewards', { rewards });
     return rewards[i];
+  });
+  if (!saved) return res.status(404).json({ error: 'Reward not found' });
+  res.json(saved);
+});
+
+app.put('/api/admin/rewards/:id/lock', adminMiddleware, async (req, res) => {
+  const saved = await tx(async c => {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('gift_rewards'))");
+    const rewards = await getGiftRewards(c);
+    const r = rewards.find(x => x.id === req.params.id);
+    if (!r) return null;
+    r.locked = !!req.body.locked;
+    await db.setSetting(c, 'gift_rewards', { rewards });
+    return r;
   });
   if (!saved) return res.status(404).json({ error: 'Reward not found' });
   res.json(saved);
