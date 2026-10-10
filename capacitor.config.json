@@ -3,5 +3,10 @@
   "appName": "MetaLink NFT",
   "webDir": "www",
   "android": { "allowMixedContent": false },
-  "server": { "androidScheme": "https" }
+  "appendUserAgent": "MetaLinkApp",
+  "server": {
+    "url": "https://metalinknft.com",
+    "androidScheme": "https",
+    "errorPath": "offline.html"
+  }
 }

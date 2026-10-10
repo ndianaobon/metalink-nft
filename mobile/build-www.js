@@ -33,4 +33,6 @@ for (const file of fs.readdirSync(OUT).filter(f => f.endsWith('.html'))) {
   const html = fs.readFileSync(p, 'utf8').replace(/<head>/i, '<head>\n' + bridge);
   fs.writeFileSync(p, html);
 }
+// Shown by the app (capacitor.config.json errorPath) when the live site can't be reached.
+fs.copyFileSync(path.join(__dirname, 'offline.html'), path.join(OUT, 'offline.html'));
 console.log('Built www/ for ' + SITE_URL);
