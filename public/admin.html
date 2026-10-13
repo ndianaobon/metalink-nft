@@ -668,6 +668,9 @@
                           ${w.status === 'Pending' ? `
                             <button class="admin-btn admin-btn-approve" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Approved')">Approve</button>
                             <button class="admin-btn admin-btn-reject" onclick="Admin.updateWithdrawal('${escapeHtml(w.id)}','Rejected')">Reject</button>
+                          ` : w.status === 'Rejected' ? `
+                            ${w.hiddenFromUser ? '<span style="font-size:0.75rem;color:#888;">Hidden from user</span><br>' : ''}
+                            <button class="admin-btn admin-btn-edit" title="${w.hiddenFromUser ? 'Show this withdrawal in the user history again' : 'Remove this withdrawal from the user history'}" onclick="Admin.setWithdrawalHidden('${escapeHtml(w.id)}', ${!w.hiddenFromUser})">${w.hiddenFromUser ? 'Show to user' : 'Hide from user'}</button>
                           ` : `<span style="color:#888;">${w.status === 'Cancelled' ? 'Cancelled by user' : 'Processed'}</span>`}
                         </td>
                       </tr>`).join('')}
@@ -688,39 +691,60 @@
         } catch (e) { this.toast(e.message); }
       },
 
+      async setWithdrawalHidden(id, hidden) {
+        if (!confirm(hidden ? 'Hide this rejected withdrawal from the user history?' : 'Show this withdrawal in the user history again?')) return;
+        try {
+          await this.api(`/admin/withdrawals/${id}/visibility`, { method: 'PUT', body: JSON.stringify({ hidden }) });
+          this.toast(hidden ? 'Hidden from user history' : 'Visible in user history again', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
       async loadDeposits(c) {
         try {
           const deposits = await this.api('/admin/deposits');
+          this.depositsCache = deposits;
           const pending = deposits.filter(d => d.status === 'Pending').length;
-          const networkLabel = n => n === 'bep20' ? 'BEP20' : n === 'trc20' ? 'TRC20' : '-';
           c.innerHTML = `
             <div class="admin-table-card">
-              <div class="admin-table-header"><h3>Deposits (${deposits.length})${pending ? ` &middot; <span style="color:#d97706;">${pending} pending review</span>` : ''}</h3></div>
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+                <h3>Deposits (${deposits.length})${pending ? ` &middot; <span style="color:#d97706;">${pending} pending review</span>` : ''}</h3>
+                <input class="admin-form-input" id="depositFilter" style="max-width:260px;" placeholder="Search by user UID" value="${escapeHtml(this.depositQuery || '')}" oninput="Admin.depositQuery=this.value;Admin.renderDepositRows()">
+              </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
                   <thead><tr><th>Date</th><th>User</th><th>Amount</th><th>Network</th><th>TxID</th><th>Screenshot</th><th>Status</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    ${deposits.map(d => `<tr>
-                        <td>${new Date(d.createdAt).toLocaleString()}</td>
-                        <td><strong>${escapeHtml(d.username || 'Unknown')}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(d.email)}${d.uid ? ' &middot; ' + escapeHtml(d.uid) : ''}</span></td>
-                        <td><strong>${d.amount} USDT</strong>${d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : ''}</td>
-                        <td>${networkLabel(d.network)}</td>
-                        <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${d.txid ? escapeHtml(d.txid) : '-'}</td>
-                        <td>${d.hasProof ? `<button class="admin-btn admin-btn-edit" onclick="Admin.viewDepositProof('${escapeHtml(d.id)}')">View</button>` : '<span style="color:#ccc;">None</span>'}</td>
-                        <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span></td>
-                        <td style="white-space:nowrap;">
-                          ${d.status === 'Pending' ? `
-                            <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Approved')">Approve</button>
-                            <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Rejected')">Reject</button>
-                          ` : '<span style="color:#888;">Processed</span>'}
-                        </td>
-                      </tr>`).join('')}
-                  </tbody>
+                  <tbody id="depositRows"></tbody>
                 </table>
               </div>
-              ${deposits.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No deposits yet</p>' : ''}
+              <p id="depositEmpty" style="text-align:center;color:#888;padding:20px;display:none;"></p>
             </div>`;
+          this.renderDepositRows();
         } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      renderDepositRows() {
+        const q = (this.depositQuery || '').trim().toLowerCase();
+        const deposits = (this.depositsCache || []).filter(d => !q || (d.uid || '').toLowerCase().includes(q));
+        const networkLabel = n => n === 'bep20' ? 'BEP20' : n === 'trc20' ? 'TRC20' : '-';
+        document.getElementById('depositRows').innerHTML = deposits.map(d => `<tr>
+            <td>${new Date(d.createdAt).toLocaleString()}</td>
+            <td><strong>${escapeHtml(d.username || 'Unknown')}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(d.email)}${d.uid ? ' &middot; ' + escapeHtml(d.uid) : ''}</span></td>
+            <td><strong>${d.amount} USDT</strong>${d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : ''}</td>
+            <td>${networkLabel(d.network)}</td>
+            <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${d.txid ? escapeHtml(d.txid) : '-'}</td>
+            <td>${d.hasProof ? `<button class="admin-btn admin-btn-edit" onclick="Admin.viewDepositProof('${escapeHtml(d.id)}')">View</button>` : '<span style="color:#ccc;">None</span>'}</td>
+            <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span></td>
+            <td style="white-space:nowrap;">
+              ${d.status === 'Pending' ? `
+                <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Approved')">Approve</button>
+                <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Rejected')">Reject</button>
+              ` : '<span style="color:#888;">Processed</span>'}
+            </td>
+          </tr>`).join('');
+        const empty = document.getElementById('depositEmpty');
+        empty.style.display = deposits.length ? 'none' : '';
+        empty.textContent = q ? 'No deposits found for that UID' : 'No deposits yet';
       },
 
       // Screenshots are admin-only, so they're fetched with the admin token rather than linked directly.

@@ -1459,13 +1459,17 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
 
   const withdrawals = await db.listDocs(pool, 'withdrawals', { userId: req.userId });
   const deposits = await db.listDocs(pool, 'deposits', { userId: req.userId });
+  // Rejected withdrawals the admin hid: drop both the withdrawal and its refund from the history
+  // (together they net to zero, so the remaining balanceAfter figures still line up).
+  const hiddenWithdrawals = new Set(withdrawals.filter(w => w.status === 'Rejected' && w.hiddenFromUser).map(w => w.id));
 
   const totalWithdrawn = withdrawals.filter(w => w.status === 'Approved').reduce((s, w) => s + w.amount, 0);
   const notWithdrawn = user.totalIncome - totalWithdrawn;
 
   // Everything that changed the balance comes from the ledger. Deposits/withdrawals the ledger doesn't
   // cover (still pending, rejected, or from before the ledger existed) come from their own records.
-  const txs = await db.listDocs(pool, 'transactions', { userId: req.userId });
+  const txs = (await db.listDocs(pool, 'transactions', { userId: req.userId }))
+    .filter(t => !((t.type === 'withdrawal' || t.type === 'withdrawal_refund') && hiddenWithdrawals.has(t.refId)));
   const ledgerDeposits = new Set(txs.filter(t => t.type === 'deposit').map(t => t.refId));
   const ledgerWithdrawals = new Set(txs.filter(t => t.type === 'withdrawal').map(t => t.refId));
   const withdrawalById = Object.fromEntries(withdrawals.map(w => [w.id, w]));
@@ -1485,7 +1489,7 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
       status: t.type === 'withdrawal' ? withdrawalStatus(withdrawalById[t.refId]) : 'Completed',
       ...(t.type === 'withdrawal' ? withdrawalExtras(withdrawalById[t.refId]) : {})
     })),
-    ...withdrawals.filter(w => !ledgerWithdrawals.has(w.id)).map(w => ({
+    ...withdrawals.filter(w => !ledgerWithdrawals.has(w.id) && !hiddenWithdrawals.has(w.id)).map(w => ({
       kind: 'withdrawal', type: TX_LABELS.withdrawal, description: '', amount: -w.amount, date: w.createdAt, status: withdrawalStatus(w),
       ...withdrawalExtras(w)
     })),
@@ -1609,7 +1613,8 @@ app.post('/api/withdrawals/:id/cancel', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/withdrawals', authMiddleware, async (req, res) => {
-  res.json(await db.listDocs(pool, 'withdrawals', { userId: req.userId }));
+  const withdrawals = await db.listDocs(pool, 'withdrawals', { userId: req.userId });
+  res.json(withdrawals.filter(w => !(w.status === 'Rejected' && w.hiddenFromUser)));
 });
 
 // ===================== DEPOSIT ROUTES =====================
@@ -2309,6 +2314,20 @@ app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {
   }
 
   res.json(withdrawal);
+});
+
+// Hide (or show again) a rejected withdrawal in the user's history. Only rejected ones: anything
+// else still affects what the user sees as withdrawn or pending.
+app.put('/api/admin/withdrawals/:id/visibility', adminMiddleware, async (req, res) => {
+  const hidden = !!req.body.hidden;
+  const result = await tx(async c => {
+    const w = await db.getDoc(c, 'withdrawals', req.params.id, { lock: true });
+    if (!w) return { status: 404, body: { error: 'Withdrawal not found' } };
+    if (w.status !== 'Rejected') return { status: 400, body: { error: 'Only rejected withdrawals can be hidden.' } };
+    w.hiddenFromUser = hidden;
+    return { status: 200, body: await db.saveDoc(c, 'withdrawals', w) };
+  });
+  res.status(result.status).json(result.body);
 });
 
 app.get('/api/admin/deposits', adminMiddleware, async (req, res) => {
