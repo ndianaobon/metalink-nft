@@ -2526,6 +2526,14 @@
             </div>
             <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
+          <button class="settings-row" onclick="openDeleteAccountModal()">
+            <div class="settings-row-icon" style="background:rgba(220,38,38,0.12);">&#128465;</div>
+            <div class="settings-row-info">
+              <div class="settings-row-title" style="color:#dc2626;">Delete Account</div>
+              <div class="settings-row-sub">Permanently delete your account and personal data</div>
+            </div>
+            <svg class="settings-row-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
         </div>
       </div>
 
@@ -2744,6 +2752,33 @@
         <input type="password" id="confirmNewPasswordInput" placeholder="Re-enter new password">
       </div>
       <button class="btn btn-primary" id="saveChangePasswordBtn">Update Password</button>
+      <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Delete Account Modal -->
+  <div class="modal-overlay" id="deleteAccountModal">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-title" style="color:#dc2626;">Delete Account</div>
+      <div style="font-size:0.85rem;line-height:1.5;color:var(--text-secondary);margin-bottom:14px;">
+        <p style="margin-bottom:8px;">This permanently deletes your account. <strong>It cannot be undone.</strong></p>
+        <p style="margin-bottom:8px;" id="deleteAccountBalanceNote"></p>
+        <p>Your email, username, password, profile picture, saved wallet address, two-factor setup and IP history are removed. A minimal record of deposits, withdrawals and balance changes may be kept, linked to your UID, as described in our <a href="/delete-account.html" target="_blank" rel="noopener">deletion policy</a>.</p>
+      </div>
+      <div class="form-field">
+        <label>Password</label>
+        <input type="password" id="deleteAccountPassword" placeholder="Enter your password" autocomplete="current-password">
+      </div>
+      <div class="form-field" id="deleteAccountCodeField" style="display:none;">
+        <label>Google Authenticator Code</label>
+        <input type="text" id="deleteAccountCode" inputmode="numeric" maxlength="6" placeholder="6-digit code">
+      </div>
+      <label style="display:flex;gap:10px;align-items:flex-start;font-size:0.82rem;margin-bottom:14px;cursor:pointer;">
+        <input type="checkbox" id="deleteAccountConfirm" style="width:18px;height:18px;margin-top:1px;flex-shrink:0;">
+        <span>I understand that my account and any remaining balance will be lost permanently.</span>
+      </label>
+      <button class="btn btn-primary" id="deleteAccountBtn" style="background:#dc2626;border-color:#dc2626;">Delete My Account</button>
       <button class="btn btn-outline" style="margin-top:10px;" onclick="closeAllModals()">Cancel</button>
     </div>
   </div>
@@ -4581,6 +4616,41 @@
         closeAllModals();
       } catch (e) { toast(e.message, 'error'); }
       finally { btn.disabled = false; btn.textContent = 'Update Password'; }
+    });
+
+    async function openDeleteAccountModal() {
+      if (!profileData) {
+        try { profileData = await api('/api/user/profile'); } catch (e) { toast('Load your profile first', 'error'); return; }
+      }
+      const balance = Number(profileData.walletBalance) || 0;
+      document.getElementById('deleteAccountBalanceNote').innerHTML = balance > 0
+        ? `You still have <strong>${balance.toFixed(2)} USDT</strong> in your balance. Withdraw it first if you want to keep it.`
+        : '';
+      document.getElementById('deleteAccountPassword').value = '';
+      document.getElementById('deleteAccountCode').value = '';
+      document.getElementById('deleteAccountConfirm').checked = false;
+      document.getElementById('deleteAccountCodeField').style.display = profileData.twoFactorEnabled ? '' : 'none';
+      openModal('deleteAccountModal');
+    }
+
+    document.getElementById('deleteAccountBtn').addEventListener('click', async () => {
+      const password = document.getElementById('deleteAccountPassword').value;
+      const code = document.getElementById('deleteAccountCode').value.trim();
+      if (!password) return toast('Enter your password', 'error');
+      if (profileData?.twoFactorEnabled && !code) return toast('Enter your authenticator code', 'error');
+      if (!document.getElementById('deleteAccountConfirm').checked) return toast('Tick the box to confirm', 'error');
+      const btn = document.getElementById('deleteAccountBtn');
+      btn.disabled = true; btn.textContent = 'Deleting...';
+      try {
+        await api('/api/user/delete-account', { method: 'POST', body: JSON.stringify({ password, code }) });
+        toast('Your account has been deleted', 'success');
+        localStorage.removeItem('mlk_token');
+        localStorage.removeItem('mlk_user');
+        setTimeout(() => { window.location.href = '/'; }, 1500);
+      } catch (e) {
+        toast(e.message, 'error');
+        btn.disabled = false; btn.textContent = 'Delete My Account';
+      }
     });
 
     // ---- Google Authenticator (2FA) ----

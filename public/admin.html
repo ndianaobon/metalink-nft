@@ -338,7 +338,23 @@
           ${u.bannedAt
             ? `<button class="admin-btn admin-btn-approve" onclick="Admin.moderate('unban','${id}','${name}')">Unban</button>`
             : `<button class="admin-btn admin-btn-delete" onclick="Admin.showBanForm('${id}','${name}')">Ban</button>`}
-          <button class="admin-btn" style="background:#eef2ff;color:#4f46e5;" onclick="Admin.showUserIps('${id}')">IPs</button>`;
+          <button class="admin-btn" style="background:#eef2ff;color:#4f46e5;" onclick="Admin.showUserIps('${id}')">IPs</button>
+          <button class="admin-btn" style="background:#dc2626;color:#fff;" onclick="Admin.deleteUser('${id}','${name}')">Delete</button>`;
+      },
+
+      async deleteUser(id, username) {
+        const typed = prompt(`Permanently delete ${username}'s account?
+
+Their email, username, password, profile picture, wallet address, 2FA and IP history are wiped and they are logged out. Any balance is lost. Deposit/withdrawal records are kept under their UID. This cannot be undone.
+
+Type DELETE to confirm.`);
+        if (typed === null) return;
+        if (typed.trim() !== 'DELETE') { this.toast('Not deleted: you must type DELETE'); return; }
+        try {
+          await this.api(`/admin/users/${id}`, { method: 'DELETE' });
+          this.toast(`${username}'s account deleted`, 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
       },
 
       showSuspendForm(id, username) {

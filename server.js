@@ -603,7 +603,7 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
   let referredBy = null;
   if (referralCode) {
     const referrer = await db.findUserBy(pool, 'uid', referralCode);
-    if (!referrer) return res.status(400).json({ error: 'Invalid referral code' });
+    if (!referrer || referrer.deletedAt) return res.status(400).json({ error: 'Invalid referral code' });
     referredBy = referrer.id;
   }
 
@@ -1963,6 +1963,73 @@ app.delete('/api/user/avatar', authMiddleware, async (req, res) => {
   res.json(publicProfile(user));
 });
 
+// ===================== ACCOUNT DELETION =====================
+// Follows the Privacy Policy / delete-account page: personal data is wiped, but the user row stays as
+// an anonymous stub (UID only) so deposits, withdrawals and the ledger still add up for the records
+// we're allowed to keep. Used by both the user (Settings) and the admin (Users page).
+async function deleteUserAccount(c, userId, deletedBy) {
+  const u = await db.getUser(c, userId, { lock: true });
+  if (!u || u.deletedAt) return { status: 404, body: { error: 'User not found' } };
+
+  // Money in flight has to be settled first, or it could be paid to / credited to a deleted account.
+  const pending = await c.query(`
+    SELECT (SELECT count(*) FROM app.withdrawals WHERE user_id = $1 AND data->>'status' = 'Pending')::int AS w,
+           (SELECT count(*) FROM app.deposits WHERE user_id = $1 AND data->>'status' = 'Pending')::int AS d`, [userId]);
+  if (pending.rows[0].w) return { status: 400, body: { error: deletedBy === 'admin'
+    ? 'This user has a pending withdrawal. Approve or reject it first.'
+    : 'You have a pending withdrawal. Cancel it or wait until it is processed, then try again.' } };
+  if (pending.rows[0].d) return { status: 400, body: { error: deletedBy === 'admin'
+    ? 'This user has a pending deposit. Approve or reject it first.'
+    : 'You have a deposit waiting for review. Please wait until it is processed, then try again.' } };
+
+  const avatar = typeof u.avatar === 'string' && u.avatar.match(/^\/uploads\/([\w-]+\.\w+)$/);
+  if (avatar) await c.query('DELETE FROM app.uploads WHERE name = $1', [avatar[1]]);
+  await c.query(`DELETE FROM app.uploads WHERE name IN (SELECT data->>'proofName' FROM app.deposits WHERE user_id = $1 AND data ? 'proofName')`, [userId]);
+  await c.query(`UPDATE app.deposits SET data = data - 'proofName' WHERE user_id = $1`, [userId]);
+  const anonName = 'deleted_' + u.uid;
+  await c.query(`UPDATE app.withdrawals SET data = (data - 'email') || jsonb_build_object('username', $2::text) WHERE user_id = $1`, [userId, anonName]);
+  await c.query('DELETE FROM app.wallet_submissions WHERE user_id = $1', [userId]);
+  await c.query('DELETE FROM app.user_ips WHERE user_id = $1', [userId]);
+  await c.query('DELETE FROM app.sessions WHERE user_id = $1 AND role = $2', [userId, 'user']);
+  await c.query('DELETE FROM app.ephemeral WHERE (kind = $1 AND key = $2) OR (kind = $3 AND key = $4)', [EPH_2FA_SETUP, userId, EPH_RESET, u.email]);
+
+  const unusable = await hashPassword(crypto.randomBytes(32).toString('hex'));
+  const email = u.email;
+  Object.assign(u, {
+    email: `deleted+${u.id}@deleted.invalid`,
+    username: anonName,
+    password: unusable,
+    secondPassword: unusable,
+    phoneCountryCode: '',
+    phoneNumber: '',
+    avatar: '',
+    walletAddress: { trc20: '', erc20: '', bep20: '' },
+    walletAddressUpdatedAt: null,
+    walletAddressSavedAt: null,
+    twoFactorEnabled: false,
+    signupIp: '',
+    lastIp: '',
+    deletedAt: new Date().toISOString(),
+    deletedBy
+  });
+  delete u.twoFactorSecret;
+  await db.saveUser(c, u);
+  return { status: 200, body: { message: 'Account deleted' }, email, username: anonName };
+}
+
+app.post('/api/user/delete-account', authLimiter, authMiddleware, async (req, res) => {
+  const { password, code } = req.body;
+  if (!password) return res.status(400).json({ error: 'Enter your password to confirm' });
+  const user = await db.getUser(pool, req.userId);
+  if (!user || user.deletedAt) return res.status(404).json({ error: 'User not found' });
+  if (!(await verifyPassword(password, user.password))) return res.status(400).json({ error: 'Password is incorrect' });
+  if (user.twoFactorEnabled && user.twoFactorSecret && !(await isValidTotp(code, user.twoFactorSecret))) {
+    return res.status(400).json({ error: 'Invalid authentication code' });
+  }
+  const result = await tx(c => deleteUserAccount(c, req.userId, 'user'));
+  res.status(result.status).json(result.body);
+});
+
 // ===================== ANNOUNCEMENT ROUTES =====================
 
 app.get('/api/announcements', async (req, res) => {
@@ -2001,7 +2068,7 @@ app.post('/api/admin/logout', adminMiddleware, async (req, res) => {
 app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
   const num = field => `CASE WHEN jsonb_typeof(data->'${field}') = 'number' THEN (data->>'${field}')::float8 ELSE 0 END`;
   const { rows } = await pool.query(`SELECT
-    (SELECT count(*) FROM app.users) AS total_users,
+    (SELECT count(*) FROM app.users WHERE NOT data ? 'deletedAt') AS total_users,
     (SELECT coalesce(sum(${num('amount')}), 0) FROM app.deposits) AS total_deposits,
     (SELECT coalesce(sum(${num('amount')}), 0) FROM app.withdrawals WHERE data->>'status' = 'Approved') AS total_withdrawals,
     (SELECT count(*) FROM app.withdrawals WHERE data->>'status' = 'Pending') AS pending_withdrawals,
@@ -2026,7 +2093,7 @@ app.get('/api/admin/users', adminMiddleware, async (req, res) => {
     FROM app.user_ips a JOIN app.user_ips b ON b.ip = a.ip AND b.user_id <> a.user_id
     GROUP BY a.user_id`);
   const sharedMap = Object.fromEntries(shared.map(r => [r.user_id, r.n]));
-  const users = (await db.listDocs(pool, 'users')).map(u => {
+  const users = (await db.listDocs(pool, 'users')).filter(u => !u.deletedAt).map(u => {
     const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
     return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0, location: ipLocation(u.lastIp || u.signupIp) };
   });
@@ -2096,6 +2163,11 @@ app.get('/api/admin/my-ip', adminMiddleware, async (req, res) => {
 });
 
 const MAX_SUSPEND_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+
+app.delete('/api/admin/users/:id', adminMiddleware, async (req, res) => {
+  const result = await tx(c => deleteUserAccount(c, req.params.id, 'admin'));
+  res.status(result.status).json(result.body);
+});
 
 app.post('/api/admin/users/:id/suspend', adminMiddleware, async (req, res) => {
   const until = new Date(req.body.until);
