@@ -3,6 +3,24 @@
 <head>
   <meta charset="UTF-8">
   <script>if (navigator.userAgent.indexOf('MetaLinkApp') !== -1) document.write('<style>.web-only { display: none !important; }</style>');</script>
+  <script>
+    // Kept to ES5 on purpose: if the page script can't even be parsed (very old Android WebView),
+    // tell the user how to fix it instead of leaving a dead screen.
+    (function () {
+      var shown = false;
+      window.addEventListener('error', function (e) {
+        if (shown || window.__mlBooted || !/SyntaxError|Unexpected token|Unexpected identifier/i.test(String(e && e.message))) return;
+        shown = true;
+        var box = document.createElement('div');
+        box.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2147483647;background:#0b0b14;color:#e8e8f0;font-family:sans-serif;text-align:center;padding:40px 24px;';
+        box.innerHTML = '<h2 style="margin:40px 0 12px;font-size:20px;">Please update your phone</h2>' +
+          '<p style="color:#9a9ab0;line-height:1.6;margin:0 0 24px;">Your phone\'s web component is too old to run MetaLink NFT. Update <b>Android System WebView</b> and <b>Google Chrome</b> in the Play Store, then reopen the app.</p>' +
+          '<a href="https://play.google.com/store/apps/details?id=com.google.android.webview" style="display:inline-block;background:#7c5cff;color:#fff;padding:12px 24px;border-radius:10px;text-decoration:none;">Update WebView</a>';
+        var show = function () { document.body.appendChild(box); };
+        if (document.body) show(); else document.addEventListener('DOMContentLoaded', show);
+      });
+    })();
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MetaLinkNFT</title>
   <link rel="icon" type="image/svg+xml" href="/assets/images/MetaLink-NFT-icon.svg">
@@ -317,7 +335,7 @@
       font-size: 3rem; font-weight: 900; color: #fff;
     }
     .nft-card-banner-scrim {
-      position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.55), transparent 55%);
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: linear-gradient(to top, rgba(0,0,0,0.55), transparent 55%);
       pointer-events: none;
     }
     .nft-card-collection-tag {
@@ -583,7 +601,7 @@
 
     /* Deposit loader overlay */
     .deposit-loader-overlay {
-      position: absolute; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       border-radius: 20px 20px 0 0; z-index: 10;
     }
@@ -1015,7 +1033,7 @@
       background: #0B0F1A; cursor: zoom-in; object-fit: contain;
     }
     .guide-viewer {
-      display: none; position: fixed; inset: 0; z-index: 400; background: rgba(0,0,0,0.94);
+      display: none; position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 400; background: rgba(0,0,0,0.94);
       align-items: center; justify-content: center; overflow: hidden;
     }
     .guide-viewer.active { display: flex; }
@@ -1214,7 +1232,7 @@
 
     /* ---- Modal ---- */
     .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
       z-index: 200; display: flex; align-items: flex-end; justify-content: center;
       opacity: 0; pointer-events: none; transition: opacity var(--transition);
     }
@@ -1280,7 +1298,7 @@
     .reserve-cooldown-ring .ring-bg { stroke: var(--border); }
     .reserve-cooldown-ring .ring-progress { stroke: var(--primary); stroke-linecap: round; transition: stroke-dashoffset 1s linear; }
     .reserve-cooldown-time {
-      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center;
       font-size: 0.95rem; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text);
     }
 
@@ -1347,7 +1365,7 @@
     }
     .brand-loader-sm { width: 40px; height: 40px; }
     .brand-loader-ring {
-      position: absolute; inset: 0; border-radius: 50%;
+      position: absolute; top: 0; right: 0; bottom: 0; left: 0; border-radius: 50%;
       background: conic-gradient(from 0deg, #14B8A6, #4F46E5, #7C3AED, #14B8A6);
       animation: brandLoaderSpin 1s linear infinite;
       -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 6px));
@@ -1368,7 +1386,7 @@
       50% { transform: scale(0.86); opacity: 0.78; }
     }
     .brand-loader-overlay {
-      position: fixed; inset: 0; z-index: 9999;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9999;
       display: flex; align-items: center; justify-content: center;
       background: var(--bg); opacity: 1; transition: opacity 0.35s ease;
     }
@@ -1427,7 +1445,7 @@
 
     /* ---- Deposit page (exchange-style, full screen) ---- */
     .dep-page {
-      position: fixed; inset: 0; z-index: 210; background: var(--bg);
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 210; background: var(--bg);
       display: flex; flex-direction: column; transform: translateX(100%);
       transition: transform 0.3s ease; visibility: hidden;
     }
@@ -1604,7 +1622,7 @@
 
     /* ---- Reward celebration card ---- */
     .reward-overlay {
-      position: fixed; inset: 0; z-index: 400; display: flex; align-items: center; justify-content: center;
+      position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 400; display: flex; align-items: center; justify-content: center;
       padding: 16px; background: rgba(5,5,15,0.82); backdrop-filter: blur(8px);
       opacity: 0; pointer-events: none; transition: opacity 0.3s ease; overflow: hidden;
     }
@@ -1621,7 +1639,7 @@
     .reward-share { background: var(--gradient); color: #fff; border: none; }
     .reward-links { display: flex; justify-content: space-between; width: 100%; margin-top: 12px; }
     .reward-links button { background: none; border: none; color: rgba(255,255,255,0.75); font-family: var(--font); font-size: 0.85rem; font-weight: 600; cursor: pointer; padding: 6px; }
-    .reward-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+    .reward-confetti { position: absolute; top: 0; right: 0; bottom: 0; left: 0; pointer-events: none; overflow: hidden; }
     .reward-confetti i {
       position: absolute; top: -20px; width: 9px; height: 15px; border-radius: 2px; opacity: 0.9;
       animation: confettiFall linear forwards;
@@ -2880,8 +2898,9 @@
   </div>
 
   <script>
+    window.__mlBooted = true;
     function escapeHtml(str) {
-      return String(str ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+      return String(str == null ? '' : str).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     }
 
     const TETHER_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:3px;flex-shrink:0;"><circle cx="12" cy="12" r="12" fill="#26A17B"/><path d="M13.5 8.5V10.7C15.7 10.9 17.4 11.5 17.4 12.3C17.4 13.1 15.7 13.7 13.5 13.9V17H10.5V13.9C8.3 13.7 6.6 13.1 6.6 12.3C6.6 11.5 8.3 10.9 10.5 10.7V8.5H7V6.5H17V8.5H13.5Z" fill="#fff"/></svg>';
@@ -3326,7 +3345,8 @@
         const affordable = reserveLevelsCache.filter(lv => lv.min <= reserveBalance);
         const current = reserveLevelsCache.find(lv => lv.level === selectedReserveLevel);
         if (!current || current.min > reserveBalance) {
-          selectedReserveLevel = (affordable[affordable.length - 1] || reserveLevelsCache[0] || {}).level ?? null;
+          const pickedLevel = (affordable[affordable.length - 1] || reserveLevelsCache[0] || {}).level;
+          selectedReserveLevel = pickedLevel == null ? null : pickedLevel;
         }
         renderReserveSelectors();
 
@@ -3491,7 +3511,7 @@
           <div class="reserve-draw-sub">Reservation date : (${tzLabel()}) ${fmtDateTime(o.reservationDate)}</div>
           <div class="reserve-draw-row">
             <span class="label">Estimated Amount</span>
-            <span class="reserve-draw-est"><span class="rv-tether"></span>${fmtNum(o.estimatedMin ?? o.reservationAmount)} ~ ${fmtNum(o.estimatedMax ?? o.reservationAmount)}</span>
+            <span class="reserve-draw-est"><span class="rv-tether"></span>${fmtNum(o.estimatedMin != null ? o.estimatedMin : o.reservationAmount)} ~ ${fmtNum(o.estimatedMax != null ? o.estimatedMax : o.reservationAmount)}</span>
           </div>
           ${o.itemName ? `
             <div class="reserve-draw-item">
@@ -3845,8 +3865,8 @@
           teamDataCache = team;
           const ts = team.stats || {};
           document.getElementById('myTeamValid').textContent = ts.totalValid || 0;
-          document.getElementById('myTeamA').textContent = ts.aTier?.registered || 0;
-          document.getElementById('myTeamBC').textContent = (ts.bTier?.registered || 0) + (ts.cTier?.registered || 0);
+          document.getElementById('myTeamA').textContent = (ts.aTier && ts.aTier.registered) || 0;
+          document.getElementById('myTeamBC').textContent = ((ts.bTier && ts.bTier.registered) || 0) + ((ts.cTier && ts.cTier.registered) || 0);
         } catch (e) {}
 
         try {
@@ -4239,7 +4259,7 @@
       document.body.style.overflow = 'hidden';
       resetDepositForm();
       const addrs = await loadPlatformAddresses();
-      const min = addrs.minDeposit ?? 50;
+      const min = addrs.minDeposit != null ? addrs.minDeposit : 50;
       document.getElementById('depFactMin').textContent = min + ' USDT';
       document.getElementById('depositAmount').placeholder = 'Minimum ' + min;
       applyDepositProofConfig();
@@ -4272,7 +4292,7 @@
       currentDepositNetwork = network;
       document.querySelectorAll('.dep-network').forEach(b => b.classList.toggle('active', b.dataset.network === network));
       const addr = platformAddresses[network] || '';
-      const qr = platformAddresses.qr?.[network] || '';
+      const qr = (platformAddresses.qr && platformAddresses.qr[network]) || '';
       document.getElementById('depAddrText').textContent = addr || 'Not available for this network yet';
       document.getElementById('depQr').innerHTML = qr
         ? `<img src="${qr}" alt="Deposit address QR code">`
@@ -4414,7 +4434,7 @@
 
     document.getElementById('depositBtn').addEventListener('click', async () => {
       const amount = parseFloat(document.getElementById('depositAmount').value);
-      const min = platformAddresses.minDeposit ?? 50;
+      const min = platformAddresses.minDeposit != null ? platformAddresses.minDeposit : 50;
       if (!platformAddresses[currentDepositNetwork]) return toast('This network is not available yet — choose another', 'error');
       if (!amount || amount <= 0) return toast('Enter the amount you sent', 'error');
       if (amount < min) return toast('Minimum deposit is ' + min + ' USDT', 'error');
@@ -4488,7 +4508,7 @@
     }
 
     function getInviteLink() {
-      const uid = profileData?.uid || '';
+      const uid = (profileData && profileData.uid) || '';
       return (window.MLK_SITE_URL || window.location.origin) + '/signup.html?ref=' + uid;
     }
 
@@ -4520,9 +4540,9 @@
 
       try {
         if (!teamDataCache) teamDataCache = await api('/api/user/team');
-        document.getElementById('inviteTotal').textContent = teamDataCache.stats?.totalRegistered || 0;
-        document.getElementById('inviteValid').textContent = teamDataCache.stats?.totalValid || 0;
-        document.getElementById('inviteEarned').textContent = '$' + fmt(p.dailyIncome?.team || 0);
+        document.getElementById('inviteTotal').textContent = (teamDataCache.stats && teamDataCache.stats.totalRegistered) || 0;
+        document.getElementById('inviteValid').textContent = (teamDataCache.stats && teamDataCache.stats.totalValid) || 0;
+        document.getElementById('inviteEarned').textContent = '$' + fmt((p.dailyIncome && p.dailyIncome.team) || 0);
       } catch(e) {}
 
       try {
@@ -4637,7 +4657,7 @@
       const password = document.getElementById('deleteAccountPassword').value;
       const code = document.getElementById('deleteAccountCode').value.trim();
       if (!password) return toast('Enter your password', 'error');
-      if (profileData?.twoFactorEnabled && !code) return toast('Enter your authenticator code', 'error');
+      if ((profileData && profileData.twoFactorEnabled) && !code) return toast('Enter your authenticator code', 'error');
       if (!document.getElementById('deleteAccountConfirm').checked) return toast('Tick the box to confirm', 'error');
       const btn = document.getElementById('deleteAccountBtn');
       btn.disabled = true; btn.textContent = 'Deleting...';
@@ -4660,7 +4680,7 @@
       const sub = document.getElementById('twoFaRowSub');
       const icon = document.getElementById('twoFaRowIcon');
       if (!sub || !icon) return;
-      if (profileData?.twoFactorEnabled) {
+      if ((profileData && profileData.twoFactorEnabled)) {
         sub.textContent = 'Enabled — your account is protected';
         icon.style.background = 'rgba(20,184,166,0.12)';
       } else {

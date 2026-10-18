@@ -107,7 +107,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 /* Hero */
 .hero { position: relative; min-height: 100vh; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 120px 0 80px; }
-.hero-bg { position: absolute; inset: 0; z-index: 0; }
+.hero-bg { position: absolute; top: 0; right: 0; bottom: 0; left: 0; z-index: 0; }
 .hero-bg canvas { width: 100%; height: 100%; opacity: 0.4; }
 .hero-content { position: relative; z-index: 1; text-align: center; max-width: 800px; }
 .hero-title { font-size: clamp(3rem, 7vw, 5.5rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 16px; }
@@ -220,7 +220,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 
 /* Modal */
 .modal-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+  position: fixed; top: 0; right: 0; bottom: 0; left: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
   z-index: 200; display: flex; align-items: center; justify-content: center;
   opacity: 0; pointer-events: none; transition: opacity var(--transition);
 }
@@ -637,7 +637,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 /* Admin Modal */
 .admin-modal-overlay {
   position: fixed;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,0.5);
   display: flex;
   align-items: center;
@@ -719,7 +719,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .admin-sidebar-overlay {
   display: none;
   position: fixed;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   background: rgba(0,0,0,0.5);
   z-index: 99;
   opacity: 0;
@@ -860,7 +860,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 .brand-loader-sm { width: 40px; height: 40px; }
 .brand-loader-ring {
   position: absolute;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   border-radius: 50%;
   background: conic-gradient(from 0deg, #14B8A6, #4F46E5, #7C3AED, #14B8A6);
   animation: brandLoaderSpin 1s linear infinite;
@@ -886,7 +886,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); line
 }
 .brand-loader-overlay {
   position: fixed;
-  inset: 0;
+  top: 0; right: 0; bottom: 0; left: 0;
   z-index: 9999;
   display: flex;
   align-items: center;
