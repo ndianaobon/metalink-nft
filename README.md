@@ -24,6 +24,18 @@ into the new tables automatically (once). `kv_store` is left untouched as a back
 **Local development:** the `DATABASE_URL` in `.env` points at the live database, and every action
 you take locally changes live data. Point it at a separate database for testing.
 
+## Dependencies and security
+
+Run `npm audit` after changing packages; it should report 0 vulnerabilities (Hostinger scans the
+same lockfile). `package.json` has `overrides` that force patched versions of two indirect packages:
+
+- `ip-address` (pulled in by `geoip-country`, which only uses it in its database-update script)
+- `uuid` (pulled in by `xcode` through `@capacitor/cli`)
+
+The app icon generator `@capacitor/assets` is not installed (its dependencies had unfixable
+vulnerabilities). To regenerate icons/splash screens, run it on demand:
+`npx @capacitor/assets generate`.
+
 ## Database migrations
 
 The base tables are created in `db.js` (`createSchema`). Later changes are SQL files in
