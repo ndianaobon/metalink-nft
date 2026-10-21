@@ -12,6 +12,8 @@ const { generateSecret: generateTotpSecret, generateURI: generateTotpURI, verify
 const QRCode = require('qrcode');
 const db = require('./db');
 const { pool, tx } = db;
+const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
+const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,7 +46,7 @@ app.use(['/api', '/uploads'], (req, res, next) => {
   if (origin && MOBILE_ORIGINS.has(origin)) {
     res.set('Access-Control-Allow-Origin', origin);
     res.set('Vary', 'Origin');
-    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Device-Id, X-Device-Platform');
     res.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
   }
@@ -383,6 +385,132 @@ function recordUserIp(userId, ip, c = pool) {
     .catch(e => console.error('[ip] record failed:', e.message));
 }
 
+// ---------- devices and risk scoring (multi-account detection; see device.js and risk.js) ----------
+
+// Key for hashing device tokens. Set DEVICE_HASH_SECRET in production; otherwise one is generated
+// once and kept in app.settings so every worker process and restart uses the same key.
+let deviceSecretPromise = null;
+function getDeviceSecret() {
+  if (process.env.DEVICE_HASH_SECRET) return Promise.resolve(process.env.DEVICE_HASH_SECRET);
+  if (!deviceSecretPromise) {
+    deviceSecretPromise = (async () => {
+      await pool.query("INSERT INTO app.settings (key, value) VALUES ('device_hash_secret', $1) ON CONFLICT (key) DO NOTHING",
+        [JSON.stringify({ secret: crypto.randomBytes(32).toString('hex') })]);
+      return (await db.getSetting(pool, 'device_hash_secret')).secret;
+    })().catch(e => { deviceSecretPromise = null; throw e; });
+  }
+  return deviceSecretPromise;
+}
+
+// Records that this account used this device. Requests without a device token (old app versions,
+// API clients) are simply not recorded. Never throws: detection must not break sign-in.
+async function recordUserDevice(userId, req) {
+  const token = readDeviceToken(req);
+  if (!userId || !token) return;
+  try {
+    const hash = hashDeviceToken(token, await getDeviceSecret());
+    const { rows } = await pool.query(`
+      INSERT INTO app.user_devices (user_id, device_hash, platform) VALUES ($1, $2, $3)
+      ON CONFLICT (user_id, device_hash) DO UPDATE SET last_seen = now(), hits = app.user_devices.hits + 1, platform = EXCLUDED.platform
+      RETURNING (xmax = 0) AS inserted`, [userId, hash, readPlatform(req)]);
+    if (!rows[0].inserted) return;
+    // First time this account is seen on this device: if other accounts use it too, mark it shared
+    // and rescore everyone on it.
+    const { rows: others } = await pool.query('SELECT DISTINCT user_id FROM app.user_devices WHERE device_hash = $1 AND user_id <> $2', [hash, userId]);
+    if (others.length) {
+      await pool.query("UPDATE app.user_devices SET risk_flags = ARRAY['shared_device'] WHERE device_hash = $1", [hash]);
+      scheduleRiskRecompute([userId, ...others.map(r => r.user_id)]);
+    }
+  } catch (e) { console.error('[device] record failed:', e.message); }
+}
+
+const walletKeySql = expr => `lower(trim(${expr}))`;
+
+// Loads the rows around one account that risk.analyzeAccount() needs: everyone on its devices, IPs
+// and payout wallets, plus its referrer and referees.
+async function loadRiskWorld(c, userId) {
+  const q = (sql, params) => c.query(sql, params).then(r => r.rows);
+  const me = await db.getUser(c, userId);
+  if (!me) return null;
+
+  const devices = await q(`
+    SELECT d.user_id, d.device_hash, d.platform FROM app.user_devices d
+    WHERE d.device_hash IN (SELECT device_hash FROM app.user_devices WHERE user_id = $1)`, [userId]);
+  // At most 100 accounts per IP: enough to tell a household from a carrier NAT (risk.BUSY_IP_ACCOUNTS).
+  const ips = await q(`
+    SELECT user_id, ip FROM (
+      SELECT user_id, ip, row_number() OVER (PARTITION BY ip ORDER BY last_seen DESC) AS n
+      FROM app.user_ips WHERE ip IN (SELECT ip FROM app.user_ips WHERE user_id = $1)) t
+    WHERE n <= 100`, [userId]);
+
+  const w = me.walletAddress || {};
+  const myWithdrawals = await q("SELECT data->>'walletAddress' AS addr FROM app.withdrawals WHERE user_id = $1", [userId]);
+  const myWallets = [...new Set([w.trc20, w.bep20, w.erc20, ...myWithdrawals.map(r => r.addr)]
+    .map(a => String(a || '').trim().toLowerCase()).filter(Boolean))];
+  const walletUsers = myWallets.length ? await q(`
+    SELECT id AS user_id FROM app.users
+    WHERE ${walletKeySql("data->'walletAddress'->>'trc20'")} = ANY($1) OR ${walletKeySql("data->'walletAddress'->>'bep20'")} = ANY($1)
+       OR ${walletKeySql("data->'walletAddress'->>'erc20'")} = ANY($1)
+    UNION SELECT user_id FROM app.withdrawals WHERE ${walletKeySql("data->>'walletAddress'")} = ANY($1)`, [myWallets]) : [];
+  const referees = await q('SELECT id FROM app.users WHERE referred_by = $1', [userId]);
+
+  const ids = [...new Set([userId, me.referredBy, ...devices.map(r => r.user_id), ...walletUsers.map(r => r.user_id), ...referees.map(r => r.id)].filter(Boolean))];
+  const users = (await q('SELECT data FROM app.users WHERE id = ANY($1)', [ids])).map(r => r.data);
+  const withdrawals = await q("SELECT user_id, data->>'status' AS status, data->>'walletAddress' AS addr FROM app.withdrawals WHERE user_id = ANY($1)", [ids]);
+  const deposits = await q("SELECT DISTINCT user_id FROM app.deposits WHERE user_id = ANY($1) AND data->>'status' = 'Approved'", [ids]);
+  const bonuses = await q("SELECT user_id, (data->>'amount')::numeric AS amount FROM app.transactions WHERE user_id = ANY($1) AND data->>'type' = 'signup_bonus'", [ids]);
+
+  return {
+    users: users.map(u => ({ id: u.id, uid: u.uid, username: u.username, createdAt: u.createdAt, referredBy: u.referredBy, walletAddress: u.walletAddress, deletedAt: u.deletedAt })),
+    devices: devices.map(r => ({ userId: r.user_id, deviceHash: r.device_hash, platform: r.platform })),
+    ips: ips.map(r => ({ userId: r.user_id, ip: r.ip })),
+    deposits: deposits.map(r => ({ userId: r.user_id, status: 'Approved' })),
+    withdrawals: withdrawals.map(r => ({ userId: r.user_id, status: r.status, walletAddress: r.addr })),
+    signupBonuses: bonuses.map(r => ({ userId: r.user_id, amount: Number(r.amount) }))
+  };
+}
+
+async function recomputeRisk(userId) {
+  const world = await loadRiskWorld(pool, userId);
+  if (!world) return null;
+  const r = analyzeAccount(userId, world);
+  const { rows } = await pool.query(`
+    INSERT INTO app.account_risk (user_id, score, level, needs_review, flags, linked, computed_at)
+    VALUES ($1, $2, $3, $4, $5, $6, now())
+    ON CONFLICT (user_id) DO UPDATE SET score = EXCLUDED.score, level = EXCLUDED.level, needs_review = EXCLUDED.needs_review,
+      flags = EXCLUDED.flags, linked = EXCLUDED.linked, computed_at = now()
+    RETURNING review_status, reviewed_flags`,
+    [userId, r.score, r.level, r.needsReview, JSON.stringify(r.flags), JSON.stringify(r.linked)]);
+  const current = rows[0].review_status;
+  const reviewStatus = nextReviewStatus(current, rows[0].reviewed_flags, r);
+  if (reviewStatus !== current) await pool.query('UPDATE app.account_risk SET review_status = $2 WHERE user_id = $1', [userId, reviewStatus]);
+  return { ...r, reviewStatus };
+}
+
+// Rescores accounts in the background (one at a time, so it never competes with real requests).
+// With propagate, accounts strongly linked to them (device / wallet) are rescored as well, so a new
+// link shows up on both sides.
+function scheduleRiskRecompute(userIds, { propagate = false } = {}) {
+  const ids = [...new Set(userIds.filter(Boolean))];
+  if (!ids.length) return;
+  setImmediate(async () => {
+    const done = new Set();
+    for (const id of ids) {
+      try {
+        const r = await recomputeRisk(id);
+        done.add(id);
+        if (propagate && r) {
+          for (const l of r.linked) {
+            if (done.has(l.userId) || !l.via.some(v => v === 'device' || v === 'wallet')) continue;
+            await recomputeRisk(l.userId);
+            done.add(l.userId);
+          }
+        }
+      } catch (e) { console.error('[risk] recompute failed for', id, e.message); }
+    }
+  });
+}
+
 async function isIpBanned(ip) {
   const { rows } = await pool.query('SELECT 1 FROM app.banned_ips WHERE ip = $1', [ip]);
   return rows.length > 0;
@@ -393,6 +521,7 @@ async function noteLogin(userId, req) {
   // A login counts as activity too, so the admin's Online badge and Last Seen agree.
   await db.patchDoc(pool, 'users', userId, { lastIp: ip, lastLoginAt: now, lastActiveAt: now });
   await recordUserIp(userId, ip);
+  await recordUserDevice(userId, req);
 }
 
 const IP_BLOCKED_ERROR ='New accounts cannot be created from your network. Please contact support.';
@@ -531,6 +660,7 @@ async function authMiddleware(req, res, next) {
       [session.tokenHash, now, session.lastActivityWrite, new Date(now).toISOString(), ip]);
     if (rows.length) {
       recordUserIp(session.userId, ip);
+      recordUserDevice(session.userId, req);
       if (isBanned(rows[0]) || isFrozen(rows[0])) {
         await deleteSession(session.tokenHash);
         return res.status(403).json(blockedResponse(rows[0]));
@@ -717,6 +847,8 @@ app.post('/api/auth/verify-email', authLimiter, async (req, res) => {
   if (result.error) return res.status(400).json({ error: result.error });
 
   const user = result.user;
+  await recordUserDevice(user.id, req);
+  scheduleRiskRecompute([user.id, user.referredBy], { propagate: true });
   sendEmail(user.email, 'Welcome to MetaLink NFT!', welcomeEmailHtml(user.username, user.uid)).catch(() => {});
   const token = await createSession(user.id, 'user');
 
@@ -1029,6 +1161,8 @@ app.put('/api/user/wallet', authMiddleware, async (req, res) => {
     } };
   });
 
+  // A payout wallet shared with another account is a strong multi-account signal.
+  if (result.status === 200) scheduleRiskRecompute([req.userId], { propagate: true });
   res.status(result.status).json(result.body);
 });
 
@@ -1581,6 +1715,9 @@ app.post('/api/withdrawals', authMiddleware, async (req, res) => {
   if (result.status === 200) {
     const { subject, html } = withdrawalEmail('submitted', result.body);
     sendEmail(result.body.email, subject, html).catch(() => {});
+    // Rescore so the admin sees up-to-date risk next to this withdrawal. The request itself is never
+    // refused for risk (and never for shared IP): risky ones are only marked for review (risk.js).
+    scheduleRiskRecompute([req.userId], { propagate: true });
   }
   res.status(result.status).json(result.body);
 });
@@ -1990,6 +2127,8 @@ async function deleteUserAccount(c, userId, deletedBy) {
   await c.query(`UPDATE app.withdrawals SET data = (data - 'email') || jsonb_build_object('username', $2::text) WHERE user_id = $1`, [userId, anonName]);
   await c.query('DELETE FROM app.wallet_submissions WHERE user_id = $1', [userId]);
   await c.query('DELETE FROM app.user_ips WHERE user_id = $1', [userId]);
+  await c.query('DELETE FROM app.user_devices WHERE user_id = $1', [userId]);
+  await c.query('DELETE FROM app.account_risk WHERE user_id = $1', [userId]);
   await c.query('DELETE FROM app.sessions WHERE user_id = $1 AND role = $2', [userId, 'user']);
   await c.query('DELETE FROM app.ephemeral WHERE (kind = $1 AND key = $2) OR (kind = $3 AND key = $4)', [EPH_2FA_SETUP, userId, EPH_RESET, u.email]);
 
@@ -2155,6 +2294,106 @@ app.get('/api/admin/users/:id/ips', adminMiddleware, async (req, res) => {
     user: { ...accountSummary(user), signupIp: user.signupIp || null, lastIp: user.lastIp || null, signupLocation: ipLocation(user.signupIp) },
     ips: rows.map(r => ({ ip: r.ip, location: ipLocation(r.ip), firstSeen: r.first_seen, lastSeen: r.last_seen, hits: r.hits, otherAccounts: r.other_accounts, ipBanned: r.ip_banned }))
   });
+});
+
+// ---------- risk review (device / wallet / referral / IP signals combined; see risk.js) ----------
+
+const REVIEW_STATUSES = new Set(['open', 'cleared', 'confirmed']);
+
+// Accounts with a risk score, highest first. ?status=open|cleared|confirmed|all, ?min=<score>.
+app.get('/api/admin/risk', adminMiddleware, async (req, res) => {
+  const status = REVIEW_STATUSES.has(req.query.status) ? req.query.status : null;
+  const min = Math.max(0, parseInt(req.query.min, 10) || 1);
+  const { rows } = await pool.query(`
+    SELECT r.*, u.data AS user,
+           (SELECT count(*)::int FROM app.user_devices d WHERE d.user_id = r.user_id) AS devices
+    FROM app.account_risk r JOIN app.users u ON u.id = r.user_id
+    WHERE r.score >= $1 AND ($2::text IS NULL OR r.review_status = $2) AND NOT u.data ? 'deletedAt'
+    ORDER BY r.needs_review DESC, r.score DESC, r.computed_at DESC
+    LIMIT 500`, [min, status]);
+  const { rows: counts } = await pool.query(`
+    SELECT review_status, count(*)::int AS n, count(*) FILTER (WHERE needs_review)::int AS review
+    FROM app.account_risk WHERE score > 0 GROUP BY review_status`);
+  res.json({
+    counts: Object.fromEntries(counts.map(c => [c.review_status, { total: c.n, needsReview: c.review }])),
+    rescanRunning: riskRescan.running,
+    accounts: rows.map(r => ({
+      ...accountSummary(r.user), score: r.score, level: r.level, needsReview: r.needs_review, flags: r.flags,
+      linkedCount: r.linked.length, devices: r.devices, computedAt: r.computed_at,
+      reviewStatus: r.review_status, reviewNote: r.review_note || '', reviewedAt: r.reviewed_at
+    }))
+  });
+});
+
+// Everything needed to investigate one account. Recomputes first so the admin sees current data.
+app.get('/api/admin/risk/:userId', adminMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.params.userId);
+  if (!user || user.deletedAt) return res.status(404).json({ error: 'User not found' });
+  const risk = await recomputeRisk(user.id);
+  const { rows: [review] } = await pool.query('SELECT review_note, reviewed_by, reviewed_at FROM app.account_risk WHERE user_id = $1', [user.id]);
+
+  // Device hashes are shown shortened: enough to tell devices apart, and they mean nothing outside this server.
+  const { rows: devices } = await pool.query(`
+    SELECT d.device_hash, d.platform, d.first_seen, d.last_seen, d.hits, d.risk_flags,
+           coalesce((SELECT json_agg(o.user_id) FROM app.user_devices o WHERE o.device_hash = d.device_hash AND o.user_id <> d.user_id), '[]') AS others
+    FROM app.user_devices d WHERE d.user_id = $1 ORDER BY d.last_seen DESC`, [user.id]);
+
+  const linkedIds = risk.linked.map(l => l.userId);
+  const { rows: linkedRows } = linkedIds.length ? await pool.query(`
+    SELECT u.data AS user,
+      (SELECT coalesce(sum((d.data->>'amount')::numeric), 0) FROM app.deposits d WHERE d.user_id = u.id AND d.data->>'status' = 'Approved') AS deposited,
+      (SELECT coalesce(sum((w.data->>'amount')::numeric), 0) FROM app.withdrawals w WHERE w.user_id = u.id AND w.data->>'status' IN ('Pending', 'Approved')) AS withdrawn
+    FROM app.users u WHERE u.id = ANY($1)`, [linkedIds]) : { rows: [] };
+  const linkedById = Object.fromEntries(linkedRows.map(r => [r.user.id, r]));
+  const totals = async id => (await pool.query(`SELECT
+      (SELECT coalesce(sum((data->>'amount')::numeric), 0) FROM app.deposits WHERE user_id = $1 AND data->>'status' = 'Approved') AS deposited,
+      (SELECT coalesce(sum((data->>'amount')::numeric), 0) FROM app.withdrawals WHERE user_id = $1 AND data->>'status' IN ('Pending', 'Approved')) AS withdrawn`, [id])).rows[0];
+  const own = await totals(user.id);
+
+  res.json({
+    user: { ...accountSummary(user), deposited: Number(own.deposited), withdrawn: Number(own.withdrawn) },
+    risk: { ...risk, reviewNote: (review && review.review_note) || '', reviewedBy: review && review.reviewed_by, reviewedAt: review && review.reviewed_at },
+    devices: devices.map(d => ({
+      device: d.device_hash.slice(0, 12), platform: d.platform, firstSeen: d.first_seen, lastSeen: d.last_seen, hits: d.hits,
+      riskFlags: d.risk_flags, otherAccounts: d.others.length
+    })),
+    linked: risk.linked.filter(l => linkedById[l.userId]).map(l => {
+      const r = linkedById[l.userId];
+      return { ...accountSummary(r.user), via: l.via, deleted: !!r.user.deletedAt, deposited: Number(r.deposited), withdrawn: Number(r.withdrawn) };
+    })
+  });
+});
+
+app.post('/api/admin/risk/:userId/review', adminMiddleware, async (req, res) => {
+  const status = req.body.status;
+  if (!REVIEW_STATUSES.has(status)) return res.status(400).json({ error: 'Status must be open, cleared or confirmed' });
+  const note = String(req.body.note || '').trim().slice(0, 500);
+  const { rows } = await pool.query(`
+    UPDATE app.account_risk SET review_status = $2, review_note = $3, reviewed_by = $4, reviewed_at = now(),
+      reviewed_flags = ARRAY(SELECT jsonb_array_elements(flags)->>'code')
+    WHERE user_id = $1 RETURNING user_id`, [req.params.userId, status, note, req.userId || 'admin']);
+  if (!rows.length) return res.status(404).json({ error: 'No risk record for this user' });
+  res.json({ message: 'Saved' });
+});
+
+// Rescores every account that shares a device, wallet or IP with another account (for example after
+// deploying this feature, or after changing the rules). Runs in the background.
+const riskRescan = { running: false };
+app.post('/api/admin/risk/rescan', adminMiddleware, async (req, res) => {
+  if (riskRescan.running) return res.json({ message: 'A rescan is already running', running: true });
+  const { rows } = await pool.query(`
+    SELECT user_id FROM app.user_devices WHERE device_hash IN (SELECT device_hash FROM app.user_devices GROUP BY device_hash HAVING count(*) > 1)
+    UNION SELECT user_id FROM app.user_ips WHERE ip IN (SELECT ip FROM app.user_ips GROUP BY ip HAVING count(*) > 1)
+    UNION SELECT w.user_id FROM app.withdrawals w WHERE lower(trim(w.data->>'walletAddress')) IN (
+      SELECT lower(trim(data->>'walletAddress')) FROM app.withdrawals GROUP BY 1 HAVING count(DISTINCT user_id) > 1)
+    UNION SELECT user_id FROM app.account_risk`);
+  riskRescan.running = true;
+  (async () => {
+    for (const r of rows) {
+      try { await recomputeRisk(r.user_id); } catch (e) { console.error('[risk] rescan failed for', r.user_id, e.message); }
+    }
+  })().finally(() => { riskRescan.running = false; });
+  res.json({ message: `Rescanning ${rows.length} accounts`, accounts: rows.length, running: true });
 });
 
 // Lets the admin confirm the server is seeing real visitor IPs (should match whatismyip.com).
@@ -2347,7 +2586,15 @@ app.put('/api/admin/users/:id/balance', adminMiddleware, async (req, res) => {
 
 app.get('/api/admin/withdrawals', adminMiddleware, async (req, res) => {
   const withdrawals = await db.listDocs(pool, 'withdrawals');
-  res.json(withdrawals.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  // Attach each user's current risk so risky withdrawals stand out (see withdrawalDecision in risk.js).
+  const { rows } = await pool.query(`SELECT user_id, score, level, needs_review, review_status, flags FROM app.account_risk
+    WHERE user_id = ANY($1) AND score > 0`, [[...new Set(withdrawals.map(w => w.userId))]]);
+  const risk = Object.fromEntries(rows.map(r => {
+    const decision = withdrawalDecision({ needsReview: r.needs_review && r.review_status !== 'cleared', flags: r.flags });
+    return [r.user_id, { score: r.score, level: r.level, reviewStatus: r.review_status, holdForReview: decision.holdForReview, reason: decision.reason }];
+  }));
+  res.json(withdrawals.map(w => risk[w.userId] ? { ...w, risk: risk[w.userId] } : w)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
 app.put('/api/admin/withdrawals/:id', adminMiddleware, async (req, res) => {

@@ -283,11 +283,28 @@ async function importLegacyData(c, dataDir) {
   console.log('[DB] Imported legacy data:', JSON.stringify(counts));
 }
 
+// Schema changes after the base schema live in migrations/NNN_name.sql and run once each, in filename
+// order, inside the init transaction. Applied files are recorded in app.schema_migrations.
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+async function runMigrations(c) {
+  await c.query('CREATE TABLE IF NOT EXISTS app.schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
+  if (!fs.existsSync(MIGRATIONS_DIR)) return;
+  const { rows } = await c.query('SELECT name FROM app.schema_migrations');
+  const applied = new Set(rows.map(r => r.name));
+  for (const file of fs.readdirSync(MIGRATIONS_DIR).filter(f => f.endsWith('.sql')).sort()) {
+    if (applied.has(file)) continue;
+    await c.query(fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8'));
+    await c.query('INSERT INTO app.schema_migrations (name) VALUES ($1)', [file]);
+    console.log('[DB] Applied migration', file);
+  }
+}
+
 async function initDb(dataDir) {
   await tx(async c => {
     // Transaction-scoped lock: safe through Supabase's pooler, and stops two booting processes racing the import.
     await c.query('SELECT pg_advisory_xact_lock(424242)');
     await createSchema(c);
+    await runMigrations(c);
     await importLegacyData(c, dataDir);
   });
 }
@@ -296,6 +313,8 @@ async function cleanupExpired() {
   const now = Date.now();
   await pool.query('DELETE FROM app.sessions WHERE expires_at < $1', [now]);
   await pool.query('DELETE FROM app.ephemeral WHERE expires_at < $1', [now]);
+  // Device records are only kept while they're useful for spotting linked accounts (see Privacy Policy).
+  await pool.query("DELETE FROM app.user_devices WHERE last_seen < now() - interval '365 days'");
 }
 
 module.exports = {

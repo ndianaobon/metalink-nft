@@ -103,6 +103,7 @@
               </div>
               <button class="admin-nav-item active" data-page="dashboard">&#128202; Dashboard</button>
               <button class="admin-nav-item" data-page="users">&#128101; Users</button>
+              <button class="admin-nav-item" data-page="risk">&#9888; Risk Review</button>
               <button class="admin-nav-item" data-page="multiaccounts">&#128737; Multi-Accounts</button>
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
@@ -158,6 +159,7 @@
 
         if (this.currentPage === 'dashboard') await this.loadDashboard(c);
         else if (this.currentPage === 'users') await this.loadUsers(c);
+        else if (this.currentPage === 'risk') await this.loadRisk(c);
         else if (this.currentPage === 'multiaccounts') await this.loadMultiAccounts(c);
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
@@ -489,6 +491,161 @@ Type DELETE to confirm.`);
         document.querySelector('[data-page="multiaccounts"]').click();
       },
 
+      // ---------- Risk Review ----------
+      riskFlagLabels: {
+        shared_device: 'Same device', shared_wallet: 'Same wallet', referral_ring: 'Referral ring',
+        bonus_farming: 'Bonus farming', device_signup_burst: 'Sign-up burst', bonus_withdrawal: 'Withdrew without deposit',
+        shared_ip: 'Shared IP (weak)'
+      },
+
+      riskColor(level) {
+        return level === 'high' ? 'background:#fee2e2;color:#b91c1c;' : level === 'medium' ? 'background:#ffedd5;color:#c2410c;' : 'background:#f3f4f6;color:#555;';
+      },
+
+      riskBadge(risk, userId) {
+        const label = risk.reviewStatus === 'cleared' ? 'Cleared' : risk.holdForReview ? 'Review' : 'Risk';
+        return `<span class="admin-badge" style="${this.riskColor(risk.level)}cursor:pointer;" title="${escapeHtml(risk.reason || risk.level)}" onclick="Admin.showRisk('${escapeHtml(userId)}')">&#9888; ${label} ${risk.score}</span>`;
+      },
+
+      flagChips(flags) {
+        return (flags || []).map(f => `<span class="admin-badge" style="${f.strong ? 'background:#fee2e2;color:#b91c1c;' : 'background:#f3f4f6;color:#555;'}margin:1px 2px;" title="${escapeHtml(f.detail)}">${escapeHtml(this.riskFlagLabels[f.code] || f.code)} +${f.points}</span>`).join('');
+      },
+
+      reviewBadge(status) {
+        if (status === 'cleared') return '<span class="admin-badge admin-badge-approved">Cleared</span>';
+        if (status === 'confirmed') return '<span class="admin-badge admin-badge-rejected">Confirmed abuse</span>';
+        return '<span class="admin-badge admin-badge-pending">Open</span>';
+      },
+
+      async loadRisk(c) {
+        this.riskStatus = this.riskStatus || 'open';
+        try {
+          const q = this.riskStatus === 'all' ? '' : `?status=${this.riskStatus}`;
+          const data = await this.api('/admin/risk' + q);
+          const n = s => (data.counts[s] && data.counts[s].total) || 0;
+          const tab = (key, label, count) => `<button class="admin-btn" style="${this.riskStatus === key ? 'background:#4f46e5;color:#fff;' : 'background:#eef2ff;color:#4f46e5;'}" onclick="Admin.riskStatus='${key}';Admin.loadPage()">${label}${count !== undefined ? ` (${count})` : ''}</button>`;
+          c.innerHTML = `
+            <div class="admin-table-card" style="padding:16px 20px;margin-bottom:20px;font-size:0.85rem;color:#555;line-height:1.55;">
+              Each account gets a score from several signals. <strong>Strong</strong> (red): the same device, the same withdrawal wallet, referrals between linked accounts, or several linked accounts taking the sign-up bonus without depositing.
+              <strong>Weak</strong> (grey): shared IP, accounts created close together, withdrawing without a deposit.
+              Shared IP alone never puts an account up for review &mdash; families, mobile networks and public Wi-Fi share IPs.
+              Nothing is blocked automatically: withdrawals from flagged accounts show a warning before you approve them.
+              <br><span style="color:#888;">Devices are identified by a random ID the site/app creates on first use (no hardware IDs). Accounts only get one after they next use the site or the updated app.</span>
+            </div>
+            <div class="admin-table-card">
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                  ${tab('open', 'Open', n('open'))}${tab('confirmed', 'Confirmed', n('confirmed'))}${tab('cleared', 'Cleared', n('cleared'))}${tab('all', 'All')}
+                </div>
+                <button class="admin-btn admin-btn-primary" ${data.rescanRunning ? 'disabled' : ''} onclick="Admin.rescanRisk()">${data.rescanRunning ? 'Rescan running...' : 'Rescan all accounts'}</button>
+              </div>
+              ${data.accounts.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+                <thead><tr><th>Score</th><th>User</th><th>Signals</th><th>Linked</th><th>Devices</th><th>Review</th><th>Updated</th><th></th></tr></thead>
+                <tbody>${data.accounts.map(a => `<tr>
+                  <td><span class="admin-badge" style="${this.riskColor(a.level)}font-size:0.85rem;">${a.score}</span>${a.needsReview ? '<br><span style="font-size:0.7rem;color:#b91c1c;">needs review</span>' : ''}</td>
+                  <td>${this.userCell(a)}</td>
+                  <td style="max-width:320px;">${this.flagChips(a.flags)}</td>
+                  <td>${a.linkedCount}</td>
+                  <td>${a.devices}</td>
+                  <td>${this.reviewBadge(a.reviewStatus)}${a.reviewNote ? `<br><span style="font-size:0.72rem;color:#888;" title="${escapeHtml(a.reviewNote)}">${escapeHtml(a.reviewNote.slice(0, 40))}${a.reviewNote.length > 40 ? '…' : ''}</span>` : ''}</td>
+                  <td style="font-size:0.78rem;white-space:nowrap;">${new Date(a.computedAt).toLocaleString()}</td>
+                  <td><button class="admin-btn admin-btn-edit" onclick="Admin.showRisk('${escapeHtml(a.id)}')">Investigate</button></td>
+                </tr>`).join('')}</tbody></table></div>`
+                : `<p style="padding:24px;color:#888;text-align:center;">${this.riskStatus === 'open' ? 'No open risk cases. Accounts appear here when they share a device, wallet or IP with another account.' : 'Nothing here.'}</p>`}
+            </div>`;
+        } catch (e) { c.innerHTML = `<p>Failed to load: ${escapeHtml(e.message)}</p>`; }
+      },
+
+      async rescanRisk() {
+        try {
+          const r = await this.api('/admin/risk/rescan', { method: 'POST' });
+          this.toast(r.message, 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async showRisk(userId) {
+        document.querySelectorAll('.admin-modal-overlay').forEach(m => m.remove());
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = '<div class="admin-modal" style="max-width:900px;"><div style="padding:20px;text-align:center;color:#888;">Loading...</div></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        try {
+          const { user, risk, devices, linked } = await this.api(`/admin/risk/${encodeURIComponent(userId)}`);
+          const via = l => l.via.map(v => `<span class="admin-badge" style="${v === 'ip' ? 'background:#f3f4f6;color:#555;' : 'background:#fee2e2;color:#b91c1c;'}margin:1px;">${escapeHtml(v)}</span>`).join('');
+          const money = n => Number(n || 0).toFixed(2);
+          modal.querySelector('.admin-modal').innerHTML = `
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:14px;">
+              ${this.avatarHtml(user, 52)}
+              <div style="flex:1;min-width:200px;">
+                <h3 style="margin:0;">${escapeHtml(user.username)} ${this.statusBadge(user)}</h3>
+                <span style="font-size:0.8rem;color:#888;">${escapeHtml(user.email)} &middot; UID ${escapeHtml(user.uid)} &middot; joined ${new Date(user.createdAt).toLocaleDateString()}</span><br>
+                <span style="font-size:0.8rem;color:#555;">Balance ${money(user.walletBalance)} &middot; deposited ${money(user.deposited)} &middot; withdrawn ${money(user.withdrawn)} USDT</span>
+              </div>
+              <div style="text-align:center;">
+                <div class="admin-badge" style="${this.riskColor(risk.level)}font-size:1.3rem;padding:8px 14px;">${risk.score}/100</div>
+                <div style="font-size:0.75rem;color:#888;margin-top:4px;">${escapeHtml(risk.level)} risk${risk.needsReview ? ' &middot; needs review' : ''}</div>
+              </div>
+            </div>
+
+            <h4 style="margin:12px 0 6px;">Signals</h4>
+            ${risk.flags.length ? `<table class="admin-table"><tbody>${risk.flags.map(f => `<tr>
+              <td style="width:190px;">${this.flagChips([f])}</td><td style="font-size:0.85rem;">${escapeHtml(f.detail)}</td></tr>`).join('')}</tbody></table>`
+              : '<p style="color:#888;">No signals right now.</p>'}
+            ${risk.busyIps ? `<p style="font-size:0.78rem;color:#888;">${risk.busyIps} busy IP${risk.busyIps > 1 ? 's' : ''} (mobile network / public Wi-Fi) ignored.</p>` : ''}
+
+            <h4 style="margin:16px 0 6px;">Devices (${devices.length})</h4>
+            ${devices.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+              <thead><tr><th>Device</th><th>Platform</th><th>First seen</th><th>Last seen</th><th>Uses</th><th>Other accounts</th></tr></thead>
+              <tbody>${devices.map(d => `<tr>
+                <td style="font-family:monospace;">${escapeHtml(d.device)}…</td>
+                <td>${escapeHtml(d.platform)}</td>
+                <td style="font-size:0.8rem;">${new Date(d.firstSeen).toLocaleString()}</td>
+                <td style="font-size:0.8rem;">${new Date(d.lastSeen).toLocaleString()}</td>
+                <td>${d.hits}</td>
+                <td>${d.otherAccounts ? `<span class="admin-badge admin-badge-rejected">${d.otherAccounts}</span>` : '0'}</td>
+              </tr>`).join('')}</tbody></table></div>`
+              : '<p style="color:#888;font-size:0.85rem;">No device recorded yet (recorded the next time they use the site or app).</p>'}
+
+            <h4 style="margin:16px 0 6px;">Linked accounts (${linked.length})</h4>
+            ${linked.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+              <thead><tr><th>Linked by</th><th>User</th><th>Status</th><th>Joined</th><th>Deposited</th><th>Withdrawn</th><th>Actions</th></tr></thead>
+              <tbody>${linked.map(l => `<tr>
+                <td>${via(l)}</td>
+                <td>${this.userCell(l)}${l.deleted ? '<br><span style="font-size:0.72rem;color:#888;">deleted account</span>' : ''}</td>
+                <td>${this.statusBadge(l)}</td>
+                <td style="font-size:0.8rem;">${new Date(l.createdAt).toLocaleDateString()}</td>
+                <td>${money(l.deposited)}</td>
+                <td>${money(l.withdrawn)}</td>
+                <td style="white-space:nowrap;">${l.deleted ? '' : `<button class="admin-btn admin-btn-edit" onclick="Admin.showRisk('${escapeHtml(l.id)}')">Investigate</button> ${this.moderationButtons(l)}`}</td>
+              </tr>`).join('')}</tbody></table></div>`
+              : '<p style="color:#888;font-size:0.85rem;">No linked accounts.</p>'}
+
+            <h4 style="margin:16px 0 6px;">Review ${this.reviewBadge(risk.reviewStatus)}</h4>
+            ${risk.reviewedAt ? `<p style="font-size:0.78rem;color:#888;margin:0 0 6px;">Last decided ${new Date(risk.reviewedAt).toLocaleString()}</p>` : ''}
+            <textarea class="admin-form-input admin-form-textarea" id="riskNote" maxlength="500" placeholder="Note (what you checked, why you decided)">${escapeHtml(risk.reviewNote || '')}</textarea>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;">
+              <button class="admin-btn admin-btn-approve" onclick="Admin.reviewRisk('${escapeHtml(user.id)}','cleared')">Clear (not abuse)</button>
+              <button class="admin-btn admin-btn-reject" onclick="Admin.reviewRisk('${escapeHtml(user.id)}','confirmed')">Confirm abuse</button>
+              ${risk.reviewStatus !== 'open' ? `<button class="admin-btn" style="background:#eee;" onclick="Admin.reviewRisk('${escapeHtml(user.id)}','open')">Reopen</button>` : ''}
+              <span style="flex:1;"></span>
+              ${this.moderationButtons(user)}
+            </div>
+            <p style="font-size:0.75rem;color:#888;margin-top:8px;">Clearing keeps the account cleared unless a new strong signal appears later. Confirming doesn't ban anyone by itself &mdash; use Suspend or Ban for that.</p>
+            <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>`;
+        } catch (e) { modal.querySelector('.admin-modal').innerHTML = `<p style="padding:20px;">${escapeHtml(e.message)}</p>`; }
+      },
+
+      async reviewRisk(userId, status) {
+        const note = (document.getElementById('riskNote') || {}).value || '';
+        try {
+          await this.api(`/admin/risk/${encodeURIComponent(userId)}/review`, { method: 'POST', body: JSON.stringify({ status, note }) });
+          this.toast(status === 'cleared' ? 'Marked as cleared' : status === 'confirmed' ? 'Marked as confirmed abuse' : 'Reopened', 'success');
+          this.refreshAfterModeration();
+        } catch (e) { this.toast(e.message); }
+      },
+
       async loadMultiAccounts(c) {
         try {
           const [groups, myIp, bannedIps] = await Promise.all([
@@ -659,6 +816,7 @@ Type DELETE to confirm.`);
       async loadWithdrawals(c) {
         try {
           const withdrawals = await this.api('/admin/withdrawals');
+          this.withdrawalsCache = withdrawals;
           c.innerHTML = `
             <div class="admin-table-card">
               <div class="admin-table-header">
@@ -671,7 +829,7 @@ Type DELETE to confirm.`);
                     ${withdrawals.map(w => `
                       <tr>
                         <td>${new Date(w.createdAt).toLocaleString()}</td>
-                        <td>${escapeHtml(w.username)}</td>
+                        <td>${escapeHtml(w.username)}${w.risk ? `<br>${this.riskBadge(w.risk, w.userId)}` : ''}</td>
                         <td>${escapeHtml(w.email)}</td>
                         <td>${escapeHtml(w.uid)}</td>
                         <td><strong>${w.amount}</strong></td>
@@ -699,7 +857,10 @@ Type DELETE to confirm.`);
       },
 
       async updateWithdrawal(id, status) {
-        if (!confirm(`${status === 'Approved' ? 'Approve' : 'Reject'} this withdrawal?`)) return;
+        const w = (this.withdrawalsCache || []).find(x => x.id === id);
+        const warn = status === 'Approved' && w && w.risk && w.risk.holdForReview
+          ? `\u26A0 This account is flagged for review (risk ${w.risk.score}/100: ${w.risk.reason}).\nOpen Risk Review to check the linked accounts first.\n\n` : '';
+        if (!confirm(`${warn}${status === 'Approved' ? 'Approve' : 'Reject'} this withdrawal?`)) return;
         try {
           await this.api(`/admin/withdrawals/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
           this.toast(`Withdrawal ${status.toLowerCase()}!`, 'success');

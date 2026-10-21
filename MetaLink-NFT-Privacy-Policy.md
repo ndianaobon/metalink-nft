@@ -1,6 +1,6 @@
 # MetaLink NFT — Privacy Policy
 
-**Effective Date:** July 10, 2026
+**Effective Date:** October 21, 2026
 
 ## 1. Overview
 
@@ -20,7 +20,7 @@ By creating an account or otherwise using the Platform, you agree to the practic
 
 **Support communications.** Messages you send us through email or our Telegram community channel when requesting help.
 
-**Technical data.** IP address, device and browser type, app version, and session/authentication tokens needed to keep your account secure and the Platform functioning.
+**Technical data.** IP address, device and browser type, app version, and session/authentication tokens needed to keep your account secure and the Platform functioning. The website and app also create a random device identifier on first use and send it with each request. It is not derived from your hardware (no hardware IDs, advertising IDs or browser fingerprinting), it resets if you clear the app's or browser's data, and we store only a hashed form of it.
 
 ## 3. How We Use Your Information
 
@@ -31,7 +31,7 @@ We use the information above to:
 - Operate staking/earn features and calculate and credit rewards
 - Track rarity tiers and display accurate collection/marketplace data
 - Communicate with you about your account, transactions, or support requests
-- Detect and prevent fraud, abuse, or unauthorized activity
+- Detect and prevent fraud, abuse, duplicate accounts, or unauthorized activity (for example, several accounts using the same device identifier or withdrawal wallet). This produces a risk score reviewed by our team; it does not block withdrawals automatically, and a shared IP address alone is never treated as evidence of abuse
 - Maintain, secure, and improve the Platform
 - Meet legal or regulatory obligations that apply to us
 

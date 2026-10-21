@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --test",
     "mobile:build": "node mobile/build-www.js && npx cap sync",
     "mobile:android": "npm run mobile:build && npx cap open android",
     "mobile:ios": "npm run mobile:build && npx cap open ios"
