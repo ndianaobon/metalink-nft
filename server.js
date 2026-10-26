@@ -1445,7 +1445,11 @@ app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
 
 // ===================== RESERVE ROUTES =====================
 
-const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// Three rounds a day: a user can reserve again 8 hours after their last reservation. A level's
+// reward % is per day, so each round pays a third of it and three rounds add up to the full %.
+const RESERVE_ROUNDS_PER_DAY = 3;
+const RESERVE_COOLDOWN_MS = (24 / RESERVE_ROUNDS_PER_DAY) * 60 * 60 * 1000;
+const roundPctOf = level => parseFloat((level.rewardPct / RESERVE_ROUNDS_PER_DAY).toFixed(4));
 
 function getNextReservationAt(myOrders) {
   if (!myOrders.length) return null;
@@ -1508,7 +1512,9 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
     walletBalance: user?.walletBalance || 0,
     balanceForReservation: Math.min(user?.walletBalance || 0, Math.max(...RESERVE_LEVELS.map(l => l.max))),
     nextReservationAt: getNextReservationAt(myOrders),
-    levels: RESERVE_LEVELS,
+    roundsPerDay: RESERVE_ROUNDS_PER_DAY,
+    roundHours: RESERVE_COOLDOWN_MS / 3600000,
+    levels: RESERVE_LEVELS.map(lv => ({ ...lv, roundPct: roundPctOf(lv) })),
     orders: myOrders
   });
 });
@@ -1516,13 +1522,13 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
 app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
   const emails = [];
   const result = await tx(async c => {
-    // Locking the user first also serializes the 24h cooldown check, so a double-click can't reserve twice.
+    // Locking the user first also serializes the 8h cooldown check, so a double-click can't reserve twice.
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
 
     const existingOrders = await db.listDocs(c, 'reserve_orders', { userId: req.userId });
     const nextReservationAt = getNextReservationAt(existingOrders);
-    if (nextReservationAt) return { status: 400, body: { error: 'You can only reserve once every 24 hours', nextReservationAt } };
+    if (nextReservationAt) return { status: 400, body: { error: `You can reserve once every ${RESERVE_COOLDOWN_MS / 3600000} hours (${RESERVE_ROUNDS_PER_DAY} rounds a day)`, nextReservationAt } };
 
     const RESERVE_LEVELS = await getReserveLevels(c);
     const balance = user.walletBalance;
@@ -1547,7 +1553,8 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
     const winRatePct = cfg.reserveWinRatePct !== undefined ? parseFloat(cfg.reserveWinRatePct) : 70;
     const won = Math.random() * 100 < winRatePct;
     // Rounded once, so the amount shown on the order is exactly what gets credited.
-    const reward = won ? parseFloat((amount * (level.rewardPct / 100)).toFixed(2)) : 0;
+    const roundPct = roundPctOf(level);
+    const reward = won ? parseFloat((amount * (roundPct / 100)).toFixed(2)) : 0;
 
     const order = {
       id: generateId(),
@@ -1556,7 +1563,8 @@ app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
       reservationDate: new Date().toISOString(),
       reservationAmount: amount,
       level: level.level,
-      rewardPct: level.rewardPct,
+      rewardPct: level.rewardPct, // per day
+      roundPct,                   // what this round paid (rewardPct / rounds per day)
       itemName: level.name,
       itemImage: level.image,
       itemPrice: amount,

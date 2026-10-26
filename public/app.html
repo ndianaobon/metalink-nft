@@ -499,36 +499,37 @@
       color: var(--text); display: flex; align-items: center; justify-content: center; cursor: pointer;
     }
 
-    .rv-round {
-      display: flex; flex-direction: column; align-items: center; text-align: center;
-      padding: 22px 18px 24px; border-radius: 22px; color: #0f0f1c;
-      background: linear-gradient(100deg, #93c5fd 0%, #a7f3d0 50%, #fbcfe8 100%);
+    /* Round open: a wide gradient Confirm button. Waiting: a wide "Next Round" card with HH:MM:SS boxes. */
+    .rv-confirm-btn {
+      display: block; width: 100%; min-height: 58px; padding: 14px 18px; border: none; border-radius: 6px; cursor: pointer;
+      color: #0f0f1c; font-family: var(--font); font-size: clamp(1.1rem, 4.6vw, 1.3rem); font-weight: 800; letter-spacing: 0.02em;
+      background: radial-gradient(120% 140% at 10% 110%, rgba(129,140,248,0.55) 0%, rgba(129,140,248,0) 45%),
+                  linear-gradient(100deg, #a7f3d0 0%, #99f6e4 35%, #67e8f9 75%, #22d3ee 100%);
+      box-shadow: 0 6px 22px rgba(34,211,238,0.25);
+      transition: transform 0.15s ease, opacity 0.2s ease, box-shadow 0.2s ease;
     }
-    .rv-round-title { font-size: 1.35rem; font-weight: 700; margin-bottom: 12px; }
-    .rv-round .reserve-cooldown-ring .ring-bg { stroke: rgba(15,15,28,0.12); }
-    .rv-round .reserve-cooldown-ring .ring-progress { stroke: #4F46E5; }
-    .rv-round .reserve-cooldown-time { color: #0f0f1c; font-size: 1.05rem; }
-    .rv-round-sub { font-size: 0.82rem; color: rgba(15,15,28,0.7); margin-top: 10px; }
-    /* Big round Reserve button: dark centre, gradient ring, gentle pulse while it's available. */
-    .rv-reserve-btn {
-      --size: clamp(132px, 42vw, 176px);
-      margin: 6px auto 2px; width: var(--size); height: var(--size); padding: 12px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; text-align: center;
-      border: 6px solid transparent; color: #fff; cursor: pointer;
-      background: linear-gradient(#0f0f1c, #0f0f1c) padding-box, linear-gradient(135deg, #7C3AED, #4F46E5, #14B8A6) border-box;
-      font-family: var(--font); font-size: clamp(1.05rem, 4.8vw, 1.3rem); font-weight: 800; line-height: 1.2;
-      box-shadow: 0 10px 30px rgba(79,70,229,0.45), inset 0 0 18px rgba(124,58,237,0.35);
-      transition: transform 0.15s ease, box-shadow 0.2s ease;
-      animation: rvPulse 2.2s ease-in-out infinite;
+    .rv-confirm-btn:active:not(:disabled) { transform: scale(0.98); }
+    .rv-confirm-btn:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+    .rv-next-round {
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; text-align: center;
+      padding: 14px 16px 16px; border-radius: 14px; color: #0f0f1c;
+      background: linear-gradient(100deg, #60a5fa 0%, #93e5f5 30%, #bbf7d0 62%, #fbd5cf 100%);
     }
-    .rv-reserve-btn:active:not(:disabled) { transform: scale(0.95); }
-    .rv-reserve-btn:disabled { animation: none; opacity: 0.55; cursor: not-allowed; box-shadow: none; }
-    .rv-reserve-btn.hidden { display: none; }
-    @keyframes rvPulse {
-      0%, 100% { box-shadow: 0 10px 30px rgba(79,70,229,0.45), 0 0 0 0 rgba(124,58,237,0.45), inset 0 0 18px rgba(124,58,237,0.35); }
-      50% { box-shadow: 0 10px 30px rgba(79,70,229,0.45), 0 0 0 14px rgba(124,58,237,0), inset 0 0 18px rgba(124,58,237,0.35); }
+    .rv-next-title { font-size: clamp(1.15rem, 5vw, 1.45rem); font-weight: 600; }
+    .rv-next-time { display: flex; align-items: center; justify-content: center; gap: 6px; font-variant-numeric: tabular-nums; }
+    .rv-time-box {
+      min-width: 2.1em; padding: 3px 6px; border-radius: 8px; background: rgba(255,255,255,0.92);
+      font-size: clamp(1.05rem, 4.6vw, 1.3rem); font-weight: 800; line-height: 1.3;
     }
-    @media (prefers-reduced-motion: reduce) { .rv-reserve-btn { animation: none; } }
+    .rv-time-sep { font-weight: 800; font-size: 1.1rem; }
+    .rv-rounds { display: flex; justify-content: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+    .rv-round-dot {
+      display: flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 0.75rem; font-weight: 700;
+      background: var(--surface); border: 1px solid var(--border); color: var(--text-muted); white-space: nowrap;
+    }
+    .rv-round-dot::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+    .rv-round-dot.done { color: var(--text); }
+    .rv-round-dot.done::before { background: #22C55E; }
     .rv-hint { font-size: 0.8rem; color: var(--text-muted); text-align: center; margin-top: 14px; line-height: 1.5; }
 
     .rv-empty { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 20px 10px 30px; }
@@ -1982,18 +1983,14 @@
           </button>
         </div>
 
-        <div class="rv-round" id="rvRoundCard">
-          <div class="rv-round-title" id="rvRoundTitle">Next Round</div>
-          <div class="reserve-cooldown-ring-wrap" id="rvRingWrap">
-            <svg class="reserve-cooldown-ring" viewBox="0 0 116 116">
-              <circle class="ring-bg" cx="58" cy="58" r="50"></circle>
-              <circle class="ring-progress" id="reserveCooldownRingProgress" cx="58" cy="58" r="50"></circle>
-            </svg>
-            <div class="reserve-cooldown-time" id="reserveCooldownTime">00:00:00</div>
+        <button type="button" class="rv-confirm-btn" id="reserveBtn">Confirm</button>
+        <div class="rv-next-round" id="rvNextRound" style="display:none;" role="timer" aria-live="off">
+          <div class="rv-next-title">Next Round</div>
+          <div class="rv-next-time">
+            <span class="rv-time-box" id="rvTimeH">00</span><span class="rv-time-sep">:</span><span class="rv-time-box" id="rvTimeM">00</span><span class="rv-time-sep">:</span><span class="rv-time-box" id="rvTimeS">00</span>
           </div>
-          <div class="rv-round-sub" id="rvRoundSub">Next reservation available in</div>
-          <button class="rv-reserve-btn" id="reserveBtn">Reserve Now</button>
         </div>
+        <div class="rv-rounds" id="rvRounds"></div>
 
         <div class="rv-hint" id="rvHint"></div>
       </div>
@@ -3335,6 +3332,8 @@
         const d = await api('/api/reserve/orders');
         reserveLevelsCache = (d.levels || []).slice().sort((a, b) => a.min - b.min);
         reserveBalance = d.walletBalance || 0;
+        if (d.roundsPerDay) reserveRoundsPerDay = d.roundsPerDay;
+        if (d.roundHours) reserveRoundHours = d.roundHours;
         document.getElementById('reserveToday').textContent = fmtNum(d.todayEarnings);
         document.getElementById('reserveCumulative').textContent = fmtNum(d.cumulativeIncome);
         document.getElementById('reserveTeamBenefits').textContent = fmtNum(d.teamBenefits);
@@ -3355,6 +3354,7 @@
         renderReserveTodayList();
         renderReserveOrderTabs();
         renderReserveOrders();
+        renderReserveRounds();
 
         if (d.nextReservationAt) startReserveCooldown(d.nextReservationAt);
         else stopReserveCooldown();
@@ -3415,7 +3415,7 @@
       if (!lv) { el.textContent = ''; return; }
       el.innerHTML = lv.min > reserveBalance
         ? `Your balance (${fmt(reserveBalance)} USDT) is below the minimum for this level. Deposit at least ${fmt(lv.min - reserveBalance)} USDT more to reserve.`
-        : `Balance: <strong>${fmt(reserveBalance)} USDT</strong> &middot; A random item between ${fmtNum(lv.min)} and ${fmtNum(Math.min(lv.max, reserveBalance))} USDT is drawn at LV ${lv.level} (${lv.rewardPct}% reward).`;
+        : `Balance: <strong>${fmt(reserveBalance)} USDT</strong> &middot; A random item between ${fmtNum(lv.min)} and ${fmtNum(Math.min(lv.max, reserveBalance))} USDT is drawn at LV ${lv.level}.<br>${reserveRoundsPerDay} rounds a day, every ${reserveRoundHours} hours &middot; <strong>${fmtPct(roundPctOf(lv))}%</strong> per round = ${lv.rewardPct}% a day.`;
       const btn = document.getElementById('reserveBtn');
       if (!reserveCooldownInterval) btn.disabled = lv.min > reserveBalance;
     }
@@ -3426,39 +3426,45 @@
         <div class="reserve-rules-row">
           <span class="rr-level">LV ${lv.level}</span>
           <span class="rr-range">${fmtNum(lv.min)} &ndash; ${fmtNum(lv.max)} USDT</span>
-          <span class="rr-pct">${lv.rewardPct}%</span>
+          <span class="rr-pct">${lv.rewardPct}%<small style="display:block;font-weight:500;color:var(--text-muted);font-size:0.7rem;">${fmtPct(roundPctOf(lv))}% / round</small></span>
         </div>
-      `).join('') + '<p style="font-size:0.78rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">Choose a level, then reserve once every 24 hours. The amount is returned to your balance after the draw, plus the reward if you win.</p>';
+      `).join('') + `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">The % is per day. You can reserve every ${reserveRoundHours} hours (${reserveRoundsPerDay} rounds a day), and each round pays a third of the level's %, so ${reserveRoundsPerDay} rounds add up to the full daily %. The amount is returned to your balance after the draw, plus the reward if you win.</p>`;
       openModal('reserveRulesModal');
     }
 
-    // ---- Next-round countdown (circle) ----
+    // ---- Rounds: reserve every 8 hours (3 a day); each round pays a third of the daily % ----
     let reserveCooldownInterval = null;
-    const RESERVE_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-    const RESERVE_RING_CIRCUMFERENCE = 2 * Math.PI * 50;
+    let reserveRoundsPerDay = 3;
+    let reserveRoundHours = 8;
+
+    function roundPctOf(lv) { return lv.roundPct != null ? lv.roundPct : lv.rewardPct / reserveRoundsPerDay; }
+    function fmtPct(n) { return String(parseFloat(Number(n || 0).toFixed(2))); }
+
+    // "Round 1/2/3" pills for the last 24 hours, so users see how many of today's rounds they've used.
+    function renderReserveRounds() {
+      const since = Date.now() - 24 * 60 * 60 * 1000;
+      const used = reserveOrdersCache.filter(o => new Date(o.reservationDate).getTime() > since).length;
+      let html = '';
+      for (let i = 1; i <= reserveRoundsPerDay; i++) {
+        html += `<span class="rv-round-dot ${i <= used ? 'done' : ''}">Round ${i}</span>`;
+      }
+      document.getElementById('rvRounds').innerHTML = html;
+    }
 
     function startReserveCooldown(nextReservationAt) {
       clearInterval(reserveCooldownInterval);
-      const ring = document.getElementById('reserveCooldownRingProgress');
-      const timeEl = document.getElementById('reserveCooldownTime');
       const btn = document.getElementById('reserveBtn');
-      ring.style.strokeDasharray = RESERVE_RING_CIRCUMFERENCE;
-      document.getElementById('rvRoundTitle').textContent = 'Next Round';
-      document.getElementById('rvRingWrap').style.display = '';
-      document.getElementById('rvRoundSub').style.display = '';
+      btn.style.display = 'none';
       btn.disabled = true;
-      btn.classList.add('hidden'); // the countdown circle takes its place until the round opens
+      document.getElementById('rvNextRound').style.display = '';
+      const hEl = document.getElementById('rvTimeH'), mEl = document.getElementById('rvTimeM'), sEl = document.getElementById('rvTimeS');
 
       function tick() {
         const remaining = new Date(nextReservationAt).getTime() - Date.now();
         if (remaining <= 0) { stopReserveCooldown(); loadReserve(); return; }
-        const h = Math.floor(remaining / 3600000);
-        const m = Math.floor((remaining % 3600000) / 60000);
-        const s = Math.floor((remaining % 60000) / 1000);
-        timeEl.textContent = pad2(h) + ':' + pad2(m) + ':' + pad2(s);
-        btn.textContent = 'Available in ' + pad2(h) + ':' + pad2(m);
-        const fraction = Math.max(0, Math.min(1, remaining / RESERVE_COOLDOWN_MS));
-        ring.style.strokeDashoffset = RESERVE_RING_CIRCUMFERENCE * (1 - fraction);
+        hEl.textContent = pad2(Math.floor(remaining / 3600000));
+        mEl.textContent = pad2(Math.floor((remaining % 3600000) / 60000));
+        sEl.textContent = pad2(Math.floor((remaining % 60000) / 1000));
       }
       tick();
       reserveCooldownInterval = setInterval(tick, 1000);
@@ -3467,12 +3473,10 @@
     function stopReserveCooldown() {
       clearInterval(reserveCooldownInterval);
       reserveCooldownInterval = null;
-      document.getElementById('rvRoundTitle').textContent = 'Round Open';
-      document.getElementById('rvRingWrap').style.display = 'none';
-      document.getElementById('rvRoundSub').style.display = 'none';
+      document.getElementById('rvNextRound').style.display = 'none';
       const btn = document.getElementById('reserveBtn');
-      btn.textContent = 'Reserve Now';
-      btn.classList.remove('hidden');
+      btn.style.display = '';
+      btn.textContent = 'Confirm';
       const lv = selectedLevelObj();
       btn.disabled = !lv || lv.min > reserveBalance;
     }
@@ -3556,7 +3560,7 @@
       const lv = selectedLevelObj();
       if (!lv) return;
       const btn = document.getElementById('reserveBtn');
-      btn.disabled = true; btn.textContent = 'Drawing...';
+      btn.disabled = true; btn.textContent = 'Confirming...';
       try {
         const o = await api('/api/reserve/orders', { method: 'POST', body: JSON.stringify({ level: lv.level }) });
         lastReserveOrder = o;
@@ -3565,7 +3569,7 @@
         document.getElementById('reserveResultImage').alt = o.itemName;
         document.getElementById('reserveResultName').textContent = o.itemName;
         document.getElementById('reserveResultValue').innerHTML = `Value: ${fmt(o.itemPrice)} <span class="rv-tether"></span>`;
-        document.getElementById('reserveResultLevel').textContent = 'LV ' + o.level + ' · ' + o.rewardPct + '%';
+        document.getElementById('reserveResultLevel').textContent = 'LV ' + o.level + ' · ' + fmtPct(o.roundPct != null ? o.roundPct : o.rewardPct) + '% this round';
         const statusEl = document.getElementById('reserveResultStatus');
         statusEl.textContent = o.status === 'Won' ? 'You won +' + fmt(o.reward) + ' USDT' : 'Not won this time';
         statusEl.className = 'reserve-result-status ' + (o.status === 'Won' ? 'won' : 'lost');
@@ -3586,7 +3590,7 @@
       lastReserveOrder = null;
       switchReserveTab('today');
       if (o && o.status === 'Won' && o.reward >= 0.01) {
-        showRewardCard({ kind: 'reserve', amount: o.reward, detail: `${o.itemName} · Level ${o.level} · ${o.rewardPct}%` });
+        showRewardCard({ kind: 'reserve', amount: o.reward, detail: `${o.itemName} · Level ${o.level} · ${fmtPct(o.roundPct != null ? o.roundPct : o.rewardPct)}%` });
       }
     }
 

@@ -961,11 +961,12 @@ Type DELETE to confirm.`);
             </div>
             <div style="padding:16px 24px 0;font-size:0.85rem;color:#888;">
               When a user taps Reserve, the system picks one of the levels their balance qualifies for (balance &ge; minimum), reserves a random amount between that level's minimum and maximum,
-              and pays the reward % if the draw wins (win rate is set in Settings). Levels are numbered automatically from the lowest minimum.
+              and pays a reward if the draw wins (win rate is set in Settings). Users can reserve every 8 hours (3 rounds a day); the reward % is per day,
+              so each round pays a third of it and three rounds add up to the full %. Levels are numbered automatically from the lowest minimum.
             </div>
             <div style="overflow-x:auto;">
               <table class="admin-table">
-                <thead><tr><th>Image</th><th>Item Name</th><th>Min (USDT)</th><th>Max (USDT)</th><th>Reward %</th><th></th></tr></thead>
+                <thead><tr><th>Image</th><th>Item Name</th><th>Min (USDT)</th><th>Max (USDT)</th><th>Reward % / day</th><th></th></tr></thead>
                 <tbody>
                   ${levels.map((lv, i) => `
                     <tr>
