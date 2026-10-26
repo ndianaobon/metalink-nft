@@ -57,7 +57,14 @@ app.use(express.json({ limit: '10mb' }));
 // Images in /assets and /uploads are embedded in emails and by other sites (link previews), which helmet's
 // default same-origin resource policy would block. Private deposit screenshots are never served from here.
 app.use(['/assets', '/uploads'], (req, res, next) => { res.set('Cross-Origin-Resource-Policy', 'cross-origin'); next(); });
-app.use(express.static(path.join(__dirname, 'public')));
+// HTML pages must always be revalidated: without a Cache-Control header, phones, the Android app's
+// WebView and Hostinger's CDN keep serving an old copy for a while after a deploy, so some users
+// see the previous design. "no-cache" still allows a fast 304 when the page hasn't changed.
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) res.set('Cache-Control', 'no-cache');
+  }
+}));
 app.use('/assets', express.static(path.join(__dirname, 'public/assets'), { maxAge: '1h' }));
 // Files uploaded before uploads moved into Postgres; anything not found here falls through to the DB route below.
 app.use('/uploads', express.static(path.join(DATA_DIR, 'uploads')));
