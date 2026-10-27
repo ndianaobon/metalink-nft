@@ -879,13 +879,19 @@ Type DELETE to confirm.`);
 
       async loadDeposits(c) {
         try {
-          const deposits = await this.api('/admin/deposits');
+          const [deposits, watch] = await Promise.all([this.api('/admin/deposits'), this.api('/admin/deposit-watch').catch(() => null)]);
           this.depositsCache = deposits;
-          const pending = deposits.filter(d => d.status === 'Pending').length;
+          if (this.depositShowUnpaid === undefined) this.depositShowUnpaid = false;
+          // Automatic requests waiting for payment have nothing to review yet.
+          const pending = deposits.filter(d => d.status === 'Pending' && !d.auto).length;
           c.innerHTML = `
+            ${watch ? this.renderDepositWatch(watch) : ''}
             <div class="admin-table-card">
               <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
                 <h3>Deposits (${deposits.length})${pending ? ` &middot; <span style="color:#d97706;">${pending} pending review</span>` : ''}</h3>
+                <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:#555;cursor:pointer;">
+                  <input type="checkbox" ${this.depositShowUnpaid ? 'checked' : ''} onchange="Admin.depositShowUnpaid=this.checked;Admin.renderDepositRows()"> Show unpaid automatic requests
+                </label>
                 <input class="admin-form-input" id="depositFilter" style="max-width:260px;" placeholder="Search by user UID" value="${escapeHtml(this.depositQuery || '')}" oninput="Admin.depositQuery=this.value;Admin.renderDepositRows()">
               </div>
               <div style="overflow-x:auto;">
@@ -900,23 +906,110 @@ Type DELETE to confirm.`);
         } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
       },
 
+      explorerTxUrl(network, txid) {
+        return network === 'bep20' ? 'https://bscscan.com/tx/' + encodeURIComponent(txid) : 'https://tronscan.org/#/transaction/' + encodeURIComponent(txid);
+      },
+
+      renderDepositWatch(w) {
+        const ago = iso => {
+          if (!iso) return 'never';
+          const s = Math.round((Date.now() - new Date(iso)) / 1000);
+          return s < 90 ? s + 's ago' : Math.round(s / 60) + ' min ago';
+        };
+        const net = (key, label) => {
+          const n = w.networks[key];
+          if (!n.address) return `<div><strong>${label}:</strong> <span style="color:#888;">no address set</span></div>`;
+          const state = !w.enabled ? '<span style="color:#888;">off</span>'
+            : n.lastError ? `<span style="color:#b91c1c;">&#9888; ${escapeHtml(n.lastError)}</span> (last error ${ago(n.lastErrorAt)})`
+            : n.lastPollAt ? `<span style="color:#15803d;">&#9679; watching</span> &middot; checked ${ago(n.lastPollAt)}`
+            : '<span style="color:#d97706;">starting&hellip;</span>';
+          return `<div><strong>${label}:</strong> ${state}</div>`;
+        };
+        return `
+          <div class="admin-table-card" style="margin-bottom:24px;">
+            <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+              <h3>Automatic Deposits &middot; ${w.enabled ? '<span style="color:#15803d;">On</span>' : '<span style="color:#888;">Off</span>'}</h3>
+              <button class="admin-btn admin-btn-edit" onclick="Admin.loadPage()">Refresh</button>
+            </div>
+            <div style="padding:16px 24px;font-size:0.85rem;line-height:1.8;">
+              ${net('trc20', 'TRC20 (Tron)')}
+              ${net('bep20', 'BEP20 (BNB Chain)')}
+              <p style="font-size:0.78rem;color:#888;margin-top:6px;">
+                Each user is given an exact amount to send (e.g. 100.37 USDT); when a confirmed USDT transfer of that amount reaches your address, the deposit is approved and credited automatically.
+                ${w.enabled ? '' : 'Turn it on in Settings &rarr; Platform Settings.'}
+                ${w.tronApiKey ? '' : ' Tip: set a free <strong>TRONGRID_API_KEY</strong> on the server for more reliable Tron checks.'}
+              </p>
+            </div>
+            <div class="admin-table-header" style="border-top:1px solid #eee;"><h3 style="font-size:0.95rem;">Unmatched payments (${w.unmatched.length})</h3></div>
+            <div style="padding:0 24px 8px;font-size:0.78rem;color:#888;">USDT that arrived but didn't match a request (wrong amount, sent too late, or no request). Check with the user, then credit it to their UID, or ignore it if it isn't a user deposit.</div>
+            ${w.unmatched.length ? `
+            <div style="overflow-x:auto;">
+              <table class="admin-table">
+                <thead><tr><th>Time</th><th>Amount</th><th>Network</th><th>From</th><th>Transaction</th><th>Actions</th></tr></thead>
+                <tbody>
+                  ${w.unmatched.map(t => `<tr>
+                    <td>${new Date(t.time).toLocaleString()}</td>
+                    <td><strong>${t.amount} USDT</strong></td>
+                    <td>${t.network === 'bep20' ? 'BEP20' : 'TRC20'}</td>
+                    <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${escapeHtml(t.from || '-')}</td>
+                    <td style="max-width:160px;font-size:0.75rem;word-break:break-all;"><a href="${this.explorerTxUrl(t.network, t.txid)}" target="_blank" rel="noopener">${escapeHtml(t.txid)}</a></td>
+                    <td style="white-space:nowrap;">
+                      <button class="admin-btn admin-btn-approve" onclick="Admin.assignTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}',${t.amount})">Credit to UID</button>
+                      <button class="admin-btn admin-btn-reject" onclick="Admin.ignoreTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}')">Ignore</button>
+                    </td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>
+            </div>` : '<p style="text-align:center;color:#888;padding:12px 20px 20px;">None</p>'}
+          </div>`;
+      },
+
+      async assignTransfer(network, txid, amount) {
+        const uid = prompt(`Credit ${amount} USDT to which user? Enter their UID:`);
+        if (!uid) return;
+        if (!confirm(`Credit ${amount} USDT to UID ${uid}? Their team commission is paid as for a normal deposit.`)) return;
+        try {
+          await this.api('/admin/deposit-transfers/assign', { method: 'POST', body: JSON.stringify({ network, txid, uid }) });
+          this.toast('Payment credited!', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async ignoreTransfer(network, txid) {
+        if (!confirm('Ignore this payment? It will be removed from the list and not credited to anyone.')) return;
+        try {
+          await this.api('/admin/deposit-transfers/ignore', { method: 'POST', body: JSON.stringify({ network, txid }) });
+          this.toast('Ignored', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
       renderDepositRows() {
         const q = (this.depositQuery || '').trim().toLowerCase();
-        const deposits = (this.depositsCache || []).filter(d => !q || (d.uid || '').toLowerCase().includes(q));
+        const unpaid = d => d.auto && d.status !== 'Approved' && d.status !== 'Rejected';
+        const deposits = (this.depositsCache || []).filter(d => (!q || (d.uid || '').toLowerCase().includes(q)) && (this.depositShowUnpaid || !unpaid(d)));
         const networkLabel = n => n === 'bep20' ? 'BEP20' : n === 'trc20' ? 'TRC20' : '-';
+        const statusBadge = d => {
+          if (d.auto && d.status === 'Pending') return '<span class="admin-badge admin-badge-pending">Awaiting payment</span>';
+          if (d.status === 'Expired' || d.status === 'Cancelled') return `<span class="admin-badge" style="background:#f3f4f6;color:#666;">${escapeHtml(d.status)}</span>`;
+          return `<span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span>`;
+        };
+        const source = d => d.approvedBy === 'auto' ? '<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic</span>'
+          : d.auto ? '<br><span style="font-size:0.72rem;color:#888;">Automatic request</span>'
+          : d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : '';
         document.getElementById('depositRows').innerHTML = deposits.map(d => `<tr>
             <td>${new Date(d.createdAt).toLocaleString()}</td>
             <td><strong>${escapeHtml(d.username || 'Unknown')}</strong><br><span style="font-size:0.75rem;color:#888;">${escapeHtml(d.email)}${d.uid ? ' &middot; ' + escapeHtml(d.uid) : ''}</span></td>
-            <td><strong>${d.amount} USDT</strong>${d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : ''}</td>
+            <td><strong>${d.amount} USDT</strong>${source(d)}</td>
             <td>${networkLabel(d.network)}</td>
-            <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${d.txid ? escapeHtml(d.txid) : '-'}</td>
+            <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${!d.txid ? '-' : d.network ? `<a href="${this.explorerTxUrl(d.network, d.txid)}" target="_blank" rel="noopener">${escapeHtml(d.txid)}</a>` : escapeHtml(d.txid)}</td>
             <td>${d.hasProof ? `<button class="admin-btn admin-btn-edit" onclick="Admin.viewDepositProof('${escapeHtml(d.id)}')">View</button>` : '<span style="color:#ccc;">None</span>'}</td>
-            <td><span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span></td>
+            <td>${statusBadge(d)}</td>
             <td style="white-space:nowrap;">
-              ${d.status === 'Pending' ? `
+              ${d.status === 'Pending' && !d.auto ? `
                 <button class="admin-btn admin-btn-approve" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Approved')">Approve</button>
                 <button class="admin-btn admin-btn-reject" onclick="Admin.updateDeposit('${escapeHtml(d.id)}','Rejected')">Reject</button>
-              ` : '<span style="color:#888;">Processed</span>'}
+              ` : d.auto && d.status === 'Pending' ? '<span style="color:#888;">Credited when paid</span>' : '<span style="color:#888;">Processed</span>'}
             </td>
           </tr>`).join('');
         const empty = document.getElementById('depositEmpty');
@@ -1497,6 +1590,14 @@ Type DELETE to confirm.`);
                     </label>
                     <p style="font-size:0.75rem;color:#888;margin-top:4px;">Untick to remove a field from the deposit page. With the screenshot off, users submit deposits without one &mdash; you'll need to verify payments another way.</p>
                   </div>
+                  <div class="admin-form-group">
+                    <label class="admin-form-label">Automatic Deposits</label>
+                    <label style="display:flex;align-items:center;gap:8px;padding:10px 0;cursor:pointer;">
+                      <input type="checkbox" id="cfgAutoDeposit" style="width:18px;height:18px;" ${config.autoDepositEnabled === true ? 'checked' : ''}>
+                      <span style="font-size:0.9rem;">Credit deposits automatically from the blockchain</span>
+                    </label>
+                    <p style="font-size:0.75rem;color:#888;margin-top:4px;">Users get an exact amount to send (e.g. 100.37 USDT) to your deposit address; when it arrives it's credited without review. Only your public addresses are used &mdash; never enter a recovery phrase or private key anywhere. Status and unmatched payments are on the Deposits page.</p>
+                  </div>
                 </div>
                 <button class="admin-btn admin-btn-primary" style="padding:12px 32px;font-size:0.95rem;margin-top:16px;" onclick="Admin.savePlatformSettings()">Save Settings</button>
               </div>
@@ -1601,7 +1702,8 @@ Type DELETE to confirm.`);
               dailyCheckinReward: document.getElementById('cfgDailyCheckin').value,
               handlingFeeEnabled: document.getElementById('cfgHandlingFeeEnabled').checked,
               depositScreenshotEnabled: document.getElementById('cfgDepositScreenshot').checked,
-              depositTxidEnabled: document.getElementById('cfgDepositTxid').checked
+              depositTxidEnabled: document.getElementById('cfgDepositTxid').checked,
+              autoDepositEnabled: document.getElementById('cfgAutoDeposit').checked
             })
           });
           this.toast('Platform settings saved!', 'success');

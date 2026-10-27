@@ -17,6 +17,9 @@ needs a database to start.
 | `WEB_CONCURRENCY` | no (default 1) | Number of server processes. Set to the number of CPU cores on the host. |
 | `DB_POOL_SIZE` | no (default 10) | Database connections per process. |
 | `DEVICE_HASH_SECRET` | recommended | Key for hashing device IDs (any long random string). If unset, one is generated and stored in `app.settings`. Changing it unlinks all existing device records. |
+| `TRONGRID_API_KEY` | recommended for automatic deposits | Free key from trongrid.io. Works without one, but at a much lower rate limit. |
+| `BSC_RPC_URL` | no (default `https://bsc-rpc.publicnode.com`) | BNB Smart Chain node used to read BEP20 deposits. A free keyed endpoint (e.g. NodeReal, Ankr, QuickNode) is more reliable than the public one. |
+| `DEPOSIT_WATCHER` | no | Set to `off` to stop the automatic-deposit watcher in this process (e.g. a local copy pointed at the live database). |
 
 On first start against a database that still has the old `kv_store` table, the data is imported
 into the new tables automatically (once). `kv_store` is left untouched as a backup.
@@ -46,6 +49,7 @@ setup. To change the schema, add a new numbered file; don't edit one that has al
 | Migration | Adds |
 | --- | --- |
 | `001_device_tracking_and_risk.sql` | `app.user_devices`, `app.account_risk` |
+| `002_deposit_transfers.sql` | `app.deposit_transfers`, index on deposit transaction hashes |
 
 ## Tests
 
@@ -54,8 +58,36 @@ npm test
 ```
 
 Runs the unit tests in `test/` with Node's built-in test runner (no database needed): device ID
-handling, the browser script, and the risk scoring scenarios (same device, different devices,
-shared Wi-Fi, bonus abuse).
+handling, the browser script, the risk scoring scenarios (same device, different devices,
+shared Wi-Fi, bonus abuse), and automatic-deposit matching and the TronGrid / BSC readers (with
+fake API responses).
+
+## Automatic deposits
+
+Off by default; switch it on in admin **Settings → Platform Settings → Automatic Deposits**. The
+server watches the deposit addresses set in Settings on the public blockchain. It only needs those
+public addresses: never put a wallet's recovery phrase or private key on the server.
+
+1. The user picks a network and enters an amount (e.g. 100). The server gives them a unique amount
+   to send, such as **100.37 USDT**: the whole amount plus cents that no other request on that
+   network has used in the last 24 hours (2 decimals first, then 3). They have 60 minutes to send it.
+2. The watcher (`deposit-watch.js`, run by the primary process) polls every 15 s while someone is
+   waiting, otherwise every 60 s:
+   - **TRC20:** TronGrid, confirmed transfers of the real USDT contract `TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t` only.
+   - **BEP20:** `eth_getLogs` on the real USDT contract `0x55d398326f99059fF775485246999027B3197955`, 15 confirmations.
+3. Every incoming transfer is stored once in `app.deposit_transfers` (primary key network + txid).
+   A transfer with exactly a request's amount, made after the request, credits it through the same
+   code as admin approval (balance, ledger, level upgrade, team commission, email). Payments that
+   arrive late (request expired or cancelled) are still credited if they come within 24 hours.
+4. Anything else (wrong amount, too late, no request, the owner topping up the wallet) appears under
+   **Unmatched payments** on the admin Deposits page, where it can be credited to a UID or ignored.
+
+Tokens that aren't real USDT are ignored, and a transaction hash can never be credited twice: not by
+the watcher, an admin assignment, or by approving a manual deposit with the same hash. The manual
+form (TxID / screenshot) stays available as "Sent a different amount? Submit proof for review".
+The Deposits page also shows whether the watcher is running and the last error, if any.
+
+Before relying on it, test with a small real deposit on each network.
 
 ## Multi-account detection
 

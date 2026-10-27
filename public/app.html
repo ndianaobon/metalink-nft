@@ -1521,6 +1521,37 @@
     }
     .dep-history-item:last-child { border-bottom: none; }
     .dep-history-sub { font-size: 0.72rem; color: var(--text-muted); }
+    .dep-history-item.clickable { cursor: pointer; }
+    /* Automatic deposit: exact amount to send + payment status */
+    .dep-autopay {
+      background: var(--surface); border: 1.5px solid var(--primary); border-radius: 16px;
+      padding: 18px 16px; margin-bottom: 8px; text-align: center;
+    }
+    .dep-autopay-label { font-size: 0.78rem; color: var(--text-muted); }
+    .dep-autopay-amount {
+      display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin: 6px 0 4px;
+      font-size: clamp(1.6rem, 8vw, 2.1rem); font-weight: 800; font-variant-numeric: tabular-nums; word-break: break-all;
+    }
+    .dep-autopay-amount small { font-size: 0.9rem; font-weight: 700; color: var(--text-muted); }
+    .dep-autopay-network { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 14px; }
+    .dep-pay-status {
+      display: flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 12px; border-radius: 10px;
+      font-size: 0.88rem; font-weight: 700; background: rgba(245,158,11,0.12); color: var(--warning);
+    }
+    .dep-pay-status.ok { background: rgba(20,184,166,0.15); color: var(--positive); }
+    .dep-pay-status.off { background: rgba(107,107,128,0.15); color: var(--text-muted); }
+    .dep-pay-spin {
+      width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%;
+      border: 2px solid currentColor; border-right-color: transparent; animation: dspin 0.9s linear infinite;
+    }
+    .dep-pay-time { min-height: 1em; margin-top: 8px; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
+    .dep-autopay-note { margin-top: 12px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.55; text-align: left; }
+    .dep-autopay-actions { display: flex; gap: 10px; margin-top: 14px; }
+    .dep-autopay-actions .btn { flex: 1; width: auto; }
+    .dep-manual-toggle {
+      display: block; width: 100%; margin-top: 6px; padding: 10px; border: none; background: none; cursor: pointer;
+      color: var(--primary); font-family: var(--font); font-size: 0.82rem; font-weight: 600; text-decoration: underline;
+    }
 
     /* ---- Profile picture upload ---- */
     .avatar-edit { position: relative; cursor: pointer; flex-shrink: 0; border: none; background: none; padding: 0; }
@@ -2625,7 +2656,7 @@
           <div class="dep-facts">
             <div class="dep-fact"><span>Network</span><span id="depFactNetwork">Tron (TRC20)</span></div>
             <div class="dep-fact"><span>Minimum deposit</span><span id="depFactMin">50 USDT</span></div>
-            <div class="dep-fact"><span>Credited to</span><span>Wallet balance (after review)</span></div>
+            <div class="dep-fact"><span>Credited to</span><span id="depFactCredit">Wallet balance (after review)</span></div>
           </div>
         </div>
 
@@ -2634,9 +2665,31 @@
           <p>Send only <strong>USDT</strong> to this address, on the <strong id="depWarnNetwork">Tron (TRC20)</strong> network. Sending any other coin or using a different network may result in the loss of your deposit.</p>
         </div>
 
-        <div class="dep-step"><span class="dep-step-num">3</span><span class="dep-step-title">Submit your deposit for review</span></div>
+        <div class="dep-step"><span class="dep-step-num">3</span><span class="dep-step-title" id="depStep3Title">Submit your deposit for review</span></div>
+
+        <!-- Automatic deposit: the exact amount to send, and live payment status -->
+        <div class="dep-autopay" id="depAutoPay" style="display:none;">
+          <div class="dep-autopay-label">Send exactly</div>
+          <div class="dep-autopay-amount">
+            <span><span id="depPayAmount">0.00</span> <small>USDT</small></span>
+            <button class="dep-copy-btn" onclick="copyPayAmount()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="dep-autopay-network" id="depPayNetwork"></div>
+          <div class="dep-pay-status" id="depPayStatus"></div>
+          <div class="dep-pay-time" id="depPayTime"></div>
+          <p class="dep-autopay-note">Send this <strong>exact amount, including the decimals</strong>, so we can recognise your payment. If your exchange takes a fee from the amount, add the fee so that exactly this amount arrives. Your balance is credited automatically a minute or two after the transfer.</p>
+          <div class="dep-autopay-actions">
+            <button class="btn btn-outline" id="depPayCancel" onclick="cancelAutoPay()">Cancel</button>
+            <button class="btn btn-primary" id="depPayNew" onclick="newAutoDeposit()">New deposit</button>
+          </div>
+        </div>
+
+        <div id="depForm">
         <div class="form-field">
-          <label for="depositAmount">Amount sent (USDT)</label>
+          <label for="depositAmount" id="depAmountLabel">Amount sent (USDT)</label>
           <input type="number" id="depositAmount" placeholder="Minimum 50" min="0" step="0.01" inputmode="decimal">
         </div>
         <div class="form-field" id="depTxidField">
@@ -2651,6 +2704,8 @@
             <small>Show the completed transfer, amount and address. PNG or JPG.</small>
           </label>
           <input type="file" id="depositScreenshot" accept="image/png,image/jpeg,image/webp" style="display:none;">
+        </div>
+        <button type="button" class="dep-manual-toggle" id="depManualToggle" style="display:none;" onclick="toggleManualDeposit()"></button>
         </div>
 
         <div id="depHistorySection" style="margin-top:28px;">
@@ -4230,14 +4285,22 @@
       page.classList.add('active');
       page.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
+      hideAutoPay();
       resetDepositForm();
       const addrs = await loadPlatformAddresses();
       const min = addrs.minDeposit != null ? addrs.minDeposit : 50;
       document.getElementById('depFactMin').textContent = min + ' USDT';
       document.getElementById('depositAmount').placeholder = 'Minimum ' + min;
+      depositManualMode = false;
       applyDepositProofConfig();
       selectDepositNetwork(addrs.trc20 || !addrs.bep20 ? 'trc20' : 'bep20');
-      loadDepositHistory();
+      const deps = await loadDepositHistory();
+      // Reopen a request that's still waiting for payment, so the user sees the amount again.
+      if (autoDepositMode() && deps) {
+        const now = Date.now();
+        const open = deps.find(d => d.auto && d.status === 'Pending' && Date.parse(d.expiresAt) > now);
+        if (open) showAutoPay(open);
+      }
     }
 
     // The admin can switch off the screenshot and/or transaction-hash fields (Settings); both default on.
@@ -4248,10 +4311,28 @@
       };
     }
 
+    // With automatic deposits on, the user enters an amount and gets an exact amount to send; the proof
+    // form is only used for payments that didn't match ("Submit proof for review").
+    let depositManualMode = false;
+    function autoDepositMode() { return platformAddresses.autoDeposit === true && !depositManualMode; }
+
     function applyDepositProofConfig() {
       const cfg = depositProofConfig();
-      document.getElementById('depScreenshotField').style.display = cfg.screenshotEnabled ? '' : 'none';
-      document.getElementById('depTxidField').style.display = cfg.txidEnabled ? '' : 'none';
+      const auto = autoDepositMode();
+      document.getElementById('depScreenshotField').style.display = !auto && cfg.screenshotEnabled ? '' : 'none';
+      document.getElementById('depTxidField').style.display = !auto && cfg.txidEnabled ? '' : 'none';
+      document.getElementById('depStep3Title').textContent = auto ? 'Enter the amount to deposit' : 'Submit your deposit for review';
+      document.getElementById('depAmountLabel').textContent = auto ? 'Amount to deposit (USDT)' : 'Amount sent (USDT)';
+      document.getElementById('depFactCredit').textContent = auto ? 'Wallet balance (automatic)' : 'Wallet balance (after review)';
+      const toggle = document.getElementById('depManualToggle');
+      toggle.style.display = platformAddresses.autoDeposit === true ? '' : 'none';
+      toggle.textContent = depositManualMode ? 'Back to automatic deposit' : 'Sent a different amount? Submit proof for review';
+      document.getElementById('depositBtn').textContent = auto ? 'Continue' : 'Submit Deposit';
+    }
+
+    function toggleManualDeposit() {
+      depositManualMode = !depositManualMode;
+      applyDepositProofConfig();
     }
 
     function closeDepositPage() {
@@ -4259,9 +4340,130 @@
       page.classList.remove('active');
       page.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
+      hideAutoPay();
+    }
+
+    // ---- Automatic deposit: exact amount + live status ----
+    let autoPayDeposit = null;
+    let autoPayTimer = null;
+    let autoPayTicks = 0;
+
+    function fmtPayAmount(n) {
+      const s = Number(n).toFixed(3);
+      return s.charAt(s.length - 1) === '0' ? Number(n).toFixed(2) : s;
+    }
+
+    function showAutoPay(d) {
+      autoPayDeposit = null;
+      selectDepositNetwork(d.network);
+      autoPayDeposit = d;
+      document.getElementById('depAutoPay').style.display = '';
+      document.getElementById('depForm').style.display = 'none';
+      document.querySelector('#depositPage .dep-submit-bar').style.display = 'none';
+      document.getElementById('depPayAmount').textContent = fmtPayAmount(d.payAmount);
+      document.getElementById('depPayNetwork').textContent = 'USDT on ' + DEPOSIT_NETWORK_LABELS[d.network];
+      renderAutoPay();
+      clearInterval(autoPayTimer);
+      autoPayTicks = 0;
+      autoPayTimer = setInterval(tickAutoPay, 1000);
+    }
+
+    function hideAutoPay() {
+      clearInterval(autoPayTimer);
+      autoPayTimer = null;
+      autoPayDeposit = null;
+      document.getElementById('depAutoPay').style.display = 'none';
+      document.getElementById('depForm').style.display = '';
+      document.querySelector('#depositPage .dep-submit-bar').style.display = '';
+    }
+
+    function renderAutoPay() {
+      const d = autoPayDeposit;
+      if (!d) return;
+      const st = document.getElementById('depPayStatus');
+      const time = document.getElementById('depPayTime');
+      const left = Date.parse(d.expiresAt) - Date.now();
+      const open = d.status === 'Pending' || d.status === 'Expired';
+      document.getElementById('depPayCancel').style.display = open ? '' : 'none';
+      document.getElementById('depPayNew').style.display = d.status === 'Pending' && left > 0 ? 'none' : '';
+      if (d.status === 'Approved') {
+        st.className = 'dep-pay-status ok';
+        st.textContent = '✓ Payment received — ' + fmt(d.amount) + ' USDT added to your balance';
+        time.textContent = '';
+      } else if (d.status === 'Pending' && left > 0) {
+        st.className = 'dep-pay-status';
+        st.innerHTML = '<span class="dep-pay-spin"></span>Waiting for your payment…';
+        const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
+        time.textContent = 'Send within ' + pad2(m) + ':' + pad2(s);
+      } else if (d.status === 'Rejected') {
+        st.className = 'dep-pay-status off';
+        st.textContent = 'This deposit was not credited';
+        time.textContent = 'Please contact support if you sent a payment.';
+      } else {
+        st.className = 'dep-pay-status off';
+        st.textContent = d.status === 'Cancelled' ? 'Deposit cancelled' : 'Time is up';
+        time.textContent = 'Already sent it? It will still be credited automatically when it arrives (within 24 hours).';
+      }
+    }
+
+    async function tickAutoPay() {
+      renderAutoPay();
+      const d = autoPayDeposit;
+      if (!d || d.status === 'Approved' || ++autoPayTicks % 8 !== 0) return;
+      try {
+        const deps = await api('/api/deposits');
+        const fresh = deps.find(x => x.id === d.id);
+        if (!fresh || !autoPayDeposit || autoPayDeposit.id !== fresh.id) return;
+        // The server only marks a request Expired on its next check; keep showing the countdown until then.
+        autoPayDeposit = fresh;
+        renderAutoPay();
+        if (fresh.status === 'Approved') {
+          toast('Deposit received! ' + fmt(fresh.amount) + ' USDT added to your balance.');
+          loadDepositHistory();
+          loadAssets();
+          updateHeaderBalance();
+        }
+      } catch (e) { /* try again on the next tick */ }
+    }
+
+    function copyPayAmount() {
+      if (!autoPayDeposit) return;
+      navigator.clipboard.writeText(fmtPayAmount(autoPayDeposit.payAmount)).then(() => toast('Amount copied!'), () => toast('Copy failed — type the amount exactly as shown', 'error'));
+    }
+
+    async function cancelAutoPay() {
+      const d = autoPayDeposit;
+      if (!d || !confirm('Cancel this deposit? Only cancel if you have NOT sent the payment.')) return;
+      try {
+        autoPayDeposit = await api('/api/deposits/' + encodeURIComponent(d.id) + '/cancel', { method: 'POST' });
+        renderAutoPay();
+        loadDepositHistory();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+
+    function newAutoDeposit() {
+      hideAutoPay();
+      resetDepositForm();
+      document.getElementById('depositAmount').focus();
+    }
+
+    async function openAutoPayFromHistory(id) {
+      try {
+        const deps = await api('/api/deposits');
+        const d = deps.find(x => x.id === id);
+        if (d) {
+          showAutoPay(d);
+          document.querySelector('#depositPage .dep-scroll').scrollTop = 0;
+        }
+      } catch (e) { toast(e.message, 'error'); }
     }
 
     function selectDepositNetwork(network) {
+      // While a payment amount is shown, its network (and address) must stay on screen.
+      if (autoPayDeposit && network !== autoPayDeposit.network) {
+        if (autoPayDeposit.status === 'Pending') return toast('Finish or cancel this deposit first', 'error');
+        hideAutoPay();
+      }
       currentDepositNetwork = network;
       document.querySelectorAll('.dep-network').forEach(b => b.classList.toggle('active', b.dataset.network === network));
       const addr = platformAddresses[network] || '';
@@ -4308,18 +4510,23 @@
       const el = document.getElementById('depHistoryList');
       try {
         const deps = await api('/api/deposits');
-        if (!deps.length) { el.innerHTML = '<div class="empty-state"><p>No deposits yet</p></div>'; return; }
-        const label = { Approved: 'Completed', Rejected: 'Rejected', Pending: 'Pending' };
-        const badge = { Approved: 'deposited', Rejected: 'rejected', Pending: 'pending' };
-        el.innerHTML = deps.slice(0, 10).map(d => `
-          <div class="dep-history-item">
+        if (!deps.length) { el.innerHTML = '<div class="empty-state"><p>No deposits yet</p></div>'; return deps; }
+        const label = { Approved: 'Completed', Rejected: 'Rejected', Pending: 'Pending', Expired: 'Expired', Cancelled: 'Cancelled' };
+        const badge = { Approved: 'deposited', Rejected: 'rejected', Pending: 'pending', Expired: 'cancelled', Cancelled: 'cancelled' };
+        el.innerHTML = deps.slice(0, 10).map(d => {
+          // Unpaid automatic requests can be reopened to see the amount to send.
+          const waiting = d.auto && (d.status === 'Pending' || d.status === 'Expired');
+          return `
+          <div class="dep-history-item${waiting ? ' clickable' : ''}"${waiting ? ` onclick="openAutoPayFromHistory('${escapeHtml(d.id)}')"` : ''}>
             <div>
-              <div style="font-weight:700;">+${fmt(d.amount)} USDT</div>
-              <div class="dep-history-sub">${new Date(d.createdAt).toLocaleString()}${d.network ? ' &middot; ' + (d.network === 'bep20' ? 'BEP20' : 'TRC20') : ''}</div>
+              <div style="font-weight:700;">+${d.auto && d.status !== 'Approved' ? fmtPayAmount(d.payAmount) : fmt(d.amount)} USDT</div>
+              <div class="dep-history-sub">${new Date(d.createdAt).toLocaleString()}${d.network ? ' &middot; ' + (d.network === 'bep20' ? 'BEP20' : 'TRC20') : ''}${d.approvedBy === 'auto' ? ' &middot; Automatic' : ''}${waiting ? ' &middot; Tap to view' : ''}</div>
             </div>
-            <span class="badge badge-${badge[d.status] || 'pending'}">${label[d.status] || escapeHtml(d.status)}</span>
-          </div>`).join('');
-      } catch (e) { el.innerHTML = '<div class="empty-state"><p>Could not load deposits</p></div>'; }
+            <span class="badge badge-${badge[d.status] || 'pending'}">${d.auto && d.status === 'Pending' ? 'Awaiting payment' : (label[d.status] || escapeHtml(d.status))}</span>
+          </div>`;
+        }).join('');
+        return deps;
+      } catch (e) { el.innerHTML = '<div class="empty-state"><p>Could not load deposits</p></div>'; return null; }
     }
 
     function toggleAssetAddr(type) {
@@ -4409,7 +4616,20 @@
       const amount = parseFloat(document.getElementById('depositAmount').value);
       const min = platformAddresses.minDeposit != null ? platformAddresses.minDeposit : 50;
       if (!platformAddresses[currentDepositNetwork]) return toast('This network is not available yet — choose another', 'error');
-      if (!amount || amount <= 0) return toast('Enter the amount you sent', 'error');
+      if (!amount || amount <= 0) return toast(autoDepositMode() ? 'Enter the amount to deposit' : 'Enter the amount you sent', 'error');
+      if (autoDepositMode()) {
+        if (Math.floor(amount) < min) return toast('Minimum deposit is ' + min + ' USDT', 'error');
+        const autoBtn = document.getElementById('depositBtn');
+        autoBtn.disabled = true; autoBtn.textContent = 'Please wait...';
+        try {
+          const d = await api('/api/deposits', { method: 'POST', body: JSON.stringify({ amount, network: currentDepositNetwork }) });
+          showAutoPay(d);
+          document.querySelector('#depositPage .dep-scroll').scrollTop = 0;
+          loadDepositHistory();
+        } catch (e) { toast(e.message, 'error'); }
+        finally { autoBtn.disabled = false; applyDepositProofConfig(); }
+        return;
+      }
       if (amount < min) return toast('Minimum deposit is ' + min + ' USDT', 'error');
       const proofCfg = depositProofConfig();
       if (proofCfg.screenshotEnabled && !depositScreenshotDataUrl) return toast('Please upload a screenshot of your transfer', 'error');
@@ -4422,7 +4642,8 @@
             amount,
             network: currentDepositNetwork,
             txid: proofCfg.txidEnabled ? document.getElementById('depositTxid').value.trim() : '',
-            screenshot: proofCfg.screenshotEnabled ? depositScreenshotDataUrl : ''
+            screenshot: proofCfg.screenshotEnabled ? depositScreenshotDataUrl : '',
+            mode: 'manual'
           })
         });
         toast('Deposit submitted! You\'ll get an email once it is confirmed.');
@@ -4431,7 +4652,7 @@
         loadAssets();
         document.getElementById('depHistorySection').scrollIntoView({ behavior: 'smooth' });
       } catch (e) { toast(e.message, 'error'); }
-      finally { btn.disabled = false; btn.textContent = 'Submit Deposit'; }
+      finally { btn.disabled = false; applyDepositProofConfig(); }
     });
 
     document.getElementById('withdrawBtn').addEventListener('click', async () => {

@@ -14,6 +14,7 @@ const db = require('./db');
 const { pool, tx } = db;
 const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
+const depositWatch = require('./deposit-watch');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1642,9 +1643,10 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
       kind: 'withdrawal', type: TX_LABELS.withdrawal, description: '', amount: -w.amount, date: w.createdAt, status: withdrawalStatus(w),
       ...withdrawalExtras(w)
     })),
-    ...deposits.filter(d => !ledgerDeposits.has(d.id)).map(d => ({
+    // Unpaid automatic deposit requests that expired or were cancelled never involved any money.
+    ...deposits.filter(d => !ledgerDeposits.has(d.id) && d.status !== 'Expired' && d.status !== 'Cancelled').map(d => ({
       kind: 'deposit', type: TX_LABELS.deposit,
-      description: d.status === 'Pending' ? 'Waiting for confirmation' : d.status === 'Rejected' ? 'Not credited' : '',
+      description: d.status === 'Pending' ? (d.auto ? 'Waiting for payment' : 'Waiting for confirmation') : d.status === 'Rejected' ? 'Not credited' : '',
       // Pending/rejected deposits haven't changed the balance.
       amount: d.amount, pending: d.status !== 'Approved', date: d.createdAt,
       status: d.status === 'Approved' ? 'Completed' : d.status === 'Rejected' ? 'Rejected' : 'Processing'
@@ -1794,15 +1796,74 @@ function depositProofSettings(config) {
   };
 }
 
+// Automatic deposits: the user is shown this long to send the exact amount. A payment that arrives
+// later (up to depositWatch.MATCH_WINDOW_MS after the request) is still matched and credited.
+const AUTO_DEPOSIT_PAY_WINDOW_MS = 60 * 60 * 1000;
+const MAX_OPEN_AUTO_DEPOSITS = 3;      // per user, waiting for payment at the same time
+const MAX_AUTO_DEPOSITS_PER_DAY = 10;  // per user and network; each one reserves an amount for 24h
+const autoDepositsOn = config => config.autoDepositEnabled === true;
+
+async function createAutoDeposit(userId, config, network, amount) {
+  const address = network === 'bep20' ? config.depositAddressBep20 : config.depositAddressTrc20;
+  if (!address) return { status: 400, body: { error: 'This network is not available yet — choose another' } };
+  const base = Math.floor(parseFloat(amount));
+  const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
+  if (!(base >= minDeposit)) return { status: 400, body: { error: `Minimum deposit is $${minDeposit}` } };
+  if (base > 1000000) return { status: 400, body: { error: 'Amount is too large' } };
+
+  return tx(async c => {
+    // One request at a time picks an amount, so two requests can never be given the same one.
+    await c.query('SELECT pg_advisory_xact_lock(424246)');
+    const since = new Date(Date.now() - depositWatch.MATCH_WINDOW_MS).toISOString();
+    const { rows } = await c.query(`SELECT user_id, data FROM app.deposits
+      WHERE data->>'auto' = 'true' AND data->>'network' = $1 AND data->>'createdAt' > $2`, [network, since]);
+    const mine = rows.filter(r => r.user_id === userId).map(r => r.data);
+    if (mine.length >= MAX_AUTO_DEPOSITS_PER_DAY) {
+      return { status: 429, body: { error: 'Too many deposit requests today on this network. Please try again later.' } };
+    }
+    const nowIso = new Date().toISOString();
+    if (mine.filter(d => d.status === 'Pending' && d.expiresAt > nowIso).length >= MAX_OPEN_AUTO_DEPOSITS) {
+      return { status: 400, body: { error: 'You already have deposits waiting for payment. Pay or cancel one first.' } };
+    }
+    const payAmount = depositWatch.pickPayAmount(base, new Set(rows.map(r => depositWatch.amountToMicro(r.data.payAmount))));
+    if (payAmount === null) return { status: 400, body: { error: 'Too many deposits of this amount right now. Please try a different amount.' } };
+
+    const deposit = {
+      id: generateId(),
+      userId,
+      amount: payAmount,
+      requestedAmount: base,
+      payAmount,
+      network,
+      address,
+      auto: true,
+      txid: '',
+      status: 'Pending',
+      createdAt: nowIso,
+      expiresAt: new Date(Date.now() + AUTO_DEPOSIT_PAY_WINDOW_MS).toISOString()
+    };
+    await db.insertDoc(c, 'deposits', deposit);
+    return { status: 200, body: deposit };
+  });
+}
+
 app.post('/api/deposits', authMiddleware, async (req, res) => {
-  const { amount, network, txid, screenshot } = req.body;
+  const { amount, network, txid, screenshot, mode } = req.body;
   if (!amount || amount <= 0) return res.status(400).json({ error: 'Invalid amount' });
   if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Select a deposit network' });
 
   const config = await getConfig();
+  // With automatic deposits on, the user gets an exact amount to send instead of uploading proof.
+  // mode 'manual' keeps the proof form for payments that didn't match (e.g. a wrong amount was sent).
+  if (autoDepositsOn(config) && mode !== 'manual') {
+    const result = await createAutoDeposit(req.userId, config, network, amount);
+    return res.status(result.status).json(result.body);
+  }
+
   const { screenshotEnabled, txidEnabled } = depositProofSettings(config);
   const cleanTxid = txidEnabled && typeof txid === 'string' ? txid.trim() : '';
   if (cleanTxid.length > 120) return res.status(400).json({ error: 'Transaction ID is too long' });
+  if (await findCreditedTxid(pool, cleanTxid)) return res.status(400).json({ error: 'This transaction has already been credited.' });
   // With screenshots switched off, any image sent anyway (e.g. from an old open page) is ignored.
   let proof = null;
   if (screenshotEnabled) {
@@ -1838,6 +1899,20 @@ app.post('/api/deposits', authMiddleware, async (req, res) => {
 
 app.get('/api/deposits', authMiddleware, async (req, res) => {
   res.json(await db.listDocs(pool, 'deposits', { userId: req.userId, order: 'DESC' }));
+});
+
+// Cancels an automatic deposit request that hasn't been paid. If the payment still arrives within
+// 24 hours it is credited anyway, so cancelling can never lose a user's money.
+app.post('/api/deposits/:id/cancel', authMiddleware, async (req, res) => {
+  const result = await tx(async c => {
+    const d = await db.getDoc(c, 'deposits', req.params.id, { lock: true });
+    if (!d || d.userId !== req.userId) return { status: 404, body: { error: 'Deposit not found' } };
+    if (!d.auto || (d.status !== 'Pending' && d.status !== 'Expired')) return { status: 400, body: { error: 'This deposit can no longer be cancelled' } };
+    d.status = 'Cancelled';
+    d.processedAt = new Date().toISOString();
+    return { status: 200, body: await db.saveDoc(c, 'deposits', d) };
+  });
+  res.status(result.status).json(result.body);
 });
 
 // ===================== DAILY CHECK-IN =====================
@@ -2223,7 +2298,7 @@ app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
   const num = field => `CASE WHEN jsonb_typeof(data->'${field}') = 'number' THEN (data->>'${field}')::float8 ELSE 0 END`;
   const { rows } = await pool.query(`SELECT
     (SELECT count(*) FROM app.users WHERE NOT data ? 'deletedAt') AS total_users,
-    (SELECT coalesce(sum(${num('amount')}), 0) FROM app.deposits) AS total_deposits,
+    (SELECT coalesce(sum(${num('amount')}), 0) FROM app.deposits WHERE coalesce(data->>'status', '') NOT IN ('Expired', 'Cancelled')) AS total_deposits,
     (SELECT coalesce(sum(${num('amount')}), 0) FROM app.withdrawals WHERE data->>'status' = 'Approved') AS total_withdrawals,
     (SELECT count(*) FROM app.withdrawals WHERE data->>'status' = 'Pending') AS pending_withdrawals,
     (SELECT count(*) FROM app.user_stakes WHERE data->>'status' = 'active') AS active_stakes,
@@ -2693,15 +2768,71 @@ app.put('/api/admin/reserve-levels', adminMiddleware, async (req, res) => {
   res.json(levels);
 });
 
+// Credits a deposit that is moving into Approved: balance, ledger, level upgrade, team commission and
+// the email. The caller holds the deposit's row lock and only calls this on the transition into
+// Approved, so a deposit can't be credited twice. Used by admin approval and automatic deposits.
+async function creditDeposit(c, d, emails) {
+  const user = await db.getUser(c, d.userId, { lock: true });
+  if (!user) return;
+  const cfg = await getConfig(c);
+  user.walletBalance += d.amount;
+  await recordTx(c, user, 'deposit', d.amount, d.network ? `USDT · ${d.network === 'bep20' ? 'BEP20' : 'TRC20'}` : 'USDT', d.id);
+  checkAndApplyLevelUpgrade(user, cfg, emails);
+  const { subject, html } = depositEmail('approved', user.username, d, user.walletBalance);
+  emails.push([user.email, subject, html]);
+  await db.saveUser(c, user);
+
+  if (!d.referralPaid) {
+    const tiers = [
+      { tier: 'A', pct: cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15 },
+      { tier: 'B', pct: cfg.referralBonusPctB !== undefined ? parseFloat(cfg.referralBonusPctB) : 8 },
+      { tier: 'C', pct: cfg.referralBonusPctC !== undefined ? parseFloat(cfg.referralBonusPctC) : 3 }
+    ];
+    const payouts = [];
+    let currentReferrerId = user.referredBy;
+    for (let i = 0; i < tiers.length && currentReferrerId; i++) {
+      const referrer = await db.getUser(c, currentReferrerId, { lock: true });
+      if (!referrer) break;
+      const bonus = parseFloat((d.amount * tiers[i].pct / 100).toFixed(2));
+      referrer.walletBalance += bonus;
+      await recordTx(c, referrer, 'team_commission', bonus, `Level ${tiers[i].tier} (${tiers[i].pct}%) from ${user.username}'s ${d.amount} USDT deposit`, d.id);
+      referrer.totalIncome += bonus;
+      referrer.dailyIncome.team += bonus;
+      checkAndApplyLevelUpgrade(referrer, cfg, emails);
+      await db.saveUser(c, referrer);
+      payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
+      currentReferrerId = referrer.referredBy;
+    }
+    d.referralPaid = true;
+    d.referralPayouts = payouts;
+  }
+}
+
+// Another approved deposit (or an automatically matched transfer) with this transaction hash, if any.
+async function findCreditedTxid(c, txid, exceptDepositId) {
+  if (!txid) return null;
+  const { rows } = await c.query(`
+    SELECT id FROM app.deposits WHERE lower(data->>'txid') = lower($1) AND data->>'status' = 'Approved' AND id <> $2
+    UNION ALL
+    SELECT deposit_id FROM app.deposit_transfers WHERE lower(txid) = lower($1) AND deposit_id IS NOT NULL AND deposit_id <> $2
+    LIMIT 1`, [txid, exceptDepositId || '']);
+  return rows.length ? rows[0].id : null;
+}
+
 app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
   const { status } = req.body;
   const emails = [];
 
-  const deposit = await tx(async c => {
+  const result = await tx(async c => {
     const d = await db.getDoc(c, 'deposits', req.params.id, { lock: true });
-    if (!d) return null;
+    if (!d) return { status: 404, body: { error: 'Deposit not found' } };
 
     const previousStatus = d.status;
+    // Only credit on the transition into Approved, so approving twice can't credit twice.
+    const crediting = status === 'Approved' && previousStatus !== 'Approved';
+    if (crediting && await findCreditedTxid(c, d.txid, d.id)) {
+      return { status: 400, body: { error: 'This transaction ID has already been credited on another deposit.' } };
+    }
     d.status = status;
     d.processedAt = new Date().toISOString();
 
@@ -2713,51 +2844,186 @@ app.put('/api/admin/deposits/:id', adminMiddleware, async (req, res) => {
       }
     }
 
-    // Only credit on the transition into Approved, so approving twice can't credit twice.
-    if (status === 'Approved' && previousStatus !== 'Approved') {
-      const user = await db.getUser(c, d.userId, { lock: true });
-      if (user) {
-        const cfg = await getConfig(c);
-        user.walletBalance += d.amount;
-        await recordTx(c, user, 'deposit', d.amount, d.network ? `USDT · ${d.network === 'bep20' ? 'BEP20' : 'TRC20'}` : 'USDT', d.id);
-        checkAndApplyLevelUpgrade(user, cfg, emails);
-        const { subject, html } = depositEmail('approved', user.username, d, user.walletBalance);
-        emails.push([user.email, subject, html]);
-        await db.saveUser(c, user);
+    if (crediting) await creditDeposit(c, d, emails);
+    return { status: 200, body: await db.saveDoc(c, 'deposits', d) };
+  });
 
-        if (!d.referralPaid) {
-          const tiers = [
-            { tier: 'A', pct: cfg.referralBonusPct !== undefined ? parseFloat(cfg.referralBonusPct) : 15 },
-            { tier: 'B', pct: cfg.referralBonusPctB !== undefined ? parseFloat(cfg.referralBonusPctB) : 8 },
-            { tier: 'C', pct: cfg.referralBonusPctC !== undefined ? parseFloat(cfg.referralBonusPctC) : 3 }
-          ];
-          const payouts = [];
-          let currentReferrerId = user.referredBy;
-          for (let i = 0; i < tiers.length && currentReferrerId; i++) {
-            const referrer = await db.getUser(c, currentReferrerId, { lock: true });
-            if (!referrer) break;
-            const bonus = parseFloat((d.amount * tiers[i].pct / 100).toFixed(2));
-            referrer.walletBalance += bonus;
-            await recordTx(c, referrer, 'team_commission', bonus, `Level ${tiers[i].tier} (${tiers[i].pct}%) from ${user.username}'s ${d.amount} USDT deposit`, d.id);
-            referrer.totalIncome += bonus;
-            referrer.dailyIncome.team += bonus;
-            checkAndApplyLevelUpgrade(referrer, cfg, emails);
-            await db.saveUser(c, referrer);
-            payouts.push({ userId: currentReferrerId, tier: tiers[i].tier, pct: tiers[i].pct, bonus });
-            currentReferrerId = referrer.referredBy;
-          }
-          d.referralPaid = true;
-          d.referralPayouts = payouts;
+  if (result.status === 200) sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
+});
+
+// ===================== AUTOMATIC DEPOSITS (watcher) =====================
+// Runs in one process only (the primary). Each poll reads new confirmed USDT transfers to the deposit
+// addresses, records every one in app.deposit_transfers (once per txid), and credits the request whose
+// exact amount it pays. Anything that doesn't match stays in the admin's "Unmatched payments" list.
+// Settings: TRONGRID_API_KEY (optional, raises TronGrid's rate limit), BSC_RPC_URL (BNB Chain node).
+const BSC_RPC_URL = process.env.BSC_RPC_URL || 'https://bsc-rpc.publicnode.com';
+const BSC_CONFIRMATIONS = 15;
+const DEPOSIT_POLL_FAST_MS = 15 * 1000; // while someone is waiting for a payment
+const DEPOSIT_POLL_IDLE_MS = 60 * 1000;
+
+// Stores one transfer and, if it pays a request, credits it. Safe to call again for the same transfer.
+async function handleIncomingTransfer(t, match) {
+  const emails = [];
+  const credited = await tx(async c => {
+    const amount = (t.micro / 1e6).toFixed(6);
+    const ins = await c.query(`INSERT INTO app.deposit_transfers (network, txid, from_address, to_address, amount, block_time)
+      VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING txid`,
+      [t.network, t.txid, t.from, t.to, amount, t.timeMs ? new Date(t.timeMs).toISOString() : null]);
+    if (!ins.rows.length || !match) return false; // already handled, or nothing to credit
+
+    // A user may also have submitted this hash on the manual form and had it approved.
+    const already = await findCreditedTxid(c, t.txid, match.id);
+    const d = await db.getDoc(c, 'deposits', match.id, { lock: true });
+    if (already || !d || d.status === 'Approved' || d.status === 'Rejected') {
+      if (already) await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', already]);
+      return false; // left for the admin to look at
+    }
+    d.status = 'Approved';
+    d.processedAt = new Date().toISOString();
+    d.paidAt = t.timeMs ? new Date(t.timeMs).toISOString() : d.processedAt;
+    d.amount = d.payAmount;
+    d.txid = t.txid;
+    d.fromAddress = t.from;
+    d.approvedBy = 'auto';
+    await creditDeposit(c, d, emails);
+    await db.saveDoc(c, 'deposits', d);
+    await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
+    return true;
+  });
+  if (credited) {
+    sendQueuedEmails(emails);
+    console.log(`[Deposits] Auto-credited ${t.micro / 1e6} USDT (${t.network}) to deposit ${match.id}, tx ${t.txid}`);
+  }
+  return credited;
+}
+
+async function pollDeposits() {
+  const config = await getConfig();
+  if (!autoDepositsOn(config)) return { waiting: false };
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+
+  await pool.query(`UPDATE app.deposits SET data = data || '{"status":"Expired"}'::jsonb
+    WHERE data->>'auto' = 'true' AND data->>'status' = 'Pending' AND data->>'expiresAt' < $1`, [nowIso]);
+  // Expired and cancelled requests can still be paid late; they're matched for the full window.
+  const { rows } = await pool.query(`SELECT data FROM app.deposits WHERE data->>'auto' = 'true'
+    AND data->>'status' IN ('Pending', 'Expired', 'Cancelled') AND data->>'createdAt' > $1`,
+    [new Date(now - depositWatch.MATCH_WINDOW_MS).toISOString()]);
+  const requests = rows.map(r => ({
+    id: r.data.id, network: r.data.network, status: r.data.status,
+    payMicro: depositWatch.amountToMicro(r.data.payAmount), createdAtMs: Date.parse(r.data.createdAt)
+  }));
+
+  const state = await db.getSetting(pool, 'deposit_watch');
+  for (const network of ['trc20', 'bep20']) {
+    const address = network === 'bep20' ? config.depositAddressBep20 : config.depositAddressTrc20;
+    if (!address) { delete state[network]; continue; }
+    // A new address starts watching from now; transfers to the old one aren't read any more.
+    const st = state[network] && state[network].address === address ? state[network] : { address };
+    try {
+      let transfers;
+      if (network === 'trc20') {
+        const sinceMs = st.sinceMs || now - 10 * 60 * 1000;
+        const r = await depositWatch.fetchTronTransfers({ address, sinceMs: sinceMs - 60 * 1000, apiKey: process.env.TRONGRID_API_KEY });
+        transfers = r.transfers;
+        const newest = transfers.reduce((m, t) => Math.max(m, t.timeMs || 0), 0);
+        // Confirmation takes about a minute on TRON, so it's safe to move on to 5 minutes ago once
+        // every page has been read.
+        st.sinceMs = Math.max(sinceMs, newest, r.complete ? now - 5 * 60 * 1000 : 0);
+      } else {
+        const r = await depositWatch.fetchBscTransfers({ address, fromBlock: st.nextBlock, rpcUrl: BSC_RPC_URL, confirmations: BSC_CONFIRMATIONS });
+        transfers = r.transfers;
+        st.nextBlock = r.nextBlock;
+        // Block times are only needed (one call each) for transfers whose amount matches a request.
+        const wanted = new Set(requests.filter(q => q.network === 'bep20').map(q => q.payMicro));
+        for (const t of transfers) {
+          if (t.exact && wanted.has(t.micro)) t.timeMs = await depositWatch.bscBlockTimeMs(BSC_RPC_URL, t.blockNumber);
         }
       }
+      for (const t of transfers) {
+        const match = depositWatch.findMatch(t, requests);
+        if (await handleIncomingTransfer(t, match)) requests.splice(requests.indexOf(match), 1);
+      }
+      st.lastPollAt = nowIso;
+      st.lastError = null;
+    } catch (e) {
+      st.lastError = e.message;
+      st.lastErrorAt = nowIso;
+      console.error(`[Deposits] ${network} poll failed:`, e.message);
     }
+    state[network] = st;
+  }
+  await db.setSetting(pool, 'deposit_watch', state);
+  return { waiting: requests.some(q => q.status === 'Pending') };
+}
 
-    return db.saveDoc(c, 'deposits', d);
+function startDepositWatcher() {
+  const loop = async () => {
+    let waiting = false;
+    try { waiting = (await pollDeposits()).waiting; }
+    catch (e) { console.error('[Deposits] watcher failed:', e.message); }
+    setTimeout(loop, waiting ? DEPOSIT_POLL_FAST_MS : DEPOSIT_POLL_IDLE_MS).unref();
+  };
+  setTimeout(loop, 5000).unref();
+}
+
+app.get('/api/admin/deposit-watch', adminMiddleware, async (req, res) => {
+  const config = await getConfig();
+  const state = await db.getSetting(pool, 'deposit_watch');
+  const { rows } = await pool.query(`SELECT network, txid, from_address, amount, block_time, seen_at
+    FROM app.deposit_transfers WHERE status = 'unmatched' ORDER BY coalesce(block_time, seen_at) DESC LIMIT 200`);
+  res.json({
+    enabled: autoDepositsOn(config),
+    tronApiKey: !!process.env.TRONGRID_API_KEY,
+    bscRpc: new URL(BSC_RPC_URL).host,
+    networks: {
+      trc20: { address: config.depositAddressTrc20 || '', ...(state.trc20 || {}) },
+      bep20: { address: config.depositAddressBep20 || '', ...(state.bep20 || {}) }
+    },
+    unmatched: rows.map(r => ({ network: r.network, txid: r.txid, from: r.from_address, amount: Number(r.amount), time: r.block_time || r.seen_at }))
   });
-  if (!deposit) return res.status(404).json({ error: 'Deposit not found' });
+});
 
-  sendQueuedEmails(emails);
-  res.json(deposit);
+// Credits an unmatched payment to a user by UID (e.g. they sent the wrong amount and contacted support).
+app.post('/api/admin/deposit-transfers/assign', adminMiddleware, async (req, res) => {
+  const { network, txid, uid } = req.body;
+  const emails = [];
+  const result = await tx(async c => {
+    const { rows } = await c.query('SELECT * FROM app.deposit_transfers WHERE network = $1 AND txid = $2 FOR UPDATE', [network, txid]);
+    const t = rows[0];
+    if (!t) return { status: 404, body: { error: 'Payment not found' } };
+    if (t.status !== 'unmatched') return { status: 400, body: { error: 'This payment has already been handled' } };
+    if (await findCreditedTxid(c, txid)) return { status: 400, body: { error: 'This transaction has already been credited.' } };
+    const found = await db.findUserBy(c, 'uid', String(uid || '').trim());
+    if (!found || found.deletedAt) return { status: 404, body: { error: 'No user with that UID' } };
+    const d = {
+      id: generateId(),
+      userId: found.id,
+      amount: Number(t.amount),
+      network,
+      txid,
+      fromAddress: t.from_address,
+      status: 'Approved',
+      approvedBy: 'admin',
+      createdAt: new Date().toISOString(),
+      processedAt: new Date().toISOString()
+    };
+    await db.insertDoc(c, 'deposits', d);
+    await creditDeposit(c, d, emails);
+    await db.saveDoc(c, 'deposits', d);
+    await c.query("UPDATE app.deposit_transfers SET status = 'assigned', deposit_id = $3 WHERE network = $1 AND txid = $2", [network, txid, d.id]);
+    return { status: 200, body: d };
+  });
+  if (result.status === 200) sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
+});
+
+// Hides an unmatched payment that isn't a user deposit (e.g. the owner topping up the wallet).
+app.post('/api/admin/deposit-transfers/ignore', adminMiddleware, async (req, res) => {
+  const { rowCount } = await pool.query("UPDATE app.deposit_transfers SET status = 'ignored' WHERE network = $1 AND txid = $2 AND status = 'unmatched'", [req.body.network, req.body.txid]);
+  if (!rowCount) return res.status(404).json({ error: 'Payment not found or already handled' });
+  res.json({ ok: true });
 });
 
 app.post('/api/admin/announcements', adminMiddleware, async (req, res) => {
@@ -2877,7 +3143,9 @@ app.get('/api/platform/deposit-addresses', async (req, res) => {
       bep20: bep20 ? await QRCode.toDataURL(bep20, qrOpts) : ''
     },
     minDeposit: config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50,
-    ...depositProofSettings(config)
+    ...depositProofSettings(config),
+    autoDeposit: autoDepositsOn(config),
+    autoPayMinutes: AUTO_DEPOSIT_PAY_WINDOW_MS / 60000
   });
 });
 
@@ -2915,13 +3183,20 @@ app.get('/api/admin/platform-config', adminMiddleware, async (req, res) => {
 });
 
 app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
-  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink, depositScreenshotEnabled, depositTxidEnabled, minWithdrawal } = req.body;
+  const { depositAddressTrc20, depositAddressBep20, signupBonus, minDeposit, referralBonusPct, referralBonusPctB, referralBonusPctC, withdrawalFeePct, reserveWinRatePct, handlingFeeEnabled, dailyCheckinReward, telegramLink, groupLink, depositScreenshotEnabled, depositTxidEnabled, minWithdrawal, autoDepositEnabled } = req.body;
 
   const result = await tx(async c => {
     await c.query('SELECT pg_advisory_xact_lock(424244)');
     const config = await getConfig(c);
-    if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = depositAddressTrc20;
-    if (depositAddressBep20 !== undefined) config.depositAddressBep20 = depositAddressBep20;
+    // Automatic deposits watch these addresses on-chain, so a typo would silently miss payments.
+    for (const [value, re, label] of [[depositAddressTrc20, TRC20_RE, 'TRC-20 address (starts with T, 34 characters)'], [depositAddressBep20, BEP20_RE, 'BEP-20 address (starts with 0x, 42 characters)']]) {
+      if (value !== undefined && String(value).trim() !== '' && !re.test(String(value).trim())) {
+        return { status: 400, body: { error: `That doesn't look like a valid ${label}` } };
+      }
+    }
+    if (depositAddressTrc20 !== undefined) config.depositAddressTrc20 = String(depositAddressTrc20).trim();
+    if (depositAddressBep20 !== undefined) config.depositAddressBep20 = String(depositAddressBep20).trim();
+    if (autoDepositEnabled !== undefined) config.autoDepositEnabled = autoDepositEnabled === true || autoDepositEnabled === 'true';
     if (signupBonus !== undefined) config.signupBonus = parseFloat(signupBonus);
     if (minDeposit !== undefined) config.minDeposit = parseFloat(minDeposit);
     if (referralBonusPct !== undefined) config.referralBonusPct = parseFloat(referralBonusPct);
@@ -3056,6 +3331,7 @@ async function startServer() {
     await initAdmin();
     await initStakes();
     setInterval(() => db.cleanupExpired().catch(e => console.error('[DB] cleanup failed:', e.message)), 10 * 60 * 1000).unref();
+    if (process.env.DEPOSIT_WATCHER !== 'off') startDepositWatcher();
 
     if (WORKERS > 1) {
       for (let i = 0; i < WORKERS; i++) cluster.fork();
