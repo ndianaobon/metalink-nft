@@ -1037,7 +1037,7 @@ Type DELETE to confirm.`);
               ${net('bep20', 'BEP20 (BNB Chain)')}
               <p style="font-size:0.78rem;color:#888;margin-top:6px;">
                 Each user is given an exact amount to send (e.g. 100.37 USDT); when a confirmed USDT transfer of that amount reaches your address, the deposit is approved and credited automatically.
-                A payment of any amount (at least the minimum deposit) from a wallet that only one user has saved as their withdrawal wallet, or that has only ever funded that user's deposits, is also credited to that user.
+                Payments are never credited by the wallet they came from (exchanges send many customers' withdrawals from the same wallets).
                 ${w.enabled ? '' : 'Turn it on in Settings &rarr; Platform Settings.'}
                 ${w.tronApiKey ? '' : ' Tip: set a free <strong>TRONGRID_API_KEY</strong> on the server for more reliable Tron checks.'}
               </p>

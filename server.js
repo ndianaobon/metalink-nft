@@ -1923,7 +1923,7 @@ app.post('/api/deposits/:id/cancel', authMiddleware, async (req, res) => {
 // the transaction from the blockchain and credits what actually arrived to this user's account.
 // Transactions are public, so a TxID alone doesn't prove who paid: the claim must fit a request this
 // user made before the payment (same network, amount within 10%), and the payment must not already
-// belong to someone else (by exact amount or by a wallet that has paid for another account).
+// pay someone else's request by its exact amount.
 const txidClaimLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   limit: 15,
@@ -1989,8 +1989,6 @@ app.post('/api/deposits/claim-txid', txidClaimLimiter, authMiddleware, async (re
       id: d.id, userId: d.userId, network: d.network, payMicro: depositWatch.amountToMicro(d.payAmount), createdAtMs: Date.parse(d.createdAt)
     })));
     if (exact && exact.userId !== req.userId) return { status: 400, body: { error: 'This payment belongs to another deposit request.' } };
-    const owner = await findSenderOwner(c, t);
-    if (owner && owner !== req.userId) return { status: 400, body: { error: 'This payment was sent from a wallet linked to another account. Please contact support.' } };
 
     const fits = d => d.userId === req.userId &&
       t.timeMs >= Date.parse(d.createdAt) - depositWatch.CLOCK_SKEW_MS &&
@@ -3021,24 +3019,6 @@ const BSC_CONFIRMATIONS = 15;
 const DEPOSIT_POLL_FAST_MS = 15 * 1000; // while someone is waiting for a payment
 const DEPOSIT_POLL_IDLE_MS = 60 * 1000;
 
-// The user a payment without a matching request belongs to, judged by the wallet it came from, or null.
-// A wallet that has already funded a deposit only ever credits that same user, so copying someone
-// else's sending wallet into your profile doesn't redirect their deposits. Otherwise the wallet must
-// be the saved withdrawal wallet of exactly one account. Anything ambiguous is left for the admin.
-async function findSenderOwner(c, t) {
-  const from = String(t.from || '').toLowerCase();
-  if (!from) return null;
-  const prior = await c.query(`SELECT DISTINCT user_id FROM app.deposits
-    WHERE lower(data->>'fromAddress') = $1 AND data->>'status' = 'Approved'`, [from]);
-  const keys = t.network === 'bep20' ? ['bep20', 'erc20'] : ['trc20'];
-  const saved = await c.query(`SELECT id FROM app.users WHERE NOT data ? 'deletedAt'
-    AND (${keys.map(k => `lower(data->'walletAddress'->>'${k}') = $1`).join(' OR ')})`, [from]);
-  const priorIds = prior.rows.map(r => r.user_id);
-  const savedIds = saved.rows.map(r => r.id);
-  if (priorIds.length) return priorIds.length === 1 && savedIds.every(id => id === priorIds[0]) ? priorIds[0] : null;
-  return savedIds.length === 1 ? savedIds[0] : null;
-}
-
 // Credits automatic deposit request `d` (row-locked, not yet Approved) with on-chain transfer `t`,
 // for the amount that actually arrived, and marks the transfer as used.
 async function approveWithTransfer(c, d, t, emails, matchedBy) {
@@ -3055,7 +3035,7 @@ async function approveWithTransfer(c, d, t, emails, matchedBy) {
   await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
 }
 
-// Stores one transfer and, if it pays a request (or comes from a user's own wallet), credits it.
+// Stores one transfer and, if it pays a request, credits it.
 // Safe to call again for the same transfer.
 async function handleIncomingTransfer(t, match) {
   const emails = [];
@@ -3066,33 +3046,8 @@ async function handleIncomingTransfer(t, match) {
       [t.network, t.txid, t.from, t.to, amount, t.timeMs ? new Date(t.timeMs).toISOString() : null]);
     if (!ins.rows.length) return false; // already handled
 
-    if (!match) {
-      const ownerId = await findSenderOwner(c, t);
-      if (!ownerId || await findCreditedTxid(c, t.txid)) return false;
-      const cfg = await getConfig(c);
-      const minDeposit = cfg.minDeposit !== undefined ? parseFloat(cfg.minDeposit) : 50;
-      if (t.micro / 1e6 < minDeposit) return false;
-      const nowIso = new Date().toISOString();
-      const d = {
-        id: generateId(),
-        userId: ownerId,
-        amount: t.micro / 1e6,
-        network: t.network,
-        txid: t.txid,
-        fromAddress: t.from,
-        status: 'Approved',
-        approvedBy: 'auto',
-        matchedBy: 'wallet',
-        createdAt: nowIso,
-        processedAt: nowIso,
-        paidAt: t.timeMs ? new Date(t.timeMs).toISOString() : nowIso
-      };
-      await db.insertDoc(c, 'deposits', d);
-      await creditDeposit(c, d, emails);
-      await db.saveDoc(c, 'deposits', d);
-      await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
-      return true;
-    }
+    // A payment that pays no request is never guessed at: it waits in the admin's "Unmatched payments".
+    if (!match) return false;
 
     // A user may also have submitted this hash on the manual form and had it approved.
     const already = await findCreditedTxid(c, t.txid, match.id);
@@ -3106,7 +3061,7 @@ async function handleIncomingTransfer(t, match) {
   });
   if (credited) {
     sendQueuedEmails(emails);
-    console.log(`[Deposits] Auto-credited ${t.micro / 1e6} USDT (${t.network}) ${match ? 'to deposit ' + match.id : 'by sender wallet'}, tx ${t.txid}`);
+    console.log(`[Deposits] Auto-credited ${t.micro / 1e6} USDT (${t.network}) to deposit ${match.id}, tx ${t.txid}`);
   }
   return credited;
 }
