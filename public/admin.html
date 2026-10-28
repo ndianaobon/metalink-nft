@@ -198,7 +198,7 @@
               <div class="admin-table-header" style="flex-wrap:wrap;gap:12px;">
                 <h3 id="usersCountTitle">All Users (${this.usersCache.length})</h3>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                  <input class="admin-form-input" style="width:220px;" placeholder="Search name, email or UID" value="${escapeHtml(this.userQuery || '')}" oninput="Admin.userQuery=this.value;Admin.renderUserRows()">
+                  <input class="admin-form-input" style="width:220px;" placeholder="Search name, email, UID or phone" value="${escapeHtml(this.userQuery || '')}" oninput="Admin.userQuery=this.value;Admin.renderUserRows()">
                   <select class="admin-form-input" style="width:auto;" onchange="Admin.userSort=this.value;Admin.renderUserRows()">
                     <option value="newest" ${this.userSort === 'newest' ? 'selected' : ''}>Newest users first</option>
                     <option value="oldest" ${this.userSort === 'oldest' ? 'selected' : ''}>Oldest users first</option>
@@ -248,7 +248,8 @@
         };
         const users = (this.usersCache || [])
           .filter(joinedOk)
-          .filter(u => !q || [u.username, u.email, u.uid].some(v => (v || '').toLowerCase().includes(q)))
+          .filter(u => !q || [u.username, u.email, u.uid].some(v => (v || '').toLowerCase().includes(q))
+            || (q.replace(/\D/g, '').length >= 4 && this.phoneOf(u).replace(/\D/g, '').includes(q.replace(/\D/g, ''))))
           .sort(sorters[this.userSort || 'newest']);
         document.getElementById('usersCountTitle').textContent = users.length === this.usersCache.length
           ? `All Users (${users.length})` : `Users (${users.length} of ${this.usersCache.length})`;
@@ -281,8 +282,15 @@
         return `<span style="${style}display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#7C3AED,#14B8A6);color:#fff;font-weight:700;font-size:${Math.round(size * 0.42)}px;">${escapeHtml((u.username || '?').charAt(0).toUpperCase())}</span>`;
       },
 
+      // "+234 8012345678" from the sign-up fields, or '' if the account has no phone saved.
+      phoneOf(u) {
+        const num = String(u.phoneNumber || '').trim();
+        return num ? `${String(u.phoneCountryCode || '').trim()} ${num}`.trim() : '';
+      },
+
       userCell(u) {
-        return `<div style="display:flex;align-items:center;gap:10px;">${this.avatarHtml(u)}<div style="min-width:0;"><strong>${escapeHtml(u.username)}</strong>${u.email ? `<br><span style="font-size:0.75rem;color:#888;">${escapeHtml(u.email)}</span>` : ''}</div></div>`;
+        const phone = this.phoneOf(u);
+        return `<div style="display:flex;align-items:center;gap:10px;">${this.avatarHtml(u)}<div style="min-width:0;"><strong>${escapeHtml(u.username)}</strong>${u.email ? `<br><span style="font-size:0.75rem;color:#888;">${escapeHtml(u.email)}</span>` : ''}${phone ? `<br><a href="tel:${escapeHtml(phone.replace(/[^\d+]/g, ''))}" style="font-size:0.75rem;color:#4f46e5;text-decoration:none;">&#128222; ${escapeHtml(phone)}</a>` : ''}</div></div>`;
       },
 
       showAvatar(src, username) {
@@ -936,6 +944,7 @@ Type DELETE to confirm.`);
               ${net('bep20', 'BEP20 (BNB Chain)')}
               <p style="font-size:0.78rem;color:#888;margin-top:6px;">
                 Each user is given an exact amount to send (e.g. 100.37 USDT); when a confirmed USDT transfer of that amount reaches your address, the deposit is approved and credited automatically.
+                A payment of any amount (at least the minimum deposit) from a wallet that only one user has saved as their withdrawal wallet, or that has only ever funded that user's deposits, is also credited to that user.
                 ${w.enabled ? '' : 'Turn it on in Settings &rarr; Platform Settings.'}
                 ${w.tronApiKey ? '' : ' Tip: set a free <strong>TRONGRID_API_KEY</strong> on the server for more reliable Tron checks.'}
               </p>
@@ -994,7 +1003,7 @@ Type DELETE to confirm.`);
           if (d.status === 'Expired' || d.status === 'Cancelled') return `<span class="admin-badge" style="background:#f3f4f6;color:#666;">${escapeHtml(d.status)}</span>`;
           return `<span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span>`;
         };
-        const source = d => d.approvedBy === 'auto' ? '<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic</span>'
+        const source = d => d.approvedBy === 'auto' ? `<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic${d.matchedBy === 'wallet' ? ' (sender wallet)' : ''}</span>`
           : d.auto ? '<br><span style="font-size:0.72rem;color:#888;">Automatic request</span>'
           : d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : '';
         document.getElementById('depositRows').innerHTML = deposits.map(d => `<tr>

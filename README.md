@@ -79,7 +79,14 @@ public addresses: never put a wallet's recovery phrase or private key on the ser
    A transfer with exactly a request's amount, made after the request, credits it through the same
    code as admin approval (balance, ledger, level upgrade, team commission, email). Payments that
    arrive late (request expired or cancelled) are still credited if they come within 24 hours.
-4. Anything else (wrong amount, too late, no request, the owner topping up the wallet) appears under
+4. A transfer that matches no request is credited by **sender wallet** if it's at least the
+   minimum deposit and the sending wallet belongs to one user. "Belongs" means one of two things.
+   If the wallet has funded approved deposits before, all of them went to that user and no other
+   account has it saved. If it has never funded a deposit, exactly one account has it saved as its
+   withdrawal wallet. The first rule means copying someone else's sending wallet into your profile
+   doesn't redirect their deposits. A wallet that has never paid before is still only protected by
+   the "exactly one account" rule.
+5. Anything else (wrong amount, too late, no request, the owner topping up the wallet) appears under
    **Unmatched payments** on the admin Deposits page, where it can be credited to a UID or ignored.
 
 Tokens that aren't real USDT are ignored, and a transaction hash can never be credited twice: not by

@@ -1545,6 +1545,10 @@
       border: 2px solid currentColor; border-right-color: transparent; animation: dspin 0.9s linear infinite;
     }
     .dep-pay-time { min-height: 1em; margin-top: 8px; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.5; }
+    .dep-exact-warning {
+      margin-top: 12px; padding: 10px 12px; border-radius: 10px; text-align: left; line-height: 1.5;
+      font-size: 0.8rem; font-weight: 600; background: rgba(239,68,68,0.1); color: var(--negative);
+    }
     .dep-autopay-note { margin-top: 12px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.55; text-align: left; }
     .dep-autopay-actions { display: flex; gap: 10px; margin-top: 14px; }
     .dep-autopay-actions .btn { flex: 1; width: auto; }
@@ -2680,7 +2684,8 @@
           <div class="dep-autopay-network" id="depPayNetwork"></div>
           <div class="dep-pay-status" id="depPayStatus"></div>
           <div class="dep-pay-time" id="depPayTime"></div>
-          <p class="dep-autopay-note">Send this <strong>exact amount, including the decimals</strong>, so we can recognise your payment. If your exchange takes a fee from the amount, add the fee so that exactly this amount arrives. Your balance is credited automatically a minute or two after the transfer.</p>
+          <div class="dep-exact-warning">&#9888; Send exactly <strong id="depPayExact">0.00</strong> USDT &mdash; not <span id="depPayRound">0</span>. A rounded amount can't be matched to your account.</div>
+          <p class="dep-autopay-note">If your exchange takes a fee from the amount, add the fee so that exactly this amount arrives. Your balance is credited automatically a minute or two after the transfer. Payments sent from the withdrawal wallet saved in your profile are also recognised.</p>
           <div class="dep-autopay-actions">
             <button class="btn btn-outline" id="depPayCancel" onclick="cancelAutoPay()">Cancel</button>
             <button class="btn btn-primary" id="depPayNew" onclick="newAutoDeposit()">New deposit</button>
@@ -4361,6 +4366,8 @@
       document.getElementById('depForm').style.display = 'none';
       document.querySelector('#depositPage .dep-submit-bar').style.display = 'none';
       document.getElementById('depPayAmount').textContent = fmtPayAmount(d.payAmount);
+      document.getElementById('depPayExact').textContent = fmtPayAmount(d.payAmount);
+      document.getElementById('depPayRound').textContent = String(Math.floor(d.payAmount));
       document.getElementById('depPayNetwork').textContent = 'USDT on ' + DEPOSIT_NETWORK_LABELS[d.network];
       renderAutoPay();
       clearInterval(autoPayTimer);

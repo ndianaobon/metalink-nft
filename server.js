@@ -2340,6 +2340,7 @@ function accountStatus(u) {
 function accountSummary(u) {
   return {
     id: u.id, username: u.username, email: u.email, uid: u.uid, createdAt: u.createdAt,
+    phoneCountryCode: u.phoneCountryCode || '', phoneNumber: u.phoneNumber || '',
     walletBalance: u.walletBalance, status: accountStatus(u), frozenUntil: u.frozenUntil || null,
     suspendReason: u.suspendReason || '', bannedAt: u.bannedAt || null, banReason: u.banReason || '',
     referredBy: u.referredBy || null, lastActiveAt: u.lastActiveAt || null, lastLoginAt: u.lastLoginAt || null,
@@ -2683,7 +2684,11 @@ app.get('/api/admin/withdrawals', adminMiddleware, async (req, res) => {
     const decision = withdrawalDecision({ needsReview: r.needs_review && r.review_status !== 'cleared', flags: r.flags });
     return [r.user_id, { score: r.score, level: r.level, reviewStatus: r.review_status, holdForReview: decision.holdForReview, reason: decision.reason }];
   }));
-  res.json(withdrawals.map(w => risk[w.userId] ? { ...w, risk: risk[w.userId] } : w)
+  // Phone numbers, so the admin can contact the user about a withdrawal.
+  const { rows: phones } = await pool.query(`SELECT id, data->>'phoneCountryCode' AS cc, data->>'phoneNumber' AS num
+    FROM app.users WHERE id = ANY($1) AND coalesce(data->>'phoneNumber', '') <> ''`, [[...new Set(withdrawals.map(w => w.userId))]]);
+  const phone = Object.fromEntries(phones.map(r => [r.id, { phoneCountryCode: r.cc || '', phoneNumber: r.num }]));
+  res.json(withdrawals.map(w => ({ ...w, ...(phone[w.userId] || {}), ...(risk[w.userId] ? { risk: risk[w.userId] } : {}) }))
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
 });
 
@@ -2862,7 +2867,26 @@ const BSC_CONFIRMATIONS = 15;
 const DEPOSIT_POLL_FAST_MS = 15 * 1000; // while someone is waiting for a payment
 const DEPOSIT_POLL_IDLE_MS = 60 * 1000;
 
-// Stores one transfer and, if it pays a request, credits it. Safe to call again for the same transfer.
+// The user a payment without a matching request belongs to, judged by the wallet it came from, or null.
+// A wallet that has already funded a deposit only ever credits that same user, so copying someone
+// else's sending wallet into your profile doesn't redirect their deposits. Otherwise the wallet must
+// be the saved withdrawal wallet of exactly one account. Anything ambiguous is left for the admin.
+async function findSenderOwner(c, t) {
+  const from = String(t.from || '').toLowerCase();
+  if (!from) return null;
+  const prior = await c.query(`SELECT DISTINCT user_id FROM app.deposits
+    WHERE lower(data->>'fromAddress') = $1 AND data->>'status' = 'Approved'`, [from]);
+  const keys = t.network === 'bep20' ? ['bep20', 'erc20'] : ['trc20'];
+  const saved = await c.query(`SELECT id FROM app.users WHERE NOT data ? 'deletedAt'
+    AND (${keys.map(k => `lower(data->'walletAddress'->>'${k}') = $1`).join(' OR ')})`, [from]);
+  const priorIds = prior.rows.map(r => r.user_id);
+  const savedIds = saved.rows.map(r => r.id);
+  if (priorIds.length) return priorIds.length === 1 && savedIds.every(id => id === priorIds[0]) ? priorIds[0] : null;
+  return savedIds.length === 1 ? savedIds[0] : null;
+}
+
+// Stores one transfer and, if it pays a request (or comes from a user's own wallet), credits it.
+// Safe to call again for the same transfer.
 async function handleIncomingTransfer(t, match) {
   const emails = [];
   const credited = await tx(async c => {
@@ -2870,7 +2894,35 @@ async function handleIncomingTransfer(t, match) {
     const ins = await c.query(`INSERT INTO app.deposit_transfers (network, txid, from_address, to_address, amount, block_time)
       VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING txid`,
       [t.network, t.txid, t.from, t.to, amount, t.timeMs ? new Date(t.timeMs).toISOString() : null]);
-    if (!ins.rows.length || !match) return false; // already handled, or nothing to credit
+    if (!ins.rows.length) return false; // already handled
+
+    if (!match) {
+      const ownerId = await findSenderOwner(c, t);
+      if (!ownerId || await findCreditedTxid(c, t.txid)) return false;
+      const cfg = await getConfig(c);
+      const minDeposit = cfg.minDeposit !== undefined ? parseFloat(cfg.minDeposit) : 50;
+      if (t.micro / 1e6 < minDeposit) return false;
+      const nowIso = new Date().toISOString();
+      const d = {
+        id: generateId(),
+        userId: ownerId,
+        amount: t.micro / 1e6,
+        network: t.network,
+        txid: t.txid,
+        fromAddress: t.from,
+        status: 'Approved',
+        approvedBy: 'auto',
+        matchedBy: 'wallet',
+        createdAt: nowIso,
+        processedAt: nowIso,
+        paidAt: t.timeMs ? new Date(t.timeMs).toISOString() : nowIso
+      };
+      await db.insertDoc(c, 'deposits', d);
+      await creditDeposit(c, d, emails);
+      await db.saveDoc(c, 'deposits', d);
+      await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
+      return true;
+    }
 
     // A user may also have submitted this hash on the manual form and had it approved.
     const already = await findCreditedTxid(c, t.txid, match.id);
@@ -2893,7 +2945,7 @@ async function handleIncomingTransfer(t, match) {
   });
   if (credited) {
     sendQueuedEmails(emails);
-    console.log(`[Deposits] Auto-credited ${t.micro / 1e6} USDT (${t.network}) to deposit ${match.id}, tx ${t.txid}`);
+    console.log(`[Deposits] Auto-credited ${t.micro / 1e6} USDT (${t.network}) ${match ? 'to deposit ' + match.id : 'by sender wallet'}, tx ${t.txid}`);
   }
   return credited;
 }
@@ -2943,7 +2995,7 @@ async function pollDeposits() {
       }
       for (const t of transfers) {
         const match = depositWatch.findMatch(t, requests);
-        if (await handleIncomingTransfer(t, match)) requests.splice(requests.indexOf(match), 1);
+        if (await handleIncomingTransfer(t, match) && match) requests.splice(requests.indexOf(match), 1);
       }
       st.lastPollAt = nowIso;
       st.lastError = null;
