@@ -33,6 +33,31 @@ const feeWalletAddress = (root, network) => (network === 'trc20' ? tronAddressOf
 const isAddress = (network, a) => network === 'trc20' ? TronWeb.isAddress(String(a || '')) && String(a).startsWith('T') : ethers.isAddress(String(a || '')) && String(a).startsWith('0x');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// Sweeps send through BNB Chain's own public endpoints. Some free endpoints (publicnode) answer
+// "archive requests require a token" when asked about a transaction they haven't seen yet, so
+// confirmation is checked on several of them and errors just mean "ask again".
+const BSC_SEND_RPCS = ['https://bsc-dataseed.bnbchain.org', 'https://bsc-dataseed1.bnbchain.org', 'https://bsc-dataseed2.bnbchain.org'];
+
+async function waitBscReceipt(hash, rpcUrls) {
+  const providers = rpcUrls.map(u => new ethers.JsonRpcProvider(u, 56, { staticNetwork: true }));
+  for (let n = 0; n < 60; n++) {
+    await sleep(3000);
+    for (const p of providers) {
+      try {
+        const r = await p.send('eth_getTransactionReceipt', [hash]);
+        if (r && r.blockNumber) {
+          if (r.status !== '0x1') throw Object.assign(new Error(`Transaction ${hash} failed on the blockchain`), { final: true });
+          return r;
+        }
+      } catch (e) {
+        if (e.final) throw e;
+      }
+    }
+  }
+  throw new Error(`Transaction ${hash} was not confirmed within 3 minutes. Check it on bscscan.com, then run the sweep again.`);
+}
+
 const tronClient = apiKey => new TronWeb({ fullHost: 'https://api.trongrid.io', headers: apiKey ? { 'TRON-PRO-API-KEY': apiKey } : {} });
 
 // The fee wallet's native balance as a number of TRX / BNB.
@@ -48,11 +73,13 @@ async function feeWalletBalance(root, network, { rpcUrl, apiKey }) {
 
 async function sweepBsc({ root, indexes, to, min = 1, go = false, rpcUrl, log = console.log }) {
   if (!isAddress('bep20', to)) throw new Error('The company BEP20 address is not valid');
-  const provider = new ethers.JsonRpcProvider(rpcUrl, 56);
+  const rpcs = [...BSC_SEND_RPCS, rpcUrl].filter((u, i, all) => u && all.indexOf(u) === i);
+  const provider = new ethers.JsonRpcProvider(rpcs[0], 56, { staticNetwork: true });
   const usdt = new ethers.Contract(USDT_BEP20, ERC20_ABI, provider);
   const feeWallet = new ethers.Wallet('0x' + hexKey(root.derive(PATHS.bep20.fee)), provider);
   const account = root.derive(PATHS.bep20.account);
   const { gasPrice } = await provider.getFeeData();
+  if (!gasPrice) throw new Error('Could not read the BNB Chain gas price. Try again in a minute.');
   const minUnits = ethers.parseUnits(String(min), 18);
   const out = { total: 0, count: 0, fees: 0, sent: [] };
   await log(`Fee wallet ${feeWallet.address}: ${ethers.formatEther(await provider.getBalance(feeWallet.address))} BNB`);
@@ -70,12 +97,12 @@ async function sweepBsc({ root, indexes, to, min = 1, go = false, rpcUrl, log = 
     if (!go) continue;
     const bnb = await provider.getBalance(wallet.address);
     if (bnb < fee) {
-      const top = await feeWallet.sendTransaction({ to: wallet.address, value: fee - bnb });
-      await top.wait();
+      const top = await feeWallet.sendTransaction({ to: wallet.address, value: fee - bnb, gasPrice });
+      await log(`   fee top-up ${top.hash}`);
+      await waitBscReceipt(top.hash, rpcs);
     }
     const tx = await usdt.connect(wallet).transfer(to, bal, { gasLimit, gasPrice });
-    const rc = await tx.wait();
-    if (rc.status !== 1) throw new Error(`Transfer from #${i} failed: ${tx.hash}`);
+    await waitBscReceipt(tx.hash, rpcs);
     await log(`   sent -> ${tx.hash}`);
     out.sent.push({ index: i, address: wallet.address, amount, txid: tx.hash });
   }
