@@ -204,6 +204,7 @@
                     <option value="oldest" ${this.userSort === 'oldest' ? 'selected' : ''}>Oldest users first</option>
                     <option value="active" ${this.userSort === 'active' ? 'selected' : ''}>Recently active</option>
                     <option value="balance" ${this.userSort === 'balance' ? 'selected' : ''}>Highest balance</option>
+                    <option value="team" ${this.userSort === 'team' ? 'selected' : ''}>Most team deposits</option>
                   </select>
                 </div>
               </div>
@@ -212,7 +213,7 @@
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
-                  <thead><tr><th>Status</th><th>Last Seen</th><th>User</th><th>UID</th><th>Location</th><th>Balance</th><th>Level</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Status</th><th>Last Seen</th><th>User</th><th>UID</th><th>Location</th><th>Balance</th><th>Level</th><th>Team</th><th>Shared IP</th><th>Last IP</th><th>Joined</th><th>Actions</th></tr></thead>
                   <tbody id="userRows"></tbody>
                 </table>
               </div>
@@ -278,7 +279,8 @@
           newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
           oldest: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
           active: (a, b) => lastSeen(b) - lastSeen(a),
-          balance: (a, b) => (b.walletBalance || 0) - (a.walletBalance || 0)
+          balance: (a, b) => (b.walletBalance || 0) - (a.walletBalance || 0),
+          team: (a, b) => (b.team ? b.team.deposited : 0) - (a.team ? a.team.deposited : 0) || (b.team ? b.team.valid : 0) - (a.team ? a.team.valid : 0)
         };
         const users = (this.usersCache || [])
           .filter(joinedOk)
@@ -297,6 +299,7 @@
                         <td style="font-size:0.85rem;">${this.locationHtml(u.location)}</td>
                         <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
                         <td>${u.level}</td>
+                        <td style="white-space:nowrap;">${u.team && u.team.registered ? `<button class="admin-btn admin-btn-edit" title="View team members and their deposits" onclick="Admin.showUserTeam('${escapeHtml(u.id)}')">${u.team.valid} valid / ${u.team.registered}</button><br><span style="font-size:0.75rem;color:#15803d;">$${u.team.deposited.toFixed(2)} deposited</span>` : '<span style="color:#ccc;">-</span>'}</td>
                         <td>${u.sharedIpAccounts ? `<button class="admin-btn admin-btn-reject" title="Other accounts have used this user's IP address" onclick="Admin.showUserIps('${escapeHtml(u.id)}')">&#9888; ${u.sharedIpAccounts} other${u.sharedIpAccounts > 1 ? 's' : ''}</button>` : '<span style="color:#ccc;">-</span>'}</td>
                         <td style="font-size:0.78rem;">${escapeHtml(u.lastIp || u.signupIp) || '-'}${(ipHits[u.id] || []).filter(ip => ip !== (u.lastIp || u.signupIp)).map(ip => `<br><span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:0 3px;" title="Matches your search (used earlier)">${escapeHtml(ip)}</span>`).join('')}</td>
                         <td style="white-space:nowrap;font-size:0.82rem;">${new Date(u.createdAt).toLocaleDateString()}${age(u) < DAY ? ' <span class="admin-badge admin-badge-approved" style="font-size:0.65rem;">NEW</span>' : ''}<br><span style="color:#999;font-size:0.72rem;">${new Date(u.createdAt).toLocaleTimeString()}</span></td>
@@ -524,6 +527,45 @@ Type DELETE to confirm.`);
                 <td style="font-size:0.8rem;">${new Date(i.lastSeen).toLocaleString()}</td>
                 <td>${i.otherAccounts ? `<button class="admin-btn admin-btn-reject" onclick="Admin.openMultiAccounts('${escapeHtml(i.ip)}')">&#9888; ${i.otherAccounts}</button>` : '0'}</td>
               </tr>`).join('')}</tbody></table></div>` : '<p style="color:#888;padding:12px 0;">No IP addresses recorded yet. They are recorded from now on whenever this user signs up, logs in or uses the app.</p>'}
+            <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>`;
+        } catch (e) { modal.querySelector('.admin-modal').innerHTML = `<p style="padding:20px;">${escapeHtml(e.message)}</p>`; }
+      },
+
+      // The user's team (levels A/B/C): who is valid (has an approved deposit) and how much each deposited.
+      async showUserTeam(id) {
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay';
+        modal.innerHTML = '<div class="admin-modal" style="max-width:640px;"><div style="padding:20px;text-align:center;color:#888;">Loading...</div></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        try {
+          const { user, members } = await this.api(`/admin/users/${id}/team`);
+          const valid = members.filter(m => m.isValid);
+          const total = members.reduce((s, m) => s + m.deposited, 0);
+          const tierStat = t => {
+            const ms = members.filter(m => m.tier === t);
+            return `<div style="flex:1;min-width:110px;background:#f8fafc;border-radius:10px;padding:10px;">
+              <div style="font-size:0.75rem;color:#888;">Level ${t}</div>
+              <div style="font-weight:700;">${ms.filter(m => m.isValid).length} valid / ${ms.length}</div>
+              <div style="font-size:0.78rem;color:#15803d;">$${ms.reduce((s, m) => s + m.deposited, 0).toFixed(2)}</div></div>`;
+          };
+          modal.querySelector('.admin-modal').innerHTML = `
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+              ${this.avatarHtml(user, 52)}
+              <div><h3 style="margin:0;">${escapeHtml(user.username)}'s team</h3><span style="font-size:0.8rem;color:#888;">UID ${escapeHtml(user.uid)} &middot; ${escapeHtml(user.email)}</span></div>
+            </div>
+            <p style="font-size:0.9rem;margin-bottom:10px;"><strong>${valid.length}</strong> valid member${valid.length === 1 ? '' : 's'} of ${members.length} &middot; total deposited <strong style="color:#15803d;">$${total.toFixed(2)}</strong></p>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">${tierStat('A')}${tierStat('B')}${tierStat('C')}</div>
+            ${members.length ? `<div style="overflow-x:auto;max-height:50vh;overflow-y:auto;"><table class="admin-table">
+              <thead><tr><th>Member</th><th>UID</th><th>Level</th><th>Status</th><th>Deposited</th><th>Joined</th></tr></thead>
+              <tbody>${members.map(m => `<tr>
+                <td>${escapeHtml(m.username)}${m.deleted ? ' <span style="font-size:0.72rem;color:#888;">(deleted)</span>' : ''}</td>
+                <td><strong>${escapeHtml(m.uid) || '-'}</strong></td>
+                <td>${escapeHtml(m.tier)}</td>
+                <td>${m.isValid ? '<span class="admin-badge admin-badge-approved">Valid</span>' : '<span class="admin-badge admin-badge-pending">Not deposited</span>'}</td>
+                <td><strong>$${m.deposited.toFixed(2)}</strong></td>
+                <td style="font-size:0.8rem;">${m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : '-'}</td>
+              </tr>`).join('')}</tbody></table></div>` : '<p style="color:#888;padding:12px 0;">No team members yet.</p>'}
             <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>`;
         } catch (e) { modal.querySelector('.admin-modal').innerHTML = `<p style="padding:20px;">${escapeHtml(e.message)}</p>`; }
       },

@@ -2419,6 +2419,10 @@ app.get('/api/admin/stats', adminMiddleware, async (req, res) => {
   });
 });
 
+// Each user's total of approved deposits.
+const APPROVED_DEPOSIT_TOTALS_SQL = `SELECT user_id, sum((data->>'amount')::numeric) AS total
+  FROM app.deposits WHERE data->>'status' = 'Approved' GROUP BY user_id`;
+
 app.get('/api/admin/users', adminMiddleware, async (req, res) => {
   // For each user: how many *other* accounts have used any of the same IP addresses.
   const { rows: shared } = await pool.query(`
@@ -2426,11 +2430,41 @@ app.get('/api/admin/users', adminMiddleware, async (req, res) => {
     FROM app.user_ips a JOIN app.user_ips b ON b.ip = a.ip AND b.user_id <> a.user_id
     GROUP BY a.user_id`);
   const sharedMap = Object.fromEntries(shared.map(r => [r.user_id, r.n]));
+  // Each user's team (levels A/B/C): members, valid members (at least one approved deposit, as in
+  // the app's Team page) and the total those members have deposited.
+  const { rows: teams } = await pool.query(`
+    SELECT t.user_id, count(*)::int AS registered, count(dep.user_id)::int AS valid, coalesce(sum(dep.total), 0) AS deposited
+    FROM app.teams t LEFT JOIN (${APPROVED_DEPOSIT_TOTALS_SQL}) dep ON dep.user_id = t.member_id
+    GROUP BY t.user_id`);
+  const teamMap = Object.fromEntries(teams.map(r => [r.user_id, { registered: r.registered, valid: r.valid, deposited: Number(r.deposited) }]));
   const users = (await db.listDocs(pool, 'users')).filter(u => !u.deletedAt).map(u => {
     const online = !!u.lastActiveAt && (Date.now() - new Date(u.lastActiveAt).getTime()) < ONLINE_THRESHOLD_MS;
-    return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0, location: ipLocation(u.lastIp || u.signupIp) };
+    return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0, location: ipLocation(u.lastIp || u.signupIp),
+      team: teamMap[u.id] || { registered: 0, valid: 0, deposited: 0 } };
   });
   res.json(users);
+});
+
+// One user's team members with the level, whether each is valid, and how much each has deposited.
+app.get('/api/admin/users/:id/team', adminMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const { rows } = await pool.query(`
+    SELECT t.member_id, t.data->>'tier' AS tier, t.data->>'joinedAt' AS joined_at,
+           u.data->>'username' AS username, u.data->>'uid' AS uid, u.data ? 'deletedAt' AS deleted,
+           dep.user_id IS NOT NULL AS is_valid, coalesce(dep.total, 0) AS deposited
+    FROM app.teams t
+    LEFT JOIN app.users u ON u.id = t.member_id
+    LEFT JOIN (${APPROVED_DEPOSIT_TOTALS_SQL}) dep ON dep.user_id = t.member_id
+    WHERE t.user_id = $1
+    ORDER BY t.data->>'tier', deposited DESC, t.seq`, [user.id]);
+  res.json({
+    user: accountSummary(user),
+    members: rows.map(r => ({
+      id: r.member_id, uid: r.uid, username: r.username || 'Unknown', deleted: !!r.deleted, tier: r.tier,
+      joinedAt: r.joined_at, isValid: r.is_valid, deposited: Number(r.deposited)
+    }))
+  });
 });
 
 // Accounts that have ever used an IP containing `q` (full address or part of one, e.g. an IPv6 prefix),
