@@ -62,9 +62,35 @@ handling, the browser script, the risk scoring scenarios (same device, different
 shared Wi-Fi, bonus abuse), and automatic-deposit matching and the TronGrid / BSC readers (with
 fake API responses).
 
-## Automatic deposits
+## Personal deposit addresses (recommended)
 
-Off by default; switch it on in admin **Settings → Platform Settings → Automatic Deposits**. The
+Like an exchange: every user gets their own USDT address on TRC20 and BEP20. Any amount (from the
+minimum deposit up) sent to it is credited to that user automatically, with an email and an
+in-app "Deposit received" alert. No amount to match, nothing to submit.
+
+1. On your own computer, run `node index.js new` in `tools/deposit-wallet` (after `npm install`
+   there). Write down the 24-word recovery phrase it shows. It also prints two public keys.
+2. Set them on the server and restart it:
+   `DEPOSIT_XPUB_TRC20=xpub...` and `DEPOSIT_XPUB_BEP20=xpub...`. Each network turns on as soon as
+   its key is set. Never change a key once users have addresses from it.
+3. The server makes user number *i*'s address from the public key (`deposit-addresses.js`, stored in
+   `app.user_deposit_addresses`, never reused). It can't spend from them.
+4. The watcher reads USDT transfers to those addresses (BNB Chain: one log query per 100 addresses;
+   TRON: one TronGrid call per address, often for an hour after the user opens their address, then
+   every few minutes for two days, then every 6 hours) and credits the owner. A payment below the
+   minimum isn't credited; it shows under **Unmatched payments** with the user's UID.
+5. Funds stay on the user addresses until you move them to your main wallet with
+   `tools/deposit-wallet` (see its README). That costs network fees per address: cents on BEP20,
+   about 7–15 TRX on TRC20.
+
+Set `TRONGRID_API_KEY` (free at trongrid.io) for TRON; without it TronGrid limits requests.
+
+Payments are never credited by the wallet they came from: exchanges send many customers'
+withdrawals from the same wallets.
+
+## Automatic deposits (shared address, exact amount)
+
+Used for a network only while it has no personal-address key. Off by default; switch it on in admin **Settings → Platform Settings → Automatic Deposits**. The
 server watches the deposit addresses set in Settings on the public blockchain. It only needs those
 public addresses: never put a wallet's recovery phrase or private key on the server.
 

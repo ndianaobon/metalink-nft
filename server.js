@@ -15,6 +15,7 @@ const { pool, tx } = db;
 const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
 const depositWatch = require('./deposit-watch');
+const depositAddresses = require('./deposit-addresses');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1918,6 +1919,46 @@ app.post('/api/deposits/:id/cancel', authMiddleware, async (req, res) => {
   res.status(result.status).json(result.body);
 });
 
+// ---- Personal deposit addresses (Binance-style): every user has their own address per network, and any
+// USDT sent to it is credited to them automatically. On for a network once its public key is set
+// (DEPOSIT_XPUB_TRC20 / DEPOSIT_XPUB_BEP20); see deposit-addresses.js and tools/deposit-wallet.
+const DEPOSIT_KEYS = depositAddresses.loadKeys();
+const personalDeposits = network => !!DEPOSIT_KEYS[network];
+
+// The user's address on `network`, created (with the next free number) the first time they ask.
+async function userDepositAddress(userId, network) {
+  const { key, id: keyId } = DEPOSIT_KEYS[network];
+  return tx(async c => {
+    const { rows } = await c.query(`UPDATE app.user_deposit_addresses SET last_viewed_at = now()
+      WHERE network = $1 AND key_id = $2 AND user_id = $3 RETURNING address`, [network, keyId, userId]);
+    if (rows.length) return rows[0].address;
+    // One address is handed out at a time, so two users can never get the same number.
+    await c.query('SELECT pg_advisory_xact_lock(424247)');
+    const again = await c.query('SELECT address FROM app.user_deposit_addresses WHERE network = $1 AND key_id = $2 AND user_id = $3', [network, keyId, userId]);
+    if (again.rows.length) return again.rows[0].address;
+    const next = (await c.query('SELECT coalesce(max(idx) + 1, 0) AS idx FROM app.user_deposit_addresses WHERE network = $1 AND key_id = $2', [network, keyId])).rows[0].idx;
+    const address = depositAddresses.deriveAddress(key, network, next);
+    await c.query(`INSERT INTO app.user_deposit_addresses (network, address, user_id, idx, key_id, since_ms)
+      VALUES ($1, $2, $3, $4, $5, $6)`, [network, address, userId, next, keyId, Date.now() - 60 * 1000]);
+    return address;
+  });
+}
+
+app.get('/api/deposits/my-address', authMiddleware, async (req, res) => {
+  const network = req.query.network;
+  if (!personalDeposits(network)) return res.status(400).json({ error: 'This network is not available' });
+  const address = await userDepositAddress(req.userId, network);
+  res.json({ network, address, qr: await QRCode.toDataURL(address, { margin: 1, width: 360 }) });
+});
+
+// The user's most recent credited deposit, so the app can show "Deposit received" when one arrives.
+app.get('/api/deposits/latest-credit', authMiddleware, async (req, res) => {
+  const { rows } = await pool.query(`SELECT data FROM app.deposits WHERE user_id = $1 AND data->>'status' = 'Approved'
+    ORDER BY coalesce(data->>'processedAt', data->>'createdAt') DESC LIMIT 1`, [req.userId]);
+  const d = rows[0] && rows[0].data;
+  res.json(d ? { id: d.id, amount: d.amount, network: d.network || null, creditedAt: d.processedAt || d.createdAt } : null);
+});
+
 // The user pastes the transaction ID of a payment they made for one of their automatic deposit requests
 // (e.g. they sent a different amount than shown, so it couldn't be matched by amount). The server reads
 // the transaction from the blockchain and credits what actually arrived to this user's account.
@@ -3066,9 +3107,133 @@ async function handleIncomingTransfer(t, match) {
   return credited;
 }
 
+// Credits a confirmed transfer to a user's personal address to that user. Safe to call again for the
+// same transfer. Below the minimum deposit it isn't credited and waits for the admin.
+async function creditPersonalTransfer(t, userId, minDeposit) {
+  const emails = [];
+  const credited = await tx(async c => {
+    const amount = t.micro / 1e6;
+    const ins = await c.query(`INSERT INTO app.deposit_transfers (network, txid, from_address, to_address, amount, block_time)
+      VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING RETURNING txid`,
+      [t.network, t.txid, t.from, t.to, amount.toFixed(6), t.timeMs ? new Date(t.timeMs).toISOString() : null]);
+    if (!ins.rows.length || amount < minDeposit) return false;
+    const nowIso = new Date().toISOString();
+    const d = {
+      id: generateId(),
+      userId,
+      amount,
+      network: t.network,
+      address: t.to,
+      txid: t.txid,
+      fromAddress: t.from,
+      status: 'Approved',
+      approvedBy: 'auto',
+      matchedBy: 'address',
+      createdAt: nowIso,
+      processedAt: nowIso,
+      paidAt: t.timeMs ? new Date(t.timeMs).toISOString() : nowIso
+    };
+    await db.insertDoc(c, 'deposits', d);
+    await creditDeposit(c, d, emails);
+    await db.saveDoc(c, 'deposits', d);
+    await c.query(`UPDATE app.deposit_transfers SET status = 'matched', deposit_id = $4
+      WHERE network = $1 AND txid = $2 AND to_address = $3`, [t.network, t.txid, t.to, d.id]);
+    return true;
+  });
+  if (credited) {
+    sendQueuedEmails(emails);
+    console.log(`[Deposits] Credited ${t.micro / 1e6} USDT (${t.network}) to user ${userId} via their address, tx ${t.txid}`);
+  }
+  return credited;
+}
+
+// How often a personal TRON address is checked: every poll for an hour after the user opened it, every
+// few minutes for two days, then a few times a day (TronGrid is asked about one address per call).
+const PERSONAL_HOT_MS = 60 * 60 * 1000;
+const PERSONAL_WARM_MS = 48 * 60 * 60 * 1000;
+const PERSONAL_WARM_EVERY_MS = 3 * 60 * 1000;
+const PERSONAL_COLD_EVERY_MS = 6 * 60 * 60 * 1000;
+const PERSONAL_TRON_PER_POLL = 40;
+const PERSONAL_BSC_BATCH = 100; // addresses per eth_getLogs call
+
+// Reads new USDT transfers to every user's personal address. Returns true while someone has opened
+// their address recently, so the watcher keeps polling fast.
+async function pollPersonalAddresses(config) {
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
+  const state = await db.getSetting(pool, 'deposit_watch_personal');
+
+  if (DEPOSIT_KEYS.bep20) {
+    const st = state.bep20 || {};
+    try {
+      const { rows } = await pool.query("SELECT address, user_id FROM app.user_deposit_addresses WHERE network = 'bep20'");
+      const owner = new Map(rows.map(r => [r.address, r.user_id]));
+      const all = [...owner.keys()];
+      let nextBlock = null;
+      for (let i = 0; i < all.length; i += PERSONAL_BSC_BATCH) {
+        const r = await depositWatch.fetchBscTransfers({ address: all.slice(i, i + PERSONAL_BSC_BATCH), fromBlock: st.nextBlock, rpcUrl: BSC_RPC_URL, confirmations: BSC_CONFIRMATIONS });
+        // Every batch read the same blocks; continue from the lowest end so none are skipped.
+        nextBlock = nextBlock === null ? r.nextBlock : Math.min(nextBlock, r.nextBlock);
+        for (const t of r.transfers) {
+          t.timeMs = await depositWatch.bscBlockTimeMs(BSC_RPC_URL, t.blockNumber);
+          await creditPersonalTransfer(t, owner.get(t.to), minDeposit);
+        }
+      }
+      if (nextBlock !== null) st.nextBlock = nextBlock;
+      st.lastPollAt = nowIso;
+      st.lastError = null;
+    } catch (e) {
+      st.lastError = e.message;
+      st.lastErrorAt = nowIso;
+      console.error('[Deposits] personal bep20 poll failed:', e.message);
+    }
+    state.bep20 = st;
+  }
+
+  if (DEPOSIT_KEYS.trc20) {
+    const st = state.trc20 || {};
+    try {
+      const hot = new Date(now - PERSONAL_HOT_MS).toISOString();
+      const { rows } = await pool.query(`SELECT address, user_id, since_ms FROM app.user_deposit_addresses
+        WHERE network = 'trc20' AND (last_viewed_at > $1 OR checked_at IS NULL
+          OR (last_viewed_at > $2 AND checked_at < $3) OR checked_at < $4)
+        ORDER BY (last_viewed_at > $1) DESC, checked_at ASC NULLS FIRST LIMIT $5`,
+        [hot, new Date(now - PERSONAL_WARM_MS).toISOString(), new Date(now - PERSONAL_WARM_EVERY_MS).toISOString(),
+          new Date(now - PERSONAL_COLD_EVERY_MS).toISOString(), PERSONAL_TRON_PER_POLL]);
+      for (const a of rows) {
+        const sinceMs = Number(a.since_ms) || now - PERSONAL_WARM_MS;
+        const r = await depositWatch.fetchTronTransfers({ address: a.address, sinceMs: sinceMs - 60 * 1000, apiKey: process.env.TRONGRID_API_KEY });
+        for (const t of r.transfers) await creditPersonalTransfer(t, a.user_id, minDeposit);
+        const newest = r.transfers.reduce((m, t) => Math.max(m, t.timeMs || 0), 0);
+        const nextSince = Math.max(sinceMs, newest, r.complete ? now - 5 * 60 * 1000 : 0);
+        await pool.query("UPDATE app.user_deposit_addresses SET checked_at = now(), since_ms = $2 WHERE network = 'trc20' AND address = $1", [a.address, nextSince]);
+      }
+      st.lastPollAt = nowIso;
+      st.lastError = null;
+    } catch (e) {
+      st.lastError = e.message;
+      st.lastErrorAt = nowIso;
+      console.error('[Deposits] personal trc20 poll failed:', e.message);
+    }
+    state.trc20 = st;
+  }
+
+  await db.setSetting(pool, 'deposit_watch_personal', state);
+  const { rows } = await pool.query('SELECT 1 FROM app.user_deposit_addresses WHERE last_viewed_at > $1 LIMIT 1', [new Date(now - PERSONAL_HOT_MS).toISOString()]);
+  return rows.length > 0;
+}
+
 async function pollDeposits() {
   const config = await getConfig();
-  if (!autoDepositsOn(config)) return { waiting: false };
+  let waiting = false;
+  if (Object.keys(DEPOSIT_KEYS).length) waiting = await pollPersonalAddresses(config);
+  if (autoDepositsOn(config)) waiting = (await pollPlatformAddress(config)) || waiting;
+  return { waiting };
+}
+
+// Payments to the platform's shared address, matched to deposit requests by their exact amount.
+async function pollPlatformAddress(config) {
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
 
@@ -3123,7 +3288,7 @@ async function pollDeposits() {
     state[network] = st;
   }
   await db.setSetting(pool, 'deposit_watch', state);
-  return { waiting: requests.some(q => q.status === 'Pending' || (q.status === 'Expired' && now - q.createdAtMs < AUTO_DEPOSIT_FAST_POLL_MS)) };
+  return requests.some(q => q.status === 'Pending' || (q.status === 'Expired' && now - q.createdAtMs < AUTO_DEPOSIT_FAST_POLL_MS));
 }
 
 function startDepositWatcher() {
@@ -3139,9 +3304,30 @@ function startDepositWatcher() {
 app.get('/api/admin/deposit-watch', adminMiddleware, async (req, res) => {
   const config = await getConfig();
   const state = await db.getSetting(pool, 'deposit_watch');
-  const { rows } = await pool.query(`SELECT network, txid, from_address, amount, block_time, seen_at
-    FROM app.deposit_transfers WHERE status = 'unmatched' ORDER BY coalesce(block_time, seen_at) DESC LIMIT 200`);
+  const personalState = await db.getSetting(pool, 'deposit_watch_personal');
+  // Payments to a user's own address are shown with that user (e.g. below the minimum deposit).
+  const { rows } = await pool.query(`SELECT t.network, t.txid, t.from_address, t.to_address, t.amount, t.block_time, t.seen_at,
+      u.data->>'uid' AS owner_uid, u.data->>'username' AS owner_name
+    FROM app.deposit_transfers t
+    LEFT JOIN app.user_deposit_addresses a ON a.network = t.network AND a.address = t.to_address
+    LEFT JOIN app.users u ON u.id = a.user_id
+    WHERE t.status = 'unmatched' ORDER BY coalesce(t.block_time, t.seen_at) DESC LIMIT 200`);
+  const { rows: issued } = await pool.query('SELECT network, key_id, count(*)::int AS n, max(idx) AS max_idx FROM app.user_deposit_addresses GROUP BY network, key_id');
+  const personal = {};
+  for (const network of depositAddresses.NETWORKS) {
+    const k = DEPOSIT_KEYS[network];
+    const mine = k && issued.find(r => r.network === network && r.key_id === k.id);
+    personal[network] = {
+      enabled: !!k,
+      issued: mine ? mine.n : 0,
+      // The deposit-wallet tool checks numbers 0 .. count-1.
+      count: mine ? mine.max_idx + 1 : 0,
+      oldKeys: issued.filter(r => r.network === network && (!k || r.key_id !== k.id)).reduce((s, r) => s + r.n, 0),
+      ...(personalState[network] || {})
+    };
+  }
   res.json({
+    personal,
     enabled: autoDepositsOn(config),
     tronApiKey: !!process.env.TRONGRID_API_KEY,
     bscRpc: new URL(BSC_RPC_URL).host,
@@ -3149,20 +3335,27 @@ app.get('/api/admin/deposit-watch', adminMiddleware, async (req, res) => {
       trc20: { address: config.depositAddressTrc20 || '', ...(state.trc20 || {}) },
       bep20: { address: config.depositAddressBep20 || '', ...(state.bep20 || {}) }
     },
-    unmatched: rows.map(r => ({ network: r.network, txid: r.txid, from: r.from_address, amount: Number(r.amount), time: r.block_time || r.seen_at }))
+    unmatched: rows.map(r => ({
+      network: r.network, txid: r.txid, from: r.from_address, to: r.to_address, amount: Number(r.amount), time: r.block_time || r.seen_at,
+      ownerUid: r.owner_uid || null, ownerName: r.owner_name || null
+    }))
   });
 });
 
 // Credits an unmatched payment to a user by UID (e.g. they sent the wrong amount and contacted support).
 app.post('/api/admin/deposit-transfers/assign', adminMiddleware, async (req, res) => {
   const { network, txid, uid } = req.body;
+  const to = req.body.to || null; // one transaction can pay several of our addresses
   const emails = [];
   const result = await tx(async c => {
-    const { rows } = await c.query('SELECT * FROM app.deposit_transfers WHERE network = $1 AND txid = $2 FOR UPDATE', [network, txid]);
+    const { rows } = await c.query(`SELECT * FROM app.deposit_transfers WHERE network = $1 AND txid = $2
+      AND ($3::text IS NULL OR to_address = $3) AND status = 'unmatched' FOR UPDATE`, [network, txid, to]);
     const t = rows[0];
-    if (!t) return { status: 404, body: { error: 'Payment not found' } };
-    if (t.status !== 'unmatched') return { status: 400, body: { error: 'This payment has already been handled' } };
-    if (await findCreditedTxid(c, txid)) return { status: 400, body: { error: 'This transaction has already been credited.' } };
+    if (!t) return { status: 404, body: { error: 'Payment not found or already handled' } };
+    if (rows.length > 1) return { status: 400, body: { error: 'This transaction paid several addresses. Please reload the page.' } };
+    // Only payments to the shared address can have been credited elsewhere by hash (manual deposit form).
+    const personal = (await c.query('SELECT 1 FROM app.user_deposit_addresses WHERE network = $1 AND address = $2', [network, t.to_address])).rows.length > 0;
+    if (!personal && await findCreditedTxid(c, txid)) return { status: 400, body: { error: 'This transaction has already been credited.' } };
     const found = await db.findUserBy(c, 'uid', String(uid || '').trim());
     if (!found || found.deletedAt) return { status: 404, body: { error: 'No user with that UID' } };
     const d = {
@@ -3180,7 +3373,7 @@ app.post('/api/admin/deposit-transfers/assign', adminMiddleware, async (req, res
     await db.insertDoc(c, 'deposits', d);
     await creditDeposit(c, d, emails);
     await db.saveDoc(c, 'deposits', d);
-    await c.query("UPDATE app.deposit_transfers SET status = 'assigned', deposit_id = $3 WHERE network = $1 AND txid = $2", [network, txid, d.id]);
+    await c.query("UPDATE app.deposit_transfers SET status = 'assigned', deposit_id = $4 WHERE network = $1 AND txid = $2 AND to_address = $3", [network, txid, t.to_address, d.id]);
     return { status: 200, body: d };
   });
   if (result.status === 200) sendQueuedEmails(emails);
@@ -3189,7 +3382,8 @@ app.post('/api/admin/deposit-transfers/assign', adminMiddleware, async (req, res
 
 // Hides an unmatched payment that isn't a user deposit (e.g. the owner topping up the wallet).
 app.post('/api/admin/deposit-transfers/ignore', adminMiddleware, async (req, res) => {
-  const { rowCount } = await pool.query("UPDATE app.deposit_transfers SET status = 'ignored' WHERE network = $1 AND txid = $2 AND status = 'unmatched'", [req.body.network, req.body.txid]);
+  const { rowCount } = await pool.query(`UPDATE app.deposit_transfers SET status = 'ignored' WHERE network = $1 AND txid = $2
+    AND ($3::text IS NULL OR to_address = $3) AND status = 'unmatched'`, [req.body.network, req.body.txid, req.body.to || null]);
   if (!rowCount) return res.status(404).json({ error: 'Payment not found or already handled' });
   res.json({ ok: true });
 });
@@ -3313,7 +3507,9 @@ app.get('/api/platform/deposit-addresses', async (req, res) => {
     minDeposit: config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50,
     ...depositProofSettings(config),
     autoDeposit: autoDepositsOn(config),
-    autoPayMinutes: AUTO_DEPOSIT_PAY_WINDOW_MS / 60000
+    autoPayMinutes: AUTO_DEPOSIT_PAY_WINDOW_MS / 60000,
+    // Networks where every user has their own address (no amount to match, nothing to submit).
+    personal: { trc20: personalDeposits('trc20'), bep20: personalDeposits('bep20') }
   });
 });
 

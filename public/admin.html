@@ -1026,7 +1026,34 @@ Type DELETE to confirm.`);
             : '<span style="color:#d97706;">starting&hellip;</span>';
           return `<div><strong>${label}:</strong> ${state}</div>`;
         };
-        return `
+        const personal = w.personal || {};
+        const anyPersonal = Object.keys(personal).some(k => personal[k].enabled);
+        const pnet = (key, label) => {
+          const n = personal[key] || {};
+          if (!n.enabled) return `<div><strong>${label}:</strong> <span style="color:#888;">off &mdash; set DEPOSIT_XPUB_${key.toUpperCase()} on the server</span></div>`;
+          const state = n.lastError ? `<span style="color:#b91c1c;">&#9888; ${escapeHtml(n.lastError)}</span> (last error ${ago(n.lastErrorAt)})`
+            : n.lastPollAt ? `<span style="color:#15803d;">&#9679; watching</span> &middot; checked ${ago(n.lastPollAt)}`
+            : '<span style="color:#d97706;">starting&hellip;</span>';
+          return `<div><strong>${label}:</strong> ${state} &middot; <strong>${n.issued}</strong> user address${n.issued === 1 ? '' : 'es'}
+            <span style="color:#888;">(sweep tool count: ${n.count})</span>${n.oldKeys ? ` <span style="color:#b91c1c;">&middot; ${n.oldKeys} from an older key</span>` : ''}</div>`;
+        };
+        const personalCard = `
+          <div class="admin-table-card" style="margin-bottom:24px;">
+            <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
+              <h3>Personal Deposit Addresses &middot; ${anyPersonal ? '<span style="color:#15803d;">On</span>' : '<span style="color:#888;">Off</span>'}</h3>
+              <button class="admin-btn admin-btn-edit" onclick="Admin.loadPage()">Refresh</button>
+            </div>
+            <div style="padding:16px 24px;font-size:0.85rem;line-height:1.8;">
+              ${pnet('trc20', 'TRC20 (Tron)')}
+              ${pnet('bep20', 'BEP20 (BNB Chain)')}
+              <p style="font-size:0.78rem;color:#888;margin-top:6px;">
+                Every user gets their own USDT address, like on an exchange. Any amount from the minimum deposit up that arrives there is credited to that user automatically, and they get an alert.
+                Payments below the minimum appear under Unmatched payments with the user's UID.
+                The money stays on the user addresses until you move it to your main wallet with the deposit-wallet tool (tools/deposit-wallet) on your own computer, using the "sweep tool count" above.
+              </p>
+            </div>
+          </div>`;
+        return personalCard + `
           <div class="admin-table-card" style="margin-bottom:24px;">
             <div class="admin-table-header" style="flex-wrap:wrap;gap:10px;">
               <h3>Automatic Deposits &middot; ${w.enabled ? '<span style="color:#15803d;">On</span>' : '<span style="color:#888;">Off</span>'}</h3>
@@ -1047,17 +1074,18 @@ Type DELETE to confirm.`);
             ${w.unmatched.length ? `
             <div style="overflow-x:auto;">
               <table class="admin-table">
-                <thead><tr><th>Time</th><th>Amount</th><th>Network</th><th>From</th><th>Transaction</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Time</th><th>Amount</th><th>Network</th><th>Paid to</th><th>From</th><th>Transaction</th><th>Actions</th></tr></thead>
                 <tbody>
                   ${w.unmatched.map(t => `<tr>
                     <td>${new Date(t.time).toLocaleString()}</td>
                     <td><strong>${t.amount} USDT</strong></td>
                     <td>${t.network === 'bep20' ? 'BEP20' : 'TRC20'}</td>
+                    <td style="font-size:0.8rem;">${t.ownerUid ? `Address of <strong>${escapeHtml(t.ownerName || '')}</strong><br>UID ${escapeHtml(t.ownerUid)}` : '<span style="color:#888;">Shared address</span>'}</td>
                     <td style="max-width:140px;font-size:0.75rem;word-break:break-all;">${escapeHtml(t.from || '-')}</td>
                     <td style="max-width:160px;font-size:0.75rem;word-break:break-all;"><a href="${this.explorerTxUrl(t.network, t.txid)}" target="_blank" rel="noopener">${escapeHtml(t.txid)}</a></td>
                     <td style="white-space:nowrap;">
-                      <button class="admin-btn admin-btn-approve" onclick="Admin.assignTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}',${t.amount})">Credit to UID</button>
-                      <button class="admin-btn admin-btn-reject" onclick="Admin.ignoreTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}')">Ignore</button>
+                      <button class="admin-btn admin-btn-approve" onclick="Admin.assignTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}',${t.amount},'${escapeHtml(t.to || '')}','${escapeHtml(t.ownerUid || '')}')">Credit to UID</button>
+                      <button class="admin-btn admin-btn-reject" onclick="Admin.ignoreTransfer('${escapeHtml(t.network)}','${escapeHtml(t.txid)}','${escapeHtml(t.to || '')}')">Ignore</button>
                     </td>
                   </tr>`).join('')}
                 </tbody>
@@ -1066,21 +1094,21 @@ Type DELETE to confirm.`);
           </div>`;
       },
 
-      async assignTransfer(network, txid, amount) {
-        const uid = prompt(`Credit ${amount} USDT to which user? Enter their UID:`);
+      async assignTransfer(network, txid, amount, to, ownerUid) {
+        const uid = prompt(`Credit ${amount} USDT to which user? Enter their UID:`, ownerUid || '');
         if (!uid) return;
         if (!confirm(`Credit ${amount} USDT to UID ${uid}? Their team commission is paid as for a normal deposit.`)) return;
         try {
-          await this.api('/admin/deposit-transfers/assign', { method: 'POST', body: JSON.stringify({ network, txid, uid }) });
+          await this.api('/admin/deposit-transfers/assign', { method: 'POST', body: JSON.stringify({ network, txid, uid, to: to || undefined }) });
           this.toast('Payment credited!', 'success');
           this.loadPage();
         } catch (e) { this.toast(e.message); }
       },
 
-      async ignoreTransfer(network, txid) {
+      async ignoreTransfer(network, txid, to) {
         if (!confirm('Ignore this payment? It will be removed from the list and not credited to anyone.')) return;
         try {
-          await this.api('/admin/deposit-transfers/ignore', { method: 'POST', body: JSON.stringify({ network, txid }) });
+          await this.api('/admin/deposit-transfers/ignore', { method: 'POST', body: JSON.stringify({ network, txid, to: to || undefined }) });
           this.toast('Ignored', 'success');
           this.loadPage();
         } catch (e) { this.toast(e.message); }
@@ -1096,7 +1124,7 @@ Type DELETE to confirm.`);
           if (d.status === 'Expired' || d.status === 'Cancelled') return `<span class="admin-badge" style="background:#f3f4f6;color:#666;">${escapeHtml(d.status)}</span>`;
           return `<span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span>`;
         };
-        const source = d => d.approvedBy === 'auto' ? `<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic${d.matchedBy === 'wallet' ? ' (sender wallet)' : d.matchedBy === 'txid' ? ' (TxID by user)' : ''}</span>`
+        const source = d => d.approvedBy === 'auto' ? `<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic${d.matchedBy === 'address' ? ' (own address)' : d.matchedBy === 'wallet' ? ' (sender wallet)' : d.matchedBy === 'txid' ? ' (TxID by user)' : ''}</span>`
           : d.auto ? '<br><span style="font-size:0.72rem;color:#888;">Automatic request</span>'
           : d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : '';
         document.getElementById('depositRows').innerHTML = deposits.map(d => `<tr>

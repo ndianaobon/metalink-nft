@@ -1497,6 +1497,12 @@
       background: var(--primary); color: #fff; font-family: var(--font); font-size: 0.78rem; font-weight: 700; cursor: pointer;
     }
     .dep-facts { margin-top: 14px; text-align: left; }
+    .dep-personal {
+      margin-top: 16px; padding: 14px 16px; border-radius: 14px; text-align: left;
+      background: rgba(20,184,166,0.12); color: var(--text-secondary); font-size: 0.82rem; line-height: 1.55;
+    }
+    .dep-personal-title { font-weight: 800; font-size: 0.92rem; color: var(--positive); margin-bottom: 4px; }
+    .dep-credit-amount { font-size: 1.8rem; font-weight: 800; color: var(--positive); margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
     .dep-fact { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; font-size: 0.8rem; border-bottom: 1px dashed var(--border); }
     .dep-fact:last-child { border-bottom: none; }
     .dep-fact span:first-child { color: var(--text-muted); }
@@ -2660,7 +2666,7 @@
         <div class="dep-step"><span class="dep-step-num">2</span><span class="dep-step-title">Send USDT to this address</span></div>
         <div class="dep-address-card">
           <div class="dep-qr" id="depQr"><div class="dep-qr-empty">Loading&hellip;</div></div>
-          <div class="dep-addr-label">Deposit address</div>
+          <div class="dep-addr-label" id="depAddrLabel">Deposit address</div>
           <div class="dep-addr-box">
             <span class="dep-addr-text" id="depAddrText">&mdash;</span>
             <button class="dep-copy-btn" onclick="copyDepositAddress()">
@@ -2680,7 +2686,13 @@
           <p>Send only <strong>USDT</strong> to this address, on the <strong id="depWarnNetwork">Tron (TRC20)</strong> network. Sending any other coin or using a different network may result in the loss of your deposit.</p>
         </div>
 
-        <div class="dep-step"><span class="dep-step-num">3</span><span class="dep-step-title" id="depStep3Title">Submit your deposit for review</span></div>
+        <!-- Personal address: nothing to fill in, the deposit is credited when it arrives -->
+        <div class="dep-personal" id="depPersonal" style="display:none;">
+          <div class="dep-personal-title">&#10003; Credited automatically</div>
+          <p>This address belongs to your account only. Send any amount of USDT (minimum <strong id="depPersonalMin">50</strong> USDT) and it is added to your balance automatically once the network confirms it. There is nothing to submit &mdash; you'll get an alert when it arrives.</p>
+        </div>
+
+        <div class="dep-step" id="depStep3"><span class="dep-step-num">3</span><span class="dep-step-title" id="depStep3Title">Submit your deposit for review</span></div>
 
         <!-- Automatic deposit: the exact amount to send, and live payment status -->
         <div class="dep-autopay" id="depAutoPay" style="display:none;">
@@ -2740,6 +2752,16 @@
     </div>
     <div class="dep-submit-bar">
       <button class="btn btn-primary" id="depositBtn">Submit Deposit</button>
+    </div>
+  </div>
+
+  <!-- Deposit received alert (above the deposit page) -->
+  <div class="modal-overlay centered" id="depositCreditModal" style="z-index:300;">
+    <div class="modal-sheet centered">
+      <div class="reserve-result-title">Deposit received</div>
+      <div class="dep-credit-amount">+<span id="depCreditAmount">0.00</span> USDT</div>
+      <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:18px;" id="depCreditNetwork">Added to your balance.</p>
+      <button class="btn btn-primary" onclick="document.getElementById('depositCreditModal').classList.remove('active')">OK</button>
     </div>
   </div>
 
@@ -4315,13 +4337,15 @@
       const min = addrs.minDeposit != null ? addrs.minDeposit : 50;
       document.getElementById('depFactMin').textContent = min + ' USDT';
       document.getElementById('depositAmount').placeholder = 'Minimum ' + min;
+      document.getElementById('depPersonalMin').textContent = min;
       depositManualMode = false;
       applyDepositProofConfig();
-      selectDepositNetwork(addrs.trc20 || !addrs.bep20 ? 'trc20' : 'bep20');
+      const personal = addrs.personal || {};
+      selectDepositNetwork(personal.trc20 || addrs.trc20 || !(personal.bep20 || addrs.bep20) ? 'trc20' : 'bep20');
       const deps = await loadDepositHistory();
       // Reopen a recent request that's still waiting for payment (also just after its countdown ran out,
       // e.g. the user paid from their wallet app and came back), so they see it get credited.
-      if (autoDepositMode() && deps) {
+      if (autoDepositMode() && !personalDepositMode() && deps) {
         const now = Date.now();
         const open = deps.find(d => d.auto && (d.status === 'Pending' || d.status === 'Expired') && now - Date.parse(d.createdAt) < 30 * 60 * 1000);
         if (open) showAutoPay(open);
@@ -4533,18 +4557,106 @@
       }
       currentDepositNetwork = network;
       document.querySelectorAll('.dep-network').forEach(b => b.classList.toggle('active', b.dataset.network === network));
-      const addr = platformAddresses[network] || '';
-      const qr = (platformAddresses.qr && platformAddresses.qr[network]) || '';
-      document.getElementById('depAddrText').textContent = addr || 'Not available for this network yet';
-      document.getElementById('depQr').innerHTML = qr
-        ? `<img src="${qr}" alt="Deposit address QR code">`
-        : '<div class="dep-qr-empty">No address set</div>';
       document.getElementById('depFactNetwork').textContent = DEPOSIT_NETWORK_LABELS[network];
       document.getElementById('depWarnNetwork').textContent = DEPOSIT_NETWORK_LABELS[network];
+      applyDepositMode();
+      if (personalDepositMode(network)) return showMyDepositAddress(network);
+      const addr = platformAddresses[network] || '';
+      const qr = (platformAddresses.qr && platformAddresses.qr[network]) || '';
+      showDepositAddress(addr, qr, addr ? '' : 'Not available for this network yet');
     }
 
+    function showDepositAddress(addr, qr, emptyText) {
+      document.getElementById('depAddrText').textContent = addr || emptyText;
+      document.getElementById('depQr').innerHTML = qr
+        ? `<img src="${qr}" alt="Deposit address QR code">`
+        : `<div class="dep-qr-empty">${addr ? '' : 'No address set'}</div>`;
+    }
+
+    // ---- Personal deposit address (like an exchange): each user has their own address per network ----
+    const myDepositAddresses = {};
+
+    function personalDepositMode(network) {
+      return !!(platformAddresses.personal && platformAddresses.personal[network || currentDepositNetwork]);
+    }
+
+    function currentDepositAddress() {
+      if (personalDepositMode()) return myDepositAddresses[currentDepositNetwork] ? myDepositAddresses[currentDepositNetwork].address : '';
+      return platformAddresses[currentDepositNetwork] || '';
+    }
+
+    async function showMyDepositAddress(network) {
+      let mine = myDepositAddresses[network];
+      if (!mine) {
+        showDepositAddress('', '', 'Loading your address…');
+        document.getElementById('depQr').innerHTML = '<div class="dep-qr-empty">Loading&hellip;</div>';
+        try {
+          mine = myDepositAddresses[network] = await api('/api/deposits/my-address?network=' + network);
+        } catch (e) {
+          if (currentDepositNetwork === network) showDepositAddress('', '', 'Could not load your address. Please try again.');
+          return;
+        }
+      }
+      if (currentDepositNetwork === network) showDepositAddress(mine.address, mine.qr, '');
+      depositCreditWatch.soon();
+    }
+
+    // Shows the exchange-style page (own address, nothing to submit) or the request/proof form.
+    function applyDepositMode() {
+      const personal = personalDepositMode();
+      document.getElementById('depAddrLabel').textContent = personal ? 'Your personal deposit address' : 'Deposit address';
+      document.getElementById('depPersonal').style.display = personal ? '' : 'none';
+      document.getElementById('depStep3').style.display = personal ? 'none' : '';
+      document.getElementById('depForm').style.display = personal || autoPayDeposit ? 'none' : '';
+      document.querySelector('#depositPage .dep-submit-bar').style.display = personal || autoPayDeposit ? 'none' : '';
+      if (personal) document.getElementById('depFactCredit').textContent = 'Wallet balance (automatic)';
+      else applyDepositProofConfig();
+    }
+
+    // Shows "Deposit received" when a deposit is credited: checked often while the deposit page is
+    // open, otherwise every half minute while the app is in view.
+    const depositCreditWatch = (function () {
+      let timer = null;
+      let lastId = null;
+      const KEY = 'mlk_last_credit_' + (USER.id || '');
+      const seen = () => { try { return localStorage.getItem(KEY); } catch (e) { return lastId; } };
+      const remember = id => { lastId = id; try { localStorage.setItem(KEY, id); } catch (e) {} };
+
+      async function check() {
+        if (!TOKEN || document.hidden) return;
+        try {
+          const d = await api('/api/deposits/latest-credit');
+          const prev = seen();
+          if (!d) { if (prev === null) remember('none'); return; }
+          remember(d.id);
+          // The first check on a device only records what's there; anything newer gets an alert. A credit
+          // from more than a day ago isn't announced again.
+          if (prev === null || prev === d.id || Date.now() - Date.parse(d.creditedAt) > 24 * 60 * 60 * 1000) return;
+          document.getElementById('depCreditAmount').textContent = fmt(d.amount);
+          document.getElementById('depCreditNetwork').textContent = 'Added to your balance' + (d.network ? ' · USDT ' + d.network.toUpperCase() : '') + '.';
+          document.getElementById('depositCreditModal').classList.add('active');
+          loadDepositHistory();
+          loadAssets();
+          updateHeaderBalance();
+        } catch (e) { /* try again next time */ }
+      }
+
+      function schedule(ms) {
+        clearTimeout(timer);
+        timer = setTimeout(async () => {
+          await check();
+          const onDepositPage = document.getElementById('depositPage').classList.contains('active');
+          schedule(onDepositPage ? 8000 : 30000);
+        }, ms);
+      }
+
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(500); });
+      if (TOKEN) schedule(3000);
+      return { soon: () => schedule(8000) };
+    })();
+
     function copyDepositAddress() {
-      const addr = platformAddresses[currentDepositNetwork];
+      const addr = currentDepositAddress();
       if (!addr) return toast('Address not available', 'error');
       navigator.clipboard.writeText(addr).then(() => toast('Address copied!'), () => toast('Copy failed — long-press the address to copy', 'error'));
     }

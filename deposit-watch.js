@@ -106,25 +106,28 @@ async function rpc(rpcUrl, method, params, fetchImpl = fetch) {
   return j.result;
 }
 
-// Incoming USDT transfers to `address` from block `fromBlock` up to the newest block that has
-// `confirmations` blocks on top of it, read in chunks. `nextBlock` is where the next poll starts.
+// Incoming USDT transfers to `address` (one address, or a list of them) from block `fromBlock` up to
+// the newest block that has `confirmations` blocks on top of it, read in chunks. `nextBlock` is where
+// the next poll starts. Each transfer's `to` is the watched address exactly as it was passed in.
 async function fetchBscTransfers({ address, fromBlock, rpcUrl, confirmations = 15, chunk = 1000, maxChunks = 10, fetchImpl = fetch }) {
   const latest = parseInt(await rpc(rpcUrl, 'eth_blockNumber', [], fetchImpl), 16);
   const safe = latest - confirmations;
   let from = fromBlock != null ? fromBlock : safe - 200;
-  const toTopic = '0x' + address.slice(2).toLowerCase().padStart(64, '0');
+  const watched = new Map([].concat(address).map(a => ['0x' + a.slice(2).toLowerCase().padStart(64, '0'), a]));
+  const toTopics = [...watched.keys()];
   const transfers = [];
   for (let n = 0; n < maxChunks && from <= safe; n++) {
     const to = Math.min(from + chunk - 1, safe);
     const logs = await rpc(rpcUrl, 'eth_getLogs', [{
       fromBlock: '0x' + from.toString(16), toBlock: '0x' + to.toString(16),
-      address: USDT.bep20.contract, topics: [TRANSFER_TOPIC, null, toTopic]
+      address: USDT.bep20.contract, topics: [TRANSFER_TOPIC, null, toTopics.length === 1 ? toTopics[0] : toTopics]
     }], fetchImpl);
     for (const log of logs || []) {
       if (log.removed || String(log.address).toLowerCase() !== USDT.bep20.contract.toLowerCase()) continue;
-      if (String(log.topics[2]).toLowerCase() !== toTopic) continue;
+      const dest = watched.get(String(log.topics[2]).toLowerCase());
+      if (!dest) continue;
       transfers.push({
-        network: 'bep20', txid: log.transactionHash, from: '0x' + String(log.topics[1]).slice(26), to: address,
+        network: 'bep20', txid: log.transactionHash, from: '0x' + String(log.topics[1]).slice(26), to: dest,
         ...microOf(log.data === '0x' ? 0 : log.data, USDT.bep20.decimals),
         blockNumber: parseInt(log.blockNumber, 16), timeMs: null
       });
