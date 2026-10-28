@@ -862,14 +862,33 @@ Type DELETE to confirm.`);
           this.withdrawalsCache = withdrawals;
           c.innerHTML = `
             <div class="admin-table-card">
-              <div class="admin-table-header">
-                <h3>Withdrawals (${withdrawals.length})</h3>
+              <div class="admin-table-header" style="flex-wrap:wrap;gap:12px;">
+                <h3 id="withdrawalsCountTitle">Withdrawals (${withdrawals.length})</h3>
+                <input class="admin-form-input" style="width:240px;" placeholder="Search UID, name, email or wallet" value="${escapeHtml(this.withdrawalQuery || '')}" oninput="Admin.withdrawalQuery=this.value;Admin.renderWithdrawalRows()">
               </div>
               <div style="overflow-x:auto;">
                 <table class="admin-table">
                   <thead><tr><th>Date</th><th>User</th><th>Email</th><th>UID</th><th>Amount</th><th>Fee</th><th>Net</th><th>Wallet Type</th><th>Wallet Address</th><th>Status</th><th>Actions</th></tr></thead>
-                  <tbody>
-                    ${withdrawals.map(w => `
+                  <tbody id="withdrawalsBody"></tbody>
+                </table>
+              </div>
+              <p id="withdrawalsEmpty" style="display:none;text-align:center;color:#888;padding:20px;"></p>
+            </div>`;
+          this.renderWithdrawalRows();
+        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      // Filters the loaded withdrawals by the search box: an exact UID first matches only that user.
+      renderWithdrawalRows() {
+        const all = this.withdrawalsCache || [];
+        const q = (this.withdrawalQuery || '').trim().toLowerCase();
+        const exactUid = q && all.some(w => String(w.uid || '').toLowerCase() === q);
+        const withdrawals = !q ? all : all.filter(w => exactUid
+          ? String(w.uid || '').toLowerCase() === q
+          : [w.uid, w.username, w.email, w.walletAddress].some(v => String(v || '').toLowerCase().includes(q)));
+        document.getElementById('withdrawalsCountTitle').textContent = q
+          ? `Withdrawals (${withdrawals.length} of ${all.length})` : `Withdrawals (${all.length})`;
+        document.getElementById('withdrawalsBody').innerHTML = withdrawals.map(w => `
                       <tr>
                         <td>${new Date(w.createdAt).toLocaleString()}</td>
                         <td>${escapeHtml(w.username)}${w.risk ? `<br>${this.riskBadge(w.risk, w.userId)}` : ''}</td>
@@ -890,13 +909,10 @@ Type DELETE to confirm.`);
                             <button class="admin-btn admin-btn-edit" title="${w.hiddenFromUser ? 'Show this withdrawal in the user history again' : 'Remove this withdrawal from the user history'}" onclick="Admin.setWithdrawalHidden('${escapeHtml(w.id)}', ${!w.hiddenFromUser})">${w.hiddenFromUser ? 'Show to user' : 'Hide from user'}</button>
                           ` : `<span style="color:#888;">${w.status === 'Cancelled' ? 'Cancelled by user' : 'Processed'}</span>`}
                         </td>
-                      </tr>`).join('')}
-                  </tbody>
-                </table>
-              </div>
-              ${withdrawals.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No withdrawals yet</p>' : ''}
-            </div>`;
-        } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+                      </tr>`).join('');
+        const empty = document.getElementById('withdrawalsEmpty');
+        empty.style.display = withdrawals.length ? 'none' : '';
+        empty.textContent = q ? 'No withdrawals match your search' : 'No withdrawals yet';
       },
 
       async updateWithdrawal(id, status) {
