@@ -1,6 +1,9 @@
 # Deposit wallet tool
 
-Run this on **your own computer**, never on the server. It:
+You can also sweep with one click on the admin panel's **Company Wallet** page (see the main
+README). This tool does the same from your own computer, without the server needing the phrase.
+
+Run this on **your own computer**. Run `npm install` in the main project folder first. It:
 
 - creates the deposit wallet that every user's personal deposit address comes from, and
 - moves the USDT from those addresses into your main wallet ("sweeping").

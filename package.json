@@ -20,15 +20,18 @@
     "@noble/curves": "1.9.1",
     "@noble/hashes": "1.8.0",
     "@scure/bip32": "1.7.0",
+    "@scure/bip39": "1.6.0",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.4.2",
+    "ethers": "6.13.5",
     "express": "^5.2.1",
     "express-rate-limit": "^7.5.1",
     "geoip-country": "^5.0.202610030217",
     "helmet": "^7.2.0",
     "otplib": "^13.4.1",
     "pg": "^8.22.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "tronweb": "6.5.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2"

@@ -60,3 +60,22 @@ test('BSC: one log query watches many addresses and reports which one was paid',
   assert.strictEqual(r.transfers[0].to, b, 'reported with the address as given');
   assert.strictEqual(r.transfers[0].micro, 25000000);
 });
+
+test('sweep wallet: the phrase gives the same public keys and fee wallets the server expects', () => {
+  const sweep = require('../deposit-sweep');
+  const r = sweep.rootFromMnemonic('  ABANDON abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about ');
+  assert.strictEqual(keyId(sweep.accountXpub(r, 'trc20')), keyId(XPUB_TRC20));
+  assert.strictEqual(keyId(sweep.accountXpub(r, 'bep20')), keyId(XPUB_BEP20));
+  assert.strictEqual(sweep.feeWalletAddress(r, 'bep20'), '0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265');
+  assert.strictEqual(sweep.feeWalletAddress(r, 'trc20'), 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4');
+  assert.throws(() => sweep.rootFromMnemonic('abandon abandon abandon'), /not valid/);
+});
+
+test('sweep wallet: company addresses are checked per network', () => {
+  const { isAddress } = require('../deposit-sweep');
+  assert.ok(isAddress('trc20', 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4'));
+  assert.ok(!isAddress('trc20', '0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265'));
+  assert.ok(isAddress('bep20', '0x78839F6054d7ed13918bAe0473BA31b1Ca9D7265'));
+  assert.ok(!isAddress('bep20', 'TLrpNTBuCpGMrB9TyVwgEhNVRhtWEQPHh4'));
+  assert.ok(!isAddress('bep20', ''));
+});

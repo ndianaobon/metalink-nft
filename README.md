@@ -79,9 +79,27 @@ in-app "Deposit received" alert. No amount to match, nothing to submit.
    TRON: one TronGrid call per address, often for an hour after the user opens their address, then
    every few minutes for two days, then every 6 hours) and credits the owner. A payment below the
    minimum isn't credited; it shows under **Unmatched payments** with the user's UID.
-5. Funds stay on the user addresses until you move them to your main wallet with
-   `tools/deposit-wallet` (see its README). That costs network fees per address: cents on BEP20,
-   about 7–15 TRX on TRC20.
+5. Funds stay on the user addresses until they're moved to the company wallet ("sweeping"), from
+   the admin **Company Wallet** page or with `tools/deposit-wallet` on the owner's computer (both
+   use `deposit-sweep.js`). That costs network fees per address, paid from a fee wallet: cents on
+   BEP20, about 7–15 TRX on TRC20.
+
+### Sweeping from the admin panel
+
+Needs `DEPOSIT_MNEMONIC` (the deposit wallet's 24 words) in the server environment. It must be the
+wallet the `DEPOSIT_XPUB_*` keys came from, or the page refuses to sweep. With the phrase on the
+server, anyone who takes over the server can move the funds waiting on user addresses, so sweep
+often. Protections:
+
+- A sweep needs the 6-digit **sweep code** (set on the page with the admin password; stored as a
+  scrypt hash). Five wrong codes lock sweeping for an hour.
+- The company address is set on the page. Changing it needs the code and only takes effect after
+  24 hours (shown on the page, cancellable), so a stolen admin login can't redirect funds at once.
+  It can't be a user's deposit address.
+- Sweeps run in the background and are recorded in `app.sweep_jobs` with every transaction. A sweep
+  interrupted by a restart can simply be run again: emptied addresses are skipped.
+- USDT arriving at the shared deposit address from a user address is recorded as a sweep, never
+  matched to a deposit request.
 
 Set `TRONGRID_API_KEY` (free at trongrid.io) for TRON; without it TronGrid limits requests.
 

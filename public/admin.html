@@ -107,6 +107,7 @@
               <button class="admin-nav-item" data-page="multiaccounts">&#128737; Multi-Accounts</button>
               <button class="admin-nav-item" data-page="withdrawals">&#128181; Withdrawals</button>
               <button class="admin-nav-item" data-page="deposits">&#128179; Deposits</button>
+              <button class="admin-nav-item" data-page="companywallet">&#128188; Company Wallet</button>
               <button class="admin-nav-item" data-page="reservations">&#127915; Reservations</button>
               <button class="admin-nav-item" data-page="wallets">&#128092; Wallets</button>
               <button class="admin-nav-item" data-page="announcements">&#128227; Announcements</button>
@@ -163,6 +164,7 @@
         else if (this.currentPage === 'multiaccounts') await this.loadMultiAccounts(c);
         else if (this.currentPage === 'withdrawals') await this.loadWithdrawals(c);
         else if (this.currentPage === 'deposits') await this.loadDeposits(c);
+        else if (this.currentPage === 'companywallet') await this.loadCompanyWallet(c);
         else if (this.currentPage === 'reservations') await this.loadReservations(c);
         else if (this.currentPage === 'wallets') await this.loadWallets(c);
         else if (this.currentPage === 'announcements') await this.loadAnnouncements(c);
@@ -1049,7 +1051,7 @@ Type DELETE to confirm.`);
               <p style="font-size:0.78rem;color:#888;margin-top:6px;">
                 Every user gets their own USDT address, like on an exchange. Any amount from the minimum deposit up that arrives there is credited to that user automatically, and they get an alert.
                 Payments below the minimum appear under Unmatched payments with the user's UID.
-                The money stays on the user addresses until you move it to your main wallet with the deposit-wallet tool (tools/deposit-wallet) on your own computer, using the "sweep tool count" above.
+                The money stays on the user addresses until you move it to the company wallet: on the <a href="#" onclick="document.querySelector('[data-page=companywallet]').click();return false;">Company Wallet</a> page, or with the deposit-wallet tool (tools/deposit-wallet) on your own computer using the "sweep tool count" above.
               </p>
             </div>
           </div>`;
@@ -1613,6 +1615,169 @@ Type DELETE to confirm.`);
           this.toast('Dismissed', 'success');
           this.loadPage();
         } catch (e) { this.toast(e.message); }
+      },
+
+      // ---- Company wallet: one-click sweeping of users' deposit addresses to the company wallet ----
+      async loadCompanyWallet(c) {
+        clearTimeout(this.sweepPollTimer);
+        let w;
+        try { w = await this.api('/admin/sweep'); } catch (e) { c.innerHTML = `<p>${escapeHtml(e.message)}</p>`; return; }
+        this.sweepState = w;
+        const NAMES = { trc20: 'TRC20 (Tron)', bep20: 'BEP20 (BNB Chain)' };
+        const UNIT = { trc20: 'TRX', bep20: 'BNB' };
+        const DEFAULT_MIN = { trc20: 20, bep20: 1 };
+        const card = (title, body) => `<div class="admin-table-card" style="margin-bottom:24px;"><div class="admin-table-header"><h3>${title}</h3></div><div style="padding:16px 24px;font-size:0.88rem;line-height:1.7;">${body}</div></div>`;
+        const mono = v => `<span style="font-family:monospace;word-break:break-all;">${escapeHtml(v)}</span>`;
+        const net = key => {
+          const n = w.networks[key];
+          if (!n.personal) return card(NAMES[key], '<span style="color:#888;">Personal deposit addresses are off for this network.</span>');
+          const lowFee = n.feeBalance !== null && n.feeBalance !== undefined && n.feeBalance < (key === 'trc20' ? 20 : 0.002);
+          return card(NAMES[key], `
+            <div><strong>Company wallet:</strong> ${n.to ? mono(n.to) : '<span style="color:#b91c1c;">not set</span>'}
+              <button class="admin-btn admin-btn-edit" style="margin-left:6px;" onclick="Admin.setSweepDestination('${key}')">${n.to ? 'Change' : 'Set address'}</button></div>
+            ${n.pending ? `<div style="margin:8px 0;padding:10px 12px;border-radius:8px;background:#fef3c7;color:#92400e;">
+              &#9888; Change requested to ${mono(n.pending.address)}. It takes effect on <strong>${new Date(n.pending.effectiveAt).toLocaleString()}</strong>.
+              If you didn't request this, cancel it now and change your admin password.
+              <button class="admin-btn admin-btn-reject" style="margin-left:6px;" onclick="Admin.cancelSweepDestination('${key}')">Cancel change</button></div>` : ''}
+            <div><strong>User addresses:</strong> ${n.addresses}</div>
+            ${n.feeWallet ? `<div><strong>Fee wallet:</strong> ${mono(n.feeWallet)} &middot; ${n.feeBalance === null || n.feeBalance === undefined ? 'balance unavailable' : `<strong style="color:${lowFee ? '#b91c1c' : '#15803d'};">${n.feeBalance} ${UNIT[key]}</strong>${lowFee ? ' (low: top it up)' : ''}`}</div>` : ''}
+            <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;">
+              <label style="font-size:0.8rem;color:#666;">Skip addresses with less than</label>
+              <input class="admin-form-input" id="sweepMin_${key}" type="number" min="0" step="1" value="${DEFAULT_MIN[key]}" style="width:90px;"> <span style="font-size:0.8rem;color:#666;">USDT</span>
+              <button class="admin-btn admin-btn-edit" ${w.ready && n.to ? '' : 'disabled'} onclick="Admin.runSweep('${key}', true)">Check balances</button>
+              <button class="admin-btn admin-btn-approve" ${w.ready && n.to && w.codeSet ? '' : 'disabled'} onclick="Admin.runSweep('${key}', false)">Sweep now</button>
+            </div>
+            ${key === 'trc20' ? '<p style="font-size:0.75rem;color:#888;margin-top:6px;">Each TRON address costs about 7&ndash;15 TRX in network fees to empty, so small amounts are skipped.</p>' : ''}`);
+        };
+        const jobs = w.jobs.length ? `<div style="overflow-x:auto;"><table class="admin-table">
+            <thead><tr><th>Started</th><th>Network</th><th>Type</th><th>Status</th><th>Result</th><th></th></tr></thead>
+            <tbody>${w.jobs.map(j => `<tr>
+              <td style="font-size:0.82rem;">${new Date(j.startedAt).toLocaleString()}</td>
+              <td>${j.network.toUpperCase()}</td>
+              <td>${j.dryRun ? 'Balance check' : '<strong>Sweep</strong>'}</td>
+              <td><span class="admin-badge ${j.status === 'done' ? 'admin-badge-approved' : j.status === 'running' ? 'admin-badge-pending' : 'admin-badge-rejected'}">${escapeHtml(j.status)}</span></td>
+              <td style="font-size:0.82rem;">${j.result ? `${j.dryRun ? 'Would move' : 'Moved'} <strong>${j.result.total} USDT</strong> from ${j.result.count}` : escapeHtml(j.error || '')}</td>
+              <td><button class="admin-btn admin-btn-edit" onclick="Admin.showSweepJob('${escapeHtml(j.id)}')">Details</button></td>
+            </tr>`).join('')}</tbody></table></div>` : '<p style="color:#888;">No sweeps yet.</p>';
+        c.innerHTML = `
+          ${w.ready ? '' : `<div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#fee2e2;color:#991b1b;">&#9888; ${escapeHtml(w.error)}</div>`}
+          ${card('Sweep code', `
+            ${w.codeSet ? '<span style="color:#15803d;">&#10003; A 6-digit sweep code is set.</span>' : '<span style="color:#b91c1c;">No sweep code set yet.</span>'}
+            ${w.lockedUntil ? `<br><span style="color:#b91c1c;">Locked after too many wrong codes until ${new Date(w.lockedUntil).toLocaleTimeString()}.</span>` : ''}
+            <button class="admin-btn admin-btn-edit" style="margin-left:8px;" onclick="Admin.setSweepCode(${w.codeSet})">${w.codeSet ? 'Change code' : 'Set code'}</button>
+            <p style="font-size:0.78rem;color:#888;margin-top:8px;">Needed to sweep and to change a company address. Changing a company address takes effect after 24 hours.</p>`)}
+          ${net('bep20')}
+          ${net('trc20')}
+          ${card('Sweep history', jobs)}`;
+        if (w.jobs.some(j => j.status === 'running')) this.sweepPollTimer = setTimeout(() => { if (this.currentPage === 'companywallet') this.loadCompanyWallet(c); }, 4000);
+      },
+
+      // A small form in a modal; resolves with the entered values, or null if cancelled.
+      askFields(title, fields, note) {
+        return new Promise(resolve => {
+          const modal = document.createElement('div');
+          modal.className = 'admin-modal-overlay';
+          modal.innerHTML = `<div class="admin-modal" style="max-width:420px;">
+            <h3 style="margin-bottom:12px;">${title}</h3>
+            ${note ? `<p style="font-size:0.85rem;color:#666;margin-bottom:12px;">${note}</p>` : ''}
+            ${fields.map(f => `<div style="margin-bottom:12px;"><label class="admin-form-label">${f.label}</label>
+              <input class="admin-form-input" data-name="${f.name}" type="${f.type || 'text'}" ${f.digits ? 'inputmode="numeric" maxlength="6" autocomplete="off"' : 'autocomplete="off"'} placeholder="${f.placeholder || ''}"></div>`).join('')}
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button class="admin-btn" style="flex:1;background:#eee;" data-act="cancel">Cancel</button>
+              <button class="admin-btn admin-btn-approve" style="flex:1;" data-act="ok">OK</button>
+            </div></div>`;
+          const done = ok => {
+            const values = {};
+            modal.querySelectorAll('input').forEach(i => { values[i.dataset.name] = i.value.trim(); });
+            modal.remove();
+            resolve(ok ? values : null);
+          };
+          modal.querySelector('[data-act="cancel"]').onclick = () => done(false);
+          modal.querySelector('[data-act="ok"]').onclick = () => done(true);
+          modal.addEventListener('keydown', e => { if (e.key === 'Enter') done(true); });
+          document.body.appendChild(modal);
+          modal.querySelector('input').focus();
+        });
+      },
+
+      async setSweepCode(isChange) {
+        const fields = [{ name: 'password', label: 'Admin password', type: 'password' }];
+        if (isChange) fields.push({ name: 'currentCode', label: 'Current 6-digit code', type: 'password', digits: true });
+        fields.push({ name: 'newCode', label: 'New 6-digit code', type: 'password', digits: true }, { name: 'confirm', label: 'New code again', type: 'password', digits: true });
+        const v = await this.askFields(isChange ? 'Change sweep code' : 'Set sweep code', fields, "Don't use your birthday or a simple pattern like 123456, and don't share it.");
+        if (!v) return;
+        if (v.newCode !== v.confirm) return this.toast('The two new codes are different');
+        try {
+          await this.api('/admin/sweep/code', { method: 'POST', body: JSON.stringify(v) });
+          this.toast('Sweep code saved', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async setSweepDestination(network) {
+        const current = this.sweepState.networks[network].to;
+        const v = await this.askFields(current ? 'Change company wallet' : 'Set company wallet', [
+          { name: 'address', label: network === 'trc20' ? 'Company TRON address (starts with T)' : 'Company BNB Chain address (starts with 0x)' },
+          { name: 'code', label: '6-digit sweep code', type: 'password', digits: true }
+        ], current ? 'For safety, the new address only takes effect after 24 hours. Until then sweeps still go to the current address.' : 'Double-check the address: swept funds are sent here.');
+        if (!v) return;
+        try {
+          const r = await this.api('/admin/sweep/destination', { method: 'POST', body: JSON.stringify({ network, ...v }) });
+          this.toast(r.immediate ? 'Company wallet set' : 'Change requested: it takes effect in 24 hours', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async cancelSweepDestination(network) {
+        if (!confirm('Cancel the requested company wallet change?')) return;
+        try {
+          await this.api('/admin/sweep/destination/cancel', { method: 'POST', body: JSON.stringify({ network }) });
+          this.toast('Change cancelled', 'success');
+          this.loadPage();
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async runSweep(network, dryRun) {
+        const min = Number(document.getElementById('sweepMin_' + network).value) || 0;
+        const to = this.sweepState.networks[network].to;
+        let code = '';
+        if (!dryRun) {
+          const v = await this.askFields('Sweep ' + network.toUpperCase(), [{ name: 'code', label: '6-digit sweep code', type: 'password', digits: true }],
+            `Moves the USDT from every user address holding at least ${min} USDT to <strong style="word-break:break-all;">${escapeHtml(to)}</strong>.`);
+          if (!v) return;
+          code = v.code;
+        }
+        try {
+          const r = await this.api('/admin/sweep/run', { method: 'POST', body: JSON.stringify({ network, code, min, dryRun }) });
+          this.toast(dryRun ? 'Checking balances…' : 'Sweep started', 'success');
+          await this.loadPage();
+          this.showSweepJob(r.id);
+        } catch (e) { this.toast(e.message); }
+      },
+
+      async showSweepJob(id) {
+        document.querySelectorAll('.sweep-job-modal').forEach(m => m.remove());
+        const modal = document.createElement('div');
+        modal.className = 'admin-modal-overlay sweep-job-modal';
+        modal.innerHTML = '<div class="admin-modal" style="max-width:680px;"><div style="padding:20px;text-align:center;color:#888;">Loading...</div></div>';
+        modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+        document.body.appendChild(modal);
+        const explorer = (network, txid) => network === 'bep20' ? 'https://bscscan.com/tx/' + txid : 'https://tronscan.org/#/transaction/' + txid;
+        const render = async () => {
+          if (!document.body.contains(modal)) return;
+          try {
+            const j = await this.api('/admin/sweep/jobs/' + encodeURIComponent(id));
+            modal.querySelector('.admin-modal').innerHTML = `
+              <h3 style="margin-bottom:6px;">${j.dryRun ? 'Balance check' : 'Sweep'} &middot; ${j.network.toUpperCase()} &middot; ${escapeHtml(j.status)}</h3>
+              <p style="font-size:0.8rem;color:#888;margin-bottom:10px;">To <span style="font-family:monospace;word-break:break-all;">${escapeHtml(j.to)}</span> &middot; started ${new Date(j.startedAt).toLocaleString()}</p>
+              <pre style="background:#0f172a;color:#e2e8f0;padding:12px;border-radius:8px;font-size:0.75rem;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-all;">${j.log.map(l => escapeHtml(l).replace(/sent -&gt; (\S+)/, (m, tx) => `sent -&gt; <a style="color:#7dd3fc;" target="_blank" rel="noopener" href="${explorer(j.network, tx)}">${tx}</a>`)).join('\n') || 'Starting…'}</pre>
+              ${j.status === 'interrupted' ? '<p style="color:#b91c1c;font-size:0.82rem;">This sweep stopped (the server restarted). Run it again: addresses already emptied are skipped.</p>' : ''}
+              <button class="admin-btn" style="width:100%;background:#eee;margin-top:12px;" onclick="this.closest('.admin-modal-overlay').remove()">Close</button>`;
+            if (j.status === 'running') setTimeout(render, 3000);
+            else if (this.currentPage === 'companywallet') this.loadCompanyWallet(document.getElementById('adminContent'));
+          } catch (e) { modal.querySelector('.admin-modal').innerHTML = `<p style="padding:20px;">${escapeHtml(e.message)}</p>`; }
+        };
+        render();
       },
 
       async loadSettings(c) {

@@ -16,6 +16,7 @@ const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
 const depositWatch = require('./deposit-watch');
 const depositAddresses = require('./deposit-addresses');
+const depositSweep = require('./deposit-sweep');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -3274,7 +3275,15 @@ async function pollPlatformAddress(config) {
           if (t.exact && wanted.has(t.micro)) t.timeMs = await depositWatch.bscBlockTimeMs(BSC_RPC_URL, t.blockNumber);
         }
       }
+      // USDT coming from one of our users' deposit addresses is a sweep to this wallet, not a deposit.
+      const fromOurs = new Set((await pool.query('SELECT lower(address) AS a FROM app.user_deposit_addresses WHERE network = $1', [network])).rows.map(r => r.a));
       for (const t of transfers) {
+        if (fromOurs.has(String(t.from || '').toLowerCase())) {
+          await pool.query(`INSERT INTO app.deposit_transfers (network, txid, from_address, to_address, amount, block_time, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'sweep') ON CONFLICT DO NOTHING`,
+            [t.network, t.txid, t.from, t.to, (t.micro / 1e6).toFixed(6), t.timeMs ? new Date(t.timeMs).toISOString() : null]);
+          continue;
+        }
         const match = depositWatch.findMatch(t, requests);
         if (await handleIncomingTransfer(t, match) && match) requests.splice(requests.indexOf(match), 1);
       }
@@ -3387,6 +3396,253 @@ app.post('/api/admin/deposit-transfers/ignore', adminMiddleware, async (req, res
   if (!rowCount) return res.status(404).json({ error: 'Payment not found or already handled' });
   res.json({ ok: true });
 });
+
+// ===================== COMPANY WALLET (SWEEPING) =====================
+// Moves USDT from users' personal deposit addresses to the company wallet with one click in the admin
+// panel. This needs the deposit wallet's recovery phrase on the server (DEPOSIT_MNEMONIC), so anyone
+// who takes over the server could also move the funds; the owner chose this over sweeping from their
+// own computer (tools/deposit-wallet, which uses the same deposit-sweep.js). Protections:
+// - a real sweep needs the 6-digit sweep code, stored only as a scrypt hash; 5 wrong codes lock
+//   sweeping for an hour;
+// - the company address can be changed in the panel, but a change needs the code and only takes
+//   effect after 24 hours, so a stolen admin login can't redirect funds before the owner notices;
+// - every sweep is recorded in app.sweep_jobs with its transactions.
+const SWEEP_CODE_MAX_TRIES = 5;
+const SWEEP_LOCK_MS = 60 * 60 * 1000;
+const SWEEP_DEST_DELAY_MS = 24 * 60 * 60 * 1000;
+const SWEEP_STALE_MS = 2 * 60 * 1000; // a running sweep that stops updating was interrupted
+
+// The deposit wallet's root key, or why sweeping from the panel isn't available. The phrase must be
+// the one the users' addresses were made from (DEPOSIT_XPUB_*), so a wrong one can't be used.
+let sweepWalletCache = null;
+function sweepWallet() {
+  if (sweepWalletCache) return sweepWalletCache;
+  if (!process.env.DEPOSIT_MNEMONIC) {
+    sweepWalletCache = { error: "Add DEPOSIT_MNEMONIC (the deposit wallet's 24 words) to the server settings and restart to sweep from here." };
+    return sweepWalletCache;
+  }
+  let root;
+  try { root = depositSweep.rootFromMnemonic(process.env.DEPOSIT_MNEMONIC); }
+  catch (e) { return (sweepWalletCache = { error: 'DEPOSIT_MNEMONIC is not a valid 24-word recovery phrase. Check the words and their order.' }); }
+  for (const network of depositAddresses.NETWORKS) {
+    if (DEPOSIT_KEYS[network] && depositAddresses.keyId(depositSweep.accountXpub(root, network)) !== DEPOSIT_KEYS[network].id) {
+      return (sweepWalletCache = { error: `DEPOSIT_MNEMONIC is not the wallet that DEPOSIT_XPUB_${network.toUpperCase()} came from. Check the 24 words.` });
+    }
+  }
+  return (sweepWalletCache = { root });
+}
+
+function hashSweepCode(code) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return salt + ':' + crypto.scryptSync(String(code), salt, 32).toString('hex');
+}
+
+function sweepCodeMatches(code, stored) {
+  const [salt, hash] = String(stored || '').split(':');
+  if (!salt || !hash) return false;
+  const got = crypto.scryptSync(String(code || ''), salt, 32);
+  const want = Buffer.from(hash, 'hex');
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+}
+
+// The company address sweeps go to: a requested change counts once its 24 hours have passed.
+function sweepDestination(cfg, network) {
+  const pending = (cfg.pendingTo || {})[network];
+  if (pending && Date.parse(pending.effectiveAt) <= Date.now()) return pending.address;
+  return (cfg.to || {})[network] || '';
+}
+
+// Checks the sweep code inside transaction `c` (which holds the sweep-config lock) and records wrong
+// tries. Returns null if it's right, otherwise the error to show.
+async function checkSweepCode(c, cfg, code) {
+  if (!cfg.codeHash) return 'Set a sweep code first.';
+  if (cfg.lockedUntil && Date.parse(cfg.lockedUntil) > Date.now()) {
+    return `Too many wrong codes. Sweeping is locked until ${new Date(cfg.lockedUntil).toLocaleTimeString('en-GB', { timeZone: 'UTC' })} UTC.`;
+  }
+  if (sweepCodeMatches(code, cfg.codeHash)) {
+    if (cfg.failedTries) { cfg.failedTries = 0; await db.setSetting(c, 'sweep_config', cfg); }
+    return null;
+  }
+  cfg.failedTries = (cfg.failedTries || 0) + 1;
+  let msg = `Wrong code. ${SWEEP_CODE_MAX_TRIES - cfg.failedTries} tries left.`;
+  if (cfg.failedTries >= SWEEP_CODE_MAX_TRIES) {
+    cfg.failedTries = 0;
+    cfg.lockedUntil = new Date(Date.now() + SWEEP_LOCK_MS).toISOString();
+    msg = 'Wrong code. Sweeping is locked for 1 hour.';
+  }
+  await db.setSetting(c, 'sweep_config', cfg);
+  return msg;
+}
+
+// Runs `fn(c, cfg)` with the sweep config locked, so code tries and changes can't race.
+function withSweepConfig(fn) {
+  return tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(424248)');
+    return fn(c, await db.getSetting(c, 'sweep_config'));
+  });
+}
+
+const jobSummary = j => ({
+  id: j.id, network: j.network, to: j.to_address, dryRun: j.dry_run, min: Number(j.min_amount),
+  status: j.status === 'running' && Date.now() - new Date(j.heartbeat_at).getTime() > SWEEP_STALE_MS ? 'interrupted' : j.status,
+  startedAt: j.started_at, finishedAt: j.finished_at, result: j.result, error: j.error
+});
+
+app.get('/api/admin/sweep', adminMiddleware, async (req, res) => {
+  const w = sweepWallet();
+  const cfg = await db.getSetting(pool, 'sweep_config');
+  const { rows: counts } = await pool.query('SELECT network, key_id, count(*)::int AS n FROM app.user_deposit_addresses GROUP BY network, key_id');
+  const networks = {};
+  for (const network of depositAddresses.NETWORKS) {
+    const k = DEPOSIT_KEYS[network];
+    const pending = (cfg.pendingTo || {})[network];
+    const n = {
+      personal: !!k,
+      addresses: k ? (counts.find(r => r.network === network && r.key_id === k.id) || { n: 0 }).n : 0,
+      to: sweepDestination(cfg, network),
+      pending: pending && Date.parse(pending.effectiveAt) > Date.now() ? pending : null
+    };
+    if (w.root) {
+      n.feeWallet = depositSweep.feeWalletAddress(w.root, network);
+      try { n.feeBalance = await depositSweep.feeWalletBalance(w.root, network, { rpcUrl: BSC_RPC_URL, apiKey: process.env.TRONGRID_API_KEY }); }
+      catch (e) { n.feeBalance = null; }
+    }
+    networks[network] = n;
+  }
+  const { rows: jobs } = await pool.query('SELECT * FROM app.sweep_jobs ORDER BY started_at DESC LIMIT 15');
+  res.json({
+    ready: !!w.root, error: w.error || null,
+    codeSet: !!cfg.codeHash,
+    lockedUntil: cfg.lockedUntil && Date.parse(cfg.lockedUntil) > Date.now() ? cfg.lockedUntil : null,
+    networks,
+    jobs: jobs.map(jobSummary)
+  });
+});
+
+app.get('/api/admin/sweep/jobs/:id', adminMiddleware, async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM app.sweep_jobs WHERE id = $1', [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'Sweep not found' });
+  res.json({ ...jobSummary(rows[0]), log: rows[0].log });
+});
+
+// Sets the 6-digit sweep code (needs the admin password; changing it also needs the current code).
+app.post('/api/admin/sweep/code', authLimiter, adminMiddleware, async (req, res) => {
+  const { password, newCode, currentCode } = req.body;
+  if (!/^\d{6}$/.test(String(newCode || ''))) return res.status(400).json({ error: 'The code must be exactly 6 digits.' });
+  const admin = await db.getDoc(pool, 'admins', req.userId);
+  // 400, not 401: the admin page treats 401/403 as "logged out".
+  if (!admin || !(await verifyPassword(String(password || ''), admin.password))) return res.status(400).json({ error: 'Admin password is incorrect.' });
+  const result = await withSweepConfig(async (c, cfg) => {
+    if (cfg.codeHash) {
+      const err = await checkSweepCode(c, cfg, currentCode);
+      if (err) return { status: 400, body: { error: 'Current code: ' + err } };
+    }
+    cfg.codeHash = hashSweepCode(newCode);
+    cfg.codeSetAt = new Date().toISOString();
+    cfg.failedTries = 0;
+    delete cfg.lockedUntil;
+    await db.setSetting(c, 'sweep_config', cfg);
+    return { status: 200, body: { ok: true } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+// Sets the company address for a network. The first one applies at once; a change applies after 24 hours.
+app.post('/api/admin/sweep/destination', authLimiter, adminMiddleware, async (req, res) => {
+  const { network, code } = req.body;
+  const address = String(req.body.address || '').trim();
+  if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Choose a network' });
+  if (!depositSweep.isAddress(network, address)) {
+    return res.status(400).json({ error: network === 'trc20' ? 'Enter a valid TRON address (starts with T).' : 'Enter a valid BNB Chain address (starts with 0x).' });
+  }
+  const ours = await pool.query('SELECT 1 FROM app.user_deposit_addresses WHERE network = $1 AND lower(address) = lower($2)', [network, address]);
+  if (ours.rows.length) return res.status(400).json({ error: "That is a user's deposit address. Enter the company wallet address." });
+  const result = await withSweepConfig(async (c, cfg) => {
+    const err = await checkSweepCode(c, cfg, code);
+    if (err) return { status: 400, body: { error: err } };
+    cfg.to = cfg.to || {};
+    cfg.pendingTo = cfg.pendingTo || {};
+    const current = sweepDestination(cfg, network);
+    if (!current) {
+      cfg.to[network] = address;
+      delete cfg.pendingTo[network];
+    } else {
+      cfg.to[network] = current; // a change that already took effect becomes the current address
+      cfg.pendingTo[network] = { address, requestedAt: new Date().toISOString(), effectiveAt: new Date(Date.now() + SWEEP_DEST_DELAY_MS).toISOString() };
+    }
+    await db.setSetting(c, 'sweep_config', cfg);
+    console.log(`[Sweep] Company ${network} address ${current ? 'change requested' : 'set'}: ${address}`);
+    return { status: 200, body: { ok: true, immediate: !current } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+// Cancels a company address change that hasn't taken effect yet.
+app.post('/api/admin/sweep/destination/cancel', adminMiddleware, async (req, res) => {
+  const { network } = req.body;
+  const result = await withSweepConfig(async (c, cfg) => {
+    const pending = (cfg.pendingTo || {})[network];
+    if (!pending || Date.parse(pending.effectiveAt) <= Date.now()) return { status: 400, body: { error: 'There is no pending change to cancel.' } };
+    delete cfg.pendingTo[network];
+    await db.setSetting(c, 'sweep_config', cfg);
+    console.log(`[Sweep] Company ${network} address change cancelled`);
+    return { status: 200, body: { ok: true } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+// Starts a sweep (or, with dryRun, a balance check that sends nothing) in the background.
+app.post('/api/admin/sweep/run', authLimiter, adminMiddleware, async (req, res) => {
+  const { network, code } = req.body;
+  const dryRun = req.body.dryRun === true;
+  const min = Math.max(Number(req.body.min) || 0, 0.000001);
+  if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Choose a network' });
+  const w = sweepWallet();
+  if (!w.root) return res.status(400).json({ error: w.error });
+  if (!DEPOSIT_KEYS[network]) return res.status(400).json({ error: 'Personal deposit addresses are off for this network.' });
+
+  const result = await withSweepConfig(async (c, cfg) => {
+    const to = sweepDestination(cfg, network);
+    if (!to) return { status: 400, body: { error: 'Set the company wallet address for this network first.' } };
+    if (!dryRun) {
+      const err = await checkSweepCode(c, cfg, code);
+      if (err) return { status: 400, body: { error: err } };
+    }
+    const running = await c.query("SELECT 1 FROM app.sweep_jobs WHERE status = 'running' AND heartbeat_at > $1",
+      [new Date(Date.now() - SWEEP_STALE_MS).toISOString()]);
+    if (running.rows.length) return { status: 400, body: { error: 'A sweep is already running. Wait for it to finish.' } };
+    const id = generateId();
+    await c.query(`INSERT INTO app.sweep_jobs (id, network, to_address, dry_run, min_amount, status, admin_id)
+      VALUES ($1, $2, $3, $4, $5, 'running', $6)`, [id, network, to, dryRun, min, req.userId]);
+    return { status: 200, body: { id }, job: { id, network, to, dryRun, min } };
+  });
+  if (result.job) runSweepJob(result.job, w.root).catch(e => console.error('[Sweep] job crashed:', e.message));
+  res.status(result.status).json(result.body);
+});
+
+async function runSweepJob(job, root) {
+  const log = line => pool.query('UPDATE app.sweep_jobs SET log = log || $2::jsonb, heartbeat_at = now() WHERE id = $1', [job.id, JSON.stringify([line])]);
+  const heartbeat = setInterval(() => {
+    pool.query('UPDATE app.sweep_jobs SET heartbeat_at = now() WHERE id = $1', [job.id]).catch(() => {});
+  }, 15 * 1000);
+  console.log(`[Sweep] ${job.dryRun ? 'Balance check' : 'Sweep'} started: ${job.network} -> ${job.to}`);
+  try {
+    const { rows } = await pool.query('SELECT idx FROM app.user_deposit_addresses WHERE network = $1 AND key_id = $2 ORDER BY idx',
+      [job.network, DEPOSIT_KEYS[job.network].id]);
+    await log(`${job.dryRun ? 'Checking' : 'Sweeping'} ${rows.length} user address${rows.length === 1 ? '' : 'es'} (minimum ${job.min} USDT each)…`);
+    const opts = { root, indexes: rows.map(r => r.idx), to: job.to, min: job.min, go: !job.dryRun, rpcUrl: BSC_RPC_URL, apiKey: process.env.TRONGRID_API_KEY, log };
+    const r = job.network === 'bep20' ? await depositSweep.sweepBsc(opts) : await depositSweep.sweepTron(opts);
+    await log(`${job.dryRun ? 'Would move' : 'Moved'} ${r.total} USDT from ${r.count} address${r.count === 1 ? '' : 'es'}.`);
+    await pool.query("UPDATE app.sweep_jobs SET status = 'done', result = $2, finished_at = now(), heartbeat_at = now() WHERE id = $1", [job.id, JSON.stringify(r)]);
+    console.log(`[Sweep] Finished: ${job.dryRun ? 'would move' : 'moved'} ${r.total} USDT (${job.network})`);
+  } catch (e) {
+    await log('Error: ' + e.message).catch(() => {});
+    await pool.query("UPDATE app.sweep_jobs SET status = 'failed', error = $2, finished_at = now() WHERE id = $1", [job.id, e.message]);
+    console.error('[Sweep] Failed:', e.message);
+  } finally {
+    clearInterval(heartbeat);
+  }
+}
 
 app.post('/api/admin/announcements', adminMiddleware, async (req, res) => {
   const { title, date, category, content, image } = req.body;
