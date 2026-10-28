@@ -3,6 +3,8 @@
 // amount: every request is given a unique amount (e.g. 100.37 USDT) for its network.
 // It is read-only: it only ever needs the public addresses, never a private key or recovery phrase.
 
+const crypto = require('crypto');
+
 const USDT = {
   trc20: { contract: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', decimals: 6 },
   bep20: { contract: '0x55d398326f99059fF775485246999027B3197955', decimals: 18 }
@@ -138,8 +140,113 @@ async function bscBlockTimeMs(rpcUrl, blockNumber, fetchImpl = fetch) {
   return parseInt(block.timestamp, 16) * 1000;
 }
 
+// ---------- Looking up one transaction by its hash (a TxID the user pasted) ----------
+
+const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const sha256 = buf => crypto.createHash('sha256').update(buf).digest();
+
+function base58Decode(s) {
+  let n = 0n;
+  for (const ch of s) {
+    const i = B58.indexOf(ch);
+    if (i < 0) throw new Error('Invalid base58 character');
+    n = n * 58n + BigInt(i);
+  }
+  let hex = n.toString(16);
+  if (hex.length % 2) hex = '0' + hex;
+  const zeros = s.length - s.replace(/^1+/, '').length;
+  return Buffer.concat([Buffer.alloc(zeros), Buffer.from(hex, 'hex')]);
+}
+
+function base58Encode(buf) {
+  let n = BigInt('0x' + (buf.toString('hex') || '0'));
+  let out = '';
+  while (n > 0n) { out = B58[Number(n % 58n)] + out; n /= 58n; }
+  for (const b of buf) { if (b !== 0) break; out = '1' + out; }
+  return out;
+}
+
+// A TRON address (T...) as the 20-byte hex used in event logs, or null if it isn't a valid address.
+function tronToHex(address) {
+  try {
+    const raw = base58Decode(address);
+    if (raw.length !== 25 || raw[0] !== 0x41) return null;
+    const body = raw.subarray(0, 21);
+    if (!sha256(sha256(body)).subarray(0, 4).equals(raw.subarray(21))) return null;
+    return body.subarray(1).toString('hex');
+  } catch (e) { return null; }
+}
+
+function hexToTron(hex20) {
+  const body = Buffer.from('41' + hex20, 'hex');
+  return base58Encode(Buffer.concat([body, sha256(sha256(body)).subarray(0, 4)]));
+}
+
+// A pasted transaction hash in the form each chain uses (TRON: 64 hex; BSC: 0x + 64 hex), or null.
+function normalizeTxid(network, txid) {
+  const h = String(txid || '').trim().toLowerCase().replace(/^0x/, '');
+  if (!/^[0-9a-f]{64}$/.test(h)) return null;
+  return network === 'bep20' ? '0x' + h : h;
+}
+
+// The USDT transfers to `address` in transaction `txid`. `state` is 'ok' once it's confirmed,
+// otherwise 'pending' (seen but not confirmed yet), 'failed' (reverted) or 'notfound'.
+async function lookupTronTx({ txid, address, apiKey, fetchImpl = fetch }) {
+  const headers = { 'Content-Type': 'application/json', ...(apiKey ? { 'TRON-PRO-API-KEY': apiKey } : {}) };
+  const get = async path => {
+    const res = await fetchImpl('https://api.trongrid.io' + path, { method: 'POST', headers, body: JSON.stringify({ value: txid }) });
+    if (!res.ok) throw new Error(`TronGrid returned HTTP ${res.status}`);
+    return res.json();
+  };
+  // walletsolidity only knows confirmed transactions.
+  const info = await get('/walletsolidity/gettransactioninfobyid');
+  if (!info || !info.id) {
+    const unconfirmed = await get('/wallet/gettransactioninfobyid');
+    return { state: unconfirmed && unconfirmed.id ? 'pending' : 'notfound', transfers: [] };
+  }
+  if (info.receipt && info.receipt.result && info.receipt.result !== 'SUCCESS') return { state: 'failed', transfers: [] };
+  const contractHex = tronToHex(USDT.trc20.contract);
+  const toHex = tronToHex(address);
+  const transfers = [];
+  for (const log of info.log || []) {
+    const topics = (log.topics || []).map(t => String(t).toLowerCase().replace(/^0x/, ''));
+    if (String(log.address).toLowerCase().replace(/^41/, '') !== contractHex) continue;
+    if (topics.length < 3 || '0x' + topics[0] !== TRANSFER_TOPIC || topics[2].slice(24) !== toHex) continue;
+    transfers.push({
+      network: 'trc20', txid, from: hexToTron(topics[1].slice(24)), to: address,
+      ...microOf('0x' + (log.data || '0'), USDT.trc20.decimals), timeMs: info.blockTimeStamp
+    });
+  }
+  return { state: 'ok', transfers };
+}
+
+async function lookupBscTx({ txid, address, rpcUrl, confirmations = 15, fetchImpl = fetch }) {
+  const receipt = await rpc(rpcUrl, 'eth_getTransactionReceipt', [txid], fetchImpl);
+  if (!receipt) return { state: 'notfound', transfers: [] };
+  if (receipt.status === '0x0') return { state: 'failed', transfers: [] };
+  const blockNumber = parseInt(receipt.blockNumber, 16);
+  const latest = parseInt(await rpc(rpcUrl, 'eth_blockNumber', [], fetchImpl), 16);
+  if (latest - blockNumber < confirmations) return { state: 'pending', transfers: [] };
+  const toTopic = '0x' + address.slice(2).toLowerCase().padStart(64, '0');
+  const transfers = [];
+  for (const log of receipt.logs || []) {
+    if (log.removed || String(log.address).toLowerCase() !== USDT.bep20.contract.toLowerCase()) continue;
+    if (String(log.topics[0]).toLowerCase() !== TRANSFER_TOPIC || String(log.topics[2]).toLowerCase() !== toTopic) continue;
+    transfers.push({
+      network: 'bep20', txid, from: '0x' + String(log.topics[1]).slice(26), to: address,
+      ...microOf(log.data === '0x' ? 0 : log.data, USDT.bep20.decimals), blockNumber, timeMs: null
+    });
+  }
+  if (transfers.length) {
+    const timeMs = await bscBlockTimeMs(rpcUrl, blockNumber, fetchImpl);
+    transfers.forEach(t => { t.timeMs = timeMs; });
+  }
+  return { state: 'ok', transfers };
+}
+
 module.exports = {
   USDT, MATCH_WINDOW_MS, CLOCK_SKEW_MS,
   microOf, amountToMicro, pickPayAmount, findMatch,
-  fetchTronTransfers, fetchBscTransfers, bscBlockTimeMs
+  fetchTronTransfers, fetchBscTransfers, bscBlockTimeMs,
+  tronToHex, hexToTron, normalizeTxid, lookupTronTx, lookupBscTx
 };

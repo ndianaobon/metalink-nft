@@ -1798,7 +1798,10 @@ function depositProofSettings(config) {
 
 // Automatic deposits: the user is shown this long to send the exact amount. A payment that arrives
 // later (up to depositWatch.MATCH_WINDOW_MS after the request) is still matched and credited.
-const AUTO_DEPOSIT_PAY_WINDOW_MS = 60 * 60 * 1000;
+const AUTO_DEPOSIT_PAY_WINDOW_MS = 5 * 60 * 1000;
+// The watcher keeps polling fast this long after a request is made, so a payment sent near the end of
+// the countdown (or a little after) is still credited within seconds.
+const AUTO_DEPOSIT_FAST_POLL_MS = 30 * 60 * 1000;
 const MAX_OPEN_AUTO_DEPOSITS = 3;      // per user, waiting for payment at the same time
 const MAX_AUTO_DEPOSITS_PER_DAY = 10;  // per user and network; each one reserves an amount for 24h
 const autoDepositsOn = config => config.autoDepositEnabled === true;
@@ -1912,6 +1915,107 @@ app.post('/api/deposits/:id/cancel', authMiddleware, async (req, res) => {
     d.processedAt = new Date().toISOString();
     return { status: 200, body: await db.saveDoc(c, 'deposits', d) };
   });
+  res.status(result.status).json(result.body);
+});
+
+// The user pastes the transaction ID of a payment they made for one of their automatic deposit requests
+// (e.g. they sent a different amount than shown, so it couldn't be matched by amount). The server reads
+// the transaction from the blockchain and credits what actually arrived to this user's account.
+// Transactions are public, so a TxID alone doesn't prove who paid: the claim must fit a request this
+// user made before the payment (same network, amount within 10%), and the payment must not already
+// belong to someone else (by exact amount or by a wallet that has paid for another account).
+const txidClaimLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req => getClientIp(req),
+  validate: { xForwardedForHeader: false },
+  message: { error: 'Too many attempts. Please wait a few minutes and try again.' }
+});
+const TXID_CLAIM_TOLERANCE = 0.10;
+
+app.post('/api/deposits/claim-txid', txidClaimLimiter, authMiddleware, async (req, res) => {
+  const { network, depositId } = req.body;
+  if (network !== 'trc20' && network !== 'bep20') return res.status(400).json({ error: 'Select a deposit network' });
+  const txid = depositWatch.normalizeTxid(network, req.body.txid);
+  if (!txid) return res.status(400).json({ error: network === 'bep20'
+    ? 'That doesn\'t look like a BEP20 transaction ID. It should be "0x" followed by 64 characters.'
+    : 'That doesn\'t look like a TRC20 transaction ID. It should be 64 letters and numbers.' });
+  const config = await getConfig();
+  if (!autoDepositsOn(config)) return res.status(400).json({ error: 'Automatic deposits are switched off. Please submit your deposit for review.' });
+  const address = network === 'bep20' ? config.depositAddressBep20 : config.depositAddressTrc20;
+  if (!address) return res.status(400).json({ error: 'This network is not available' });
+
+  let found;
+  try {
+    found = network === 'trc20'
+      ? await depositWatch.lookupTronTx({ txid, address, apiKey: process.env.TRONGRID_API_KEY })
+      : await depositWatch.lookupBscTx({ txid, address, rpcUrl: BSC_RPC_URL, confirmations: BSC_CONFIRMATIONS });
+  } catch (e) {
+    console.error('[Deposits] TxID lookup failed:', e.message);
+    return res.status(503).json({ error: 'Could not reach the blockchain right now. Please try again in a minute.' });
+  }
+  const netName = network === 'bep20' ? 'BNB Smart Chain (BEP20)' : 'Tron (TRC20)';
+  if (found.state === 'notfound') return res.status(400).json({ error: `Transaction not found on ${netName}. Check the TxID and the network, or wait a minute if you just sent it.` });
+  if (found.state === 'pending') return res.status(409).json({ pending: true, error: 'Your payment is still being confirmed on the blockchain. Please try again in a minute.' });
+  if (found.state === 'failed') return res.status(400).json({ error: 'This transaction failed on the blockchain, so no USDT arrived.' });
+  if (!found.transfers.length) return res.status(400).json({ error: `This transaction did not send USDT to our ${netName} deposit address.` });
+  if (found.transfers.length > 1) return res.status(400).json({ error: 'This transaction has several transfers. Please submit it for review.' });
+  const t = found.transfers[0];
+  const received = t.micro / 1e6;
+
+  const emails = [];
+  const result = await tx(async c => {
+    await c.query(`INSERT INTO app.deposit_transfers (network, txid, from_address, to_address, amount, block_time)
+      VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING`,
+      [t.network, t.txid, t.from, t.to, received.toFixed(6), t.timeMs ? new Date(t.timeMs).toISOString() : null]);
+    const row = (await c.query('SELECT status, deposit_id FROM app.deposit_transfers WHERE network = $1 AND txid = $2 FOR UPDATE', [t.network, t.txid])).rows[0];
+    const creditedId = (row && row.deposit_id) || await findCreditedTxid(c, t.txid);
+    if (creditedId) {
+      const prev = await db.getDoc(c, 'deposits', creditedId);
+      return prev && prev.userId === req.userId
+        ? { status: 200, body: { ...prev, alreadyCredited: true } }
+        : { status: 400, body: { error: 'This transaction has already been credited.' } };
+    }
+    if (row && row.status === 'ignored') return { status: 400, body: { error: 'This payment needs to be checked by support. Please contact us.' } };
+
+    // Requests (any user's) this payment could belong to.
+    const since = new Date(t.timeMs - depositWatch.MATCH_WINDOW_MS).toISOString();
+    const { rows } = await c.query(`SELECT data FROM app.deposits WHERE data->>'auto' = 'true' AND data->>'network' = $1
+      AND data->>'status' IN ('Pending', 'Expired', 'Cancelled') AND data->>'createdAt' > $2`, [network, since]);
+    const requests = rows.map(r => r.data);
+    const exact = depositWatch.findMatch(t, requests.map(d => ({
+      id: d.id, userId: d.userId, network: d.network, payMicro: depositWatch.amountToMicro(d.payAmount), createdAtMs: Date.parse(d.createdAt)
+    })));
+    if (exact && exact.userId !== req.userId) return { status: 400, body: { error: 'This payment belongs to another deposit request.' } };
+    const owner = await findSenderOwner(c, t);
+    if (owner && owner !== req.userId) return { status: 400, body: { error: 'This payment was sent from a wallet linked to another account. Please contact support.' } };
+
+    const fits = d => d.userId === req.userId &&
+      t.timeMs >= Date.parse(d.createdAt) - depositWatch.CLOCK_SKEW_MS &&
+      t.timeMs <= Date.parse(d.createdAt) + depositWatch.MATCH_WINDOW_MS &&
+      Math.abs(received - d.requestedAmount) <= d.requestedAmount * TXID_CLAIM_TOLERANCE;
+    // The request on the user's screen first, then their newest.
+    const mine = requests.filter(d => d.userId === req.userId);
+    const pick = exact ? mine.find(d => d.id === exact.id)
+      : mine.filter(fits).sort((a, b) => (b.id === depositId) - (a.id === depositId) || b.createdAt.localeCompare(a.createdAt))[0];
+    if (!pick) {
+      const late = mine.length && mine.every(d => t.timeMs < Date.parse(d.createdAt) - depositWatch.CLOCK_SKEW_MS);
+      return { status: 400, body: { error: late
+        ? 'This payment was sent before your deposit request, so it can\'t be verified automatically. Please submit it for review.'
+        : `We couldn't match ${fmtMoney(received)} USDT to a recent deposit request of yours on this network. Please submit it for review.` } };
+    }
+    const minDeposit = config.minDeposit !== undefined ? parseFloat(config.minDeposit) : 50;
+    if (received < minDeposit) return { status: 400, body: { error: `Only ${fmtMoney(received)} USDT arrived, below the minimum deposit of ${minDeposit} USDT. Please contact support.` } };
+
+    const d = await db.getDoc(c, 'deposits', pick.id, { lock: true });
+    if (!d || d.status === 'Approved' || d.status === 'Rejected') return { status: 400, body: { error: 'This deposit request has already been processed.' } };
+    await approveWithTransfer(c, d, t, emails, exact ? undefined : 'txid');
+    return { status: 200, body: d };
+  });
+  sendQueuedEmails(emails);
+  if (result.status === 200 && !result.body.alreadyCredited) console.log(`[Deposits] Credited ${received} USDT (${network}) by TxID to user ${req.userId}, tx ${txid}`);
   res.status(result.status).json(result.body);
 });
 
@@ -2327,6 +2431,22 @@ app.get('/api/admin/users', adminMiddleware, async (req, res) => {
     return { ...publicProfile(u), online, sharedIpAccounts: sharedMap[u.id] || 0, location: ipLocation(u.lastIp || u.signupIp) };
   });
   res.json(users);
+});
+
+// Accounts that have ever used an IP containing `q` (full address or part of one, e.g. an IPv6 prefix),
+// with the matching IPs, so the Users page can search by IP.
+app.get('/api/admin/users/ip-search', adminMiddleware, async (req, res) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+  if (q.length < 3 || q.length > 64 || !/^[0-9a-f:.]+$/.test(q)) return res.status(400).json({ error: 'Enter at least 3 characters of an IP address' });
+  const { rows } = await pool.query(`
+    SELECT user_id, array_agg(DISTINCT ip) AS ips FROM (
+      SELECT user_id, ip FROM app.user_ips WHERE lower(ip) LIKE '%' || $1 || '%'
+      UNION ALL
+      SELECT id, data->>'lastIp' FROM app.users WHERE lower(data->>'lastIp') LIKE '%' || $1 || '%'
+      UNION ALL
+      SELECT id, data->>'signupIp' FROM app.users WHERE lower(data->>'signupIp') LIKE '%' || $1 || '%'
+    ) m GROUP BY user_id LIMIT 500`, [q]);
+  res.json(rows.map(r => ({ userId: r.user_id, ips: r.ips })));
 });
 
 // ---------- multi-account detection, suspensions and bans ----------
@@ -2885,6 +3005,22 @@ async function findSenderOwner(c, t) {
   return savedIds.length === 1 ? savedIds[0] : null;
 }
 
+// Credits automatic deposit request `d` (row-locked, not yet Approved) with on-chain transfer `t`,
+// for the amount that actually arrived, and marks the transfer as used.
+async function approveWithTransfer(c, d, t, emails, matchedBy) {
+  d.status = 'Approved';
+  d.processedAt = new Date().toISOString();
+  d.paidAt = t.timeMs ? new Date(t.timeMs).toISOString() : d.processedAt;
+  d.amount = t.micro / 1e6;
+  d.txid = t.txid;
+  d.fromAddress = t.from;
+  d.approvedBy = 'auto';
+  if (matchedBy) d.matchedBy = matchedBy;
+  await creditDeposit(c, d, emails);
+  await db.saveDoc(c, 'deposits', d);
+  await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
+}
+
 // Stores one transfer and, if it pays a request (or comes from a user's own wallet), credits it.
 // Safe to call again for the same transfer.
 async function handleIncomingTransfer(t, match) {
@@ -2931,16 +3067,7 @@ async function handleIncomingTransfer(t, match) {
       if (already) await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', already]);
       return false; // left for the admin to look at
     }
-    d.status = 'Approved';
-    d.processedAt = new Date().toISOString();
-    d.paidAt = t.timeMs ? new Date(t.timeMs).toISOString() : d.processedAt;
-    d.amount = d.payAmount;
-    d.txid = t.txid;
-    d.fromAddress = t.from;
-    d.approvedBy = 'auto';
-    await creditDeposit(c, d, emails);
-    await db.saveDoc(c, 'deposits', d);
-    await c.query('UPDATE app.deposit_transfers SET status = $3, deposit_id = $4 WHERE network = $1 AND txid = $2', [t.network, t.txid, 'matched', d.id]);
+    await approveWithTransfer(c, d, t, emails);
     return true;
   });
   if (credited) {
@@ -3007,7 +3134,7 @@ async function pollDeposits() {
     state[network] = st;
   }
   await db.setSetting(pool, 'deposit_watch', state);
-  return { waiting: requests.some(q => q.status === 'Pending') };
+  return { waiting: requests.some(q => q.status === 'Pending' || (q.status === 'Expired' && now - q.createdAtMs < AUTO_DEPOSIT_FAST_POLL_MS)) };
 }
 
 function startDepositWatcher() {

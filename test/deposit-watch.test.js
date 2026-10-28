@@ -1,7 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const {
-  USDT, microOf, amountToMicro, pickPayAmount, findMatch, fetchTronTransfers, fetchBscTransfers
+  USDT, microOf, amountToMicro, pickPayAmount, findMatch, fetchTronTransfers, fetchBscTransfers,
+  tronToHex, hexToTron, normalizeTxid, lookupTronTx, lookupBscTx
 } = require('../deposit-watch');
 
 const HOUR = 60 * 60 * 1000;
@@ -111,4 +112,69 @@ test('BSC: reads confirmed blocks in chunks and decodes USDT transfer logs', asy
 test('BSC: an RPC error throws', async () => {
   const fetchImpl = async () => json({ error: { message: 'limit exceeded' } });
   await assert.rejects(fetchBscTransfers({ address: BSC_ADDR, fromBlock: 1, rpcUrl: 'http://rpc', fetchImpl }), /limit exceeded/);
+});
+
+const TOPIC = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+
+test('TRON addresses convert to and from the hex used in event logs', () => {
+  assert.strictEqual(tronToHex(USDT.trc20.contract), 'a614f803b6fd780986a42c78ec9c7f77e6ded13c');
+  assert.strictEqual(hexToTron(tronToHex(TRON_ADDR)), TRON_ADDR);
+  assert.strictEqual(tronToHex(TRON_ADDR.slice(0, -1) + 'x'), null, 'bad checksum');
+  assert.strictEqual(tronToHex('0x1234'), null);
+});
+
+test('pasted TxIDs are normalized per network and junk is rejected', () => {
+  const h = 'AB'.repeat(32);
+  assert.strictEqual(normalizeTxid('trc20', ' 0x' + h + ' '), 'ab'.repeat(32));
+  assert.strictEqual(normalizeTxid('bep20', h), '0x' + 'ab'.repeat(32));
+  assert.strictEqual(normalizeTxid('bep20', 'https://bscscan.com/tx/0x' + h), null);
+  assert.strictEqual(normalizeTxid('trc20', 'abc'), null);
+});
+
+test('TRON TxID lookup: confirmed USDT transfer to our address, pending, not found and failed', async () => {
+  const toHex = tronToHex(TRON_ADDR);
+  const fromHex = 'bb'.repeat(20);
+  const info = {
+    id: 'tx', blockTimeStamp: 5000, receipt: { result: 'SUCCESS' },
+    log: [
+      { address: tronToHex(USDT.trc20.contract), topics: [TOPIC.slice(2), '0'.repeat(24) + fromHex, '0'.repeat(24) + toHex], data: (100370000).toString(16).padStart(64, '0') },
+      { address: 'cc'.repeat(20), topics: [TOPIC.slice(2), '0'.repeat(24) + fromHex, '0'.repeat(24) + toHex], data: '01' }
+    ]
+  };
+  const make = (solid, full) => async url => json(url.includes('walletsolidity') ? solid : full);
+
+  const ok = await lookupTronTx({ txid: 'tx', address: TRON_ADDR, fetchImpl: make(info, info) });
+  assert.strictEqual(ok.state, 'ok');
+  assert.strictEqual(ok.transfers.length, 1, 'log from another token ignored');
+  assert.strictEqual(ok.transfers[0].micro, 100370000);
+  assert.strictEqual(ok.transfers[0].from, hexToTron(fromHex));
+  assert.strictEqual(ok.transfers[0].timeMs, 5000);
+
+  assert.strictEqual((await lookupTronTx({ txid: 'tx', address: TRON_ADDR, fetchImpl: make({}, info) })).state, 'pending');
+  assert.strictEqual((await lookupTronTx({ txid: 'tx', address: TRON_ADDR, fetchImpl: make({}, {}) })).state, 'notfound');
+  const failed = { ...info, receipt: { result: 'REVERT' } };
+  assert.strictEqual((await lookupTronTx({ txid: 'tx', address: TRON_ADDR, fetchImpl: make(failed, failed) })).state, 'failed');
+  const other = await lookupTronTx({ txid: 'tx', address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', fetchImpl: make(info, info) });
+  assert.strictEqual(other.transfers.length, 0, 'sent to a different address');
+});
+
+test('BSC TxID lookup: needs confirmations and decodes the transfer with its block time', async () => {
+  const toTopic = '0x' + BSC_ADDR.slice(2).padStart(64, '0');
+  const receipt = {
+    status: '0x1', blockNumber: '0x64',
+    logs: [{ address: USDT.bep20.contract.toLowerCase(), topics: [TOPIC, '0x' + '0'.repeat(24) + 'aa'.repeat(20), toTopic], data: '0x' + (50n * 10n ** 18n).toString(16) }]
+  };
+  const make = (rec, latest) => async (url, opts) => {
+    const { method } = JSON.parse(opts.body);
+    if (method === 'eth_getTransactionReceipt') return json({ result: rec });
+    if (method === 'eth_blockNumber') return json({ result: '0x' + latest.toString(16) });
+    return json({ result: { timestamp: '0x10' } });
+  };
+  const ok = await lookupBscTx({ txid: '0xt', address: BSC_ADDR, rpcUrl: 'http://rpc', fetchImpl: make(receipt, 200) });
+  assert.strictEqual(ok.state, 'ok');
+  assert.strictEqual(ok.transfers[0].micro, 50000000);
+  assert.strictEqual(ok.transfers[0].timeMs, 16000);
+  assert.strictEqual((await lookupBscTx({ txid: '0xt', address: BSC_ADDR, rpcUrl: 'http://rpc', fetchImpl: make(receipt, 105) })).state, 'pending');
+  assert.strictEqual((await lookupBscTx({ txid: '0xt', address: BSC_ADDR, rpcUrl: 'http://rpc', fetchImpl: make(null, 200) })).state, 'notfound');
+  assert.strictEqual((await lookupBscTx({ txid: '0xt', address: BSC_ADDR, rpcUrl: 'http://rpc', fetchImpl: make({ ...receipt, status: '0x0' }, 200) })).state, 'failed');
 });

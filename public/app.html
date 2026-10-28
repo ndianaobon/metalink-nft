@@ -1550,6 +1550,17 @@
       font-size: 0.8rem; font-weight: 600; background: rgba(239,68,68,0.1); color: var(--negative);
     }
     .dep-autopay-note { margin-top: 12px; font-size: 0.75rem; color: var(--text-muted); line-height: 1.55; text-align: left; }
+    .dep-claim { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); text-align: left; }
+    .dep-claim label { display: block; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; line-height: 1.45; }
+    .dep-claim-row { display: flex; gap: 8px; }
+    .dep-claim-row input {
+      flex: 1; min-width: 0; padding: 10px 12px; background: var(--bg); border: 1.5px solid var(--border);
+      border-radius: 10px; color: var(--text); font-size: 0.85rem; font-family: var(--font); outline: none;
+    }
+    .dep-claim-row input:focus { border-color: var(--primary); }
+    .dep-claim-row .btn { width: auto; flex-shrink: 0; }
+    .dep-claim-msg { min-height: 1em; margin-top: 6px; font-size: 0.78rem; line-height: 1.45; color: var(--text-secondary); }
+    .dep-claim-msg.err { color: var(--negative); }
     .dep-autopay-actions { display: flex; gap: 10px; margin-top: 14px; }
     .dep-autopay-actions .btn { flex: 1; width: auto; }
     .dep-manual-toggle {
@@ -2686,6 +2697,14 @@
           <div class="dep-pay-time" id="depPayTime"></div>
           <div class="dep-exact-warning">&#9888; Send exactly <strong id="depPayExact">0.00</strong> USDT &mdash; not <span id="depPayRound">0</span>. A rounded amount can't be matched to your account.</div>
           <p class="dep-autopay-note">If your exchange takes a fee from the amount, add the fee so that exactly this amount arrives. Your balance is credited automatically a minute or two after the transfer. Payments sent from the withdrawal wallet saved in your profile are also recognised.</p>
+          <div class="dep-claim" id="depClaim">
+            <label for="depClaimTxid">Sent a different amount, or still not credited? Paste your transaction ID (TxID) and we'll credit it to your account now.</label>
+            <div class="dep-claim-row">
+              <input type="text" id="depClaimTxid" placeholder="Transaction ID / Hash" maxlength="70" autocomplete="off" spellcheck="false">
+              <button class="btn btn-primary btn-sm" id="depClaimBtn" onclick="claimByTxid()">Verify</button>
+            </div>
+            <div class="dep-claim-msg" id="depClaimMsg"></div>
+          </div>
           <div class="dep-autopay-actions">
             <button class="btn btn-outline" id="depPayCancel" onclick="cancelAutoPay()">Cancel</button>
             <button class="btn btn-primary" id="depPayNew" onclick="newAutoDeposit()">New deposit</button>
@@ -4300,10 +4319,11 @@
       applyDepositProofConfig();
       selectDepositNetwork(addrs.trc20 || !addrs.bep20 ? 'trc20' : 'bep20');
       const deps = await loadDepositHistory();
-      // Reopen a request that's still waiting for payment, so the user sees the amount again.
+      // Reopen a recent request that's still waiting for payment (also just after its countdown ran out,
+      // e.g. the user paid from their wallet app and came back), so they see it get credited.
       if (autoDepositMode() && deps) {
         const now = Date.now();
-        const open = deps.find(d => d.auto && d.status === 'Pending' && Date.parse(d.expiresAt) > now);
+        const open = deps.find(d => d.auto && (d.status === 'Pending' || d.status === 'Expired') && now - Date.parse(d.createdAt) < 30 * 60 * 1000);
         if (open) showAutoPay(open);
       }
     }
@@ -4369,6 +4389,8 @@
       document.getElementById('depPayExact').textContent = fmtPayAmount(d.payAmount);
       document.getElementById('depPayRound').textContent = String(Math.floor(d.payAmount));
       document.getElementById('depPayNetwork').textContent = 'USDT on ' + DEPOSIT_NETWORK_LABELS[d.network];
+      document.getElementById('depClaimTxid').value = '';
+      setClaimMsg('');
       renderAutoPay();
       clearInterval(autoPayTimer);
       autoPayTicks = 0;
@@ -4393,6 +4415,7 @@
       const open = d.status === 'Pending' || d.status === 'Expired';
       document.getElementById('depPayCancel').style.display = open ? '' : 'none';
       document.getElementById('depPayNew').style.display = d.status === 'Pending' && left > 0 ? 'none' : '';
+      document.getElementById('depClaim').style.display = open || d.status === 'Cancelled' ? '' : 'none';
       if (d.status === 'Approved') {
         st.className = 'dep-pay-status ok';
         st.textContent = '✓ Payment received — ' + fmt(d.amount) + ' USDT added to your balance';
@@ -4406,9 +4429,13 @@
         st.className = 'dep-pay-status off';
         st.textContent = 'This deposit was not credited';
         time.textContent = 'Please contact support if you sent a payment.';
+      } else if (d.status === 'Expired' || d.status === 'Pending') {
+        st.className = 'dep-pay-status';
+        st.innerHTML = '<span class="dep-pay-spin"></span>Time is up — checking for your payment…';
+        time.textContent = 'Already sent it? It will still be credited automatically when it arrives (within 24 hours).';
       } else {
         st.className = 'dep-pay-status off';
-        st.textContent = d.status === 'Cancelled' ? 'Deposit cancelled' : 'Time is up';
+        st.textContent = 'Deposit cancelled';
         time.textContent = 'Already sent it? It will still be credited automatically when it arrives (within 24 hours).';
       }
     }
@@ -4424,13 +4451,46 @@
         // The server only marks a request Expired on its next check; keep showing the countdown until then.
         autoPayDeposit = fresh;
         renderAutoPay();
-        if (fresh.status === 'Approved') {
-          toast('Deposit received! ' + fmt(fresh.amount) + ' USDT added to your balance.');
-          loadDepositHistory();
-          loadAssets();
-          updateHeaderBalance();
-        }
+        if (fresh.status === 'Approved') autoPayCredited(fresh);
       } catch (e) { /* try again on the next tick */ }
+    }
+
+    function autoPayCredited(d) {
+      toast('Deposit received! ' + fmt(d.amount) + ' USDT added to your balance.');
+      loadDepositHistory();
+      loadAssets();
+      updateHeaderBalance();
+    }
+
+    function setClaimMsg(text, isError) {
+      const el = document.getElementById('depClaimMsg');
+      el.textContent = text;
+      el.className = 'dep-claim-msg' + (isError ? ' err' : '');
+    }
+
+    // Verifies the pasted TxID on the blockchain and credits what arrived to this account.
+    async function claimByTxid() {
+      const d = autoPayDeposit;
+      const txid = document.getElementById('depClaimTxid').value.trim();
+      if (!d) return;
+      if (!txid) return setClaimMsg('Paste the transaction ID from your wallet or exchange.', true);
+      const btn = document.getElementById('depClaimBtn');
+      btn.disabled = true;
+      setClaimMsg('Checking the blockchain…');
+      try {
+        const res = await api('/api/deposits/claim-txid', { method: 'POST', body: JSON.stringify({ network: d.network, txid: txid, depositId: d.id }) });
+        setClaimMsg('');
+        if (res.id === d.id || !res.alreadyCredited) {
+          autoPayDeposit = res;
+          renderAutoPay();
+        }
+        if (res.alreadyCredited) toast('This payment was already credited to your account.');
+        else autoPayCredited(res);
+      } catch (e) {
+        setClaimMsg(e.message, true);
+      } finally {
+        btn.disabled = false;
+      }
     }
 
     function copyPayAmount() {

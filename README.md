@@ -70,7 +70,10 @@ public addresses: never put a wallet's recovery phrase or private key on the ser
 
 1. The user picks a network and enters an amount (e.g. 100). The server gives them a unique amount
    to send, such as **100.37 USDT**: the whole amount plus cents that no other request on that
-   network has used in the last 24 hours (2 decimals first, then 3). They have 60 minutes to send it.
+   network has used in the last 24 hours (2 decimals first, then 3). They have 5 minutes to send it (a payment that arrives later, within 24 hours, is still credited).
+   If they send a different amount, they can paste the transaction ID: the server reads it from the
+   blockchain and credits what arrived, provided it fits a request they made before paying (same
+   network, amount within 10%) and the payment isn't tied to another account.
 2. The watcher (`deposit-watch.js`, run by the primary process) polls every 15 s while someone is
    waiting, otherwise every 60 s:
    - **TRC20:** TronGrid, confirmed transfers of the real USDT contract `TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t` only.

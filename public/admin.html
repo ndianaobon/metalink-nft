@@ -198,7 +198,7 @@
               <div class="admin-table-header" style="flex-wrap:wrap;gap:12px;">
                 <h3 id="usersCountTitle">All Users (${this.usersCache.length})</h3>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
-                  <input class="admin-form-input" style="width:220px;" placeholder="Search name, email, UID or phone" value="${escapeHtml(this.userQuery || '')}" oninput="Admin.userQuery=this.value;Admin.renderUserRows()">
+                  <input class="admin-form-input" style="width:220px;" placeholder="Search name, email, UID, phone or IP" value="${escapeHtml(this.userQuery || '')}" oninput="Admin.searchUsers(this.value)">
                   <select class="admin-form-input" style="width:auto;" onchange="Admin.userSort=this.value;Admin.renderUserRows()">
                     <option value="newest" ${this.userSort === 'newest' ? 'selected' : ''}>Newest users first</option>
                     <option value="oldest" ${this.userSort === 'oldest' ? 'selected' : ''}>Oldest users first</option>
@@ -231,6 +231,29 @@
         this.renderUserRows();
       },
 
+      // Text that looks like (part of) an IP address, e.g. "102.89.40" or "2401:ba80:a391".
+      ipQueryOf(value) {
+        const q = (value || '').trim().toLowerCase();
+        return q.length >= 3 && /^[0-9a-f:.]+$/.test(q) && /[:.]/.test(q) ? q : '';
+      },
+
+      // Filters the loaded list right away; for IP-like text, also asks the server which accounts have
+      // ever used a matching IP (not only their last one) and adds them when the answer arrives.
+      searchUsers(value) {
+        this.userQuery = value;
+        this.renderUserRows();
+        clearTimeout(this.ipSearchTimer);
+        const ipQ = this.ipQueryOf(value);
+        if (!ipQ || (this.userIpMatch && this.userIpMatch.q === ipQ)) return;
+        this.ipSearchTimer = setTimeout(async () => {
+          try {
+            const rows = await this.api('/admin/users/ip-search?q=' + encodeURIComponent(ipQ));
+            this.userIpMatch = { q: ipQ, ips: Object.fromEntries(rows.map(r => [r.userId, r.ips])) };
+            if (this.ipQueryOf(this.userQuery) === ipQ) this.renderUserRows();
+          } catch (e) { this.toast(e.message); }
+        }, 350);
+      },
+
       renderUserRows() {
         const DAY = 86400000, now = Date.now();
         const age = u => now - new Date(u.createdAt).getTime();
@@ -240,6 +263,17 @@
           month: u => age(u) < 30 * DAY, older: u => age(u) >= 30 * DAY
         }[this.userJoined || 'all'];
         const q = (this.userQuery || '').trim().toLowerCase();
+        // IPs matching the search, per user: from the server's full IP history once it has answered,
+        // and meanwhile from each user's last / sign-up IP.
+        const ipQ = this.ipQueryOf(q);
+        const ipHits = {};
+        if (ipQ) {
+          (this.usersCache || []).forEach(u => {
+            const own = [u.lastIp, u.signupIp].filter(ip => ip && ip.toLowerCase().includes(ipQ));
+            if (own.length) ipHits[u.id] = own;
+          });
+          if (this.userIpMatch && this.userIpMatch.q === ipQ) Object.assign(ipHits, this.userIpMatch.ips);
+        }
         const sorters = {
           newest: (a, b) => new Date(b.createdAt) - new Date(a.createdAt),
           oldest: (a, b) => new Date(a.createdAt) - new Date(b.createdAt),
@@ -249,7 +283,8 @@
         const users = (this.usersCache || [])
           .filter(joinedOk)
           .filter(u => !q || [u.username, u.email, u.uid].some(v => (v || '').toLowerCase().includes(q))
-            || (q.replace(/\D/g, '').length >= 4 && this.phoneOf(u).replace(/\D/g, '').includes(q.replace(/\D/g, ''))))
+            || (q.replace(/\D/g, '').length >= 4 && this.phoneOf(u).replace(/\D/g, '').includes(q.replace(/\D/g, '')))
+            || !!ipHits[u.id])
           .sort(sorters[this.userSort || 'newest']);
         document.getElementById('usersCountTitle').textContent = users.length === this.usersCache.length
           ? `All Users (${users.length})` : `Users (${users.length} of ${this.usersCache.length})`;
@@ -263,7 +298,7 @@
                         <td><strong>${u.walletBalance.toFixed(2)}</strong></td>
                         <td>${u.level}</td>
                         <td>${u.sharedIpAccounts ? `<button class="admin-btn admin-btn-reject" title="Other accounts have used this user's IP address" onclick="Admin.showUserIps('${escapeHtml(u.id)}')">&#9888; ${u.sharedIpAccounts} other${u.sharedIpAccounts > 1 ? 's' : ''}</button>` : '<span style="color:#ccc;">-</span>'}</td>
-                        <td style="font-size:0.78rem;">${escapeHtml(u.lastIp || u.signupIp) || '-'}</td>
+                        <td style="font-size:0.78rem;">${escapeHtml(u.lastIp || u.signupIp) || '-'}${(ipHits[u.id] || []).filter(ip => ip !== (u.lastIp || u.signupIp)).map(ip => `<br><span style="background:#fef9c3;color:#854d0e;border-radius:4px;padding:0 3px;" title="Matches your search (used earlier)">${escapeHtml(ip)}</span>`).join('')}</td>
                         <td style="white-space:nowrap;font-size:0.82rem;">${new Date(u.createdAt).toLocaleDateString()}${age(u) < DAY ? ' <span class="admin-badge admin-badge-approved" style="font-size:0.65rem;">NEW</span>' : ''}<br><span style="color:#999;font-size:0.72rem;">${new Date(u.createdAt).toLocaleTimeString()}</span></td>
                         <td style="white-space:nowrap;">
                           <button class="admin-btn admin-btn-edit" onclick="Admin.editUser('${escapeHtml(u.id)}')">Edit</button>
@@ -1003,7 +1038,7 @@ Type DELETE to confirm.`);
           if (d.status === 'Expired' || d.status === 'Cancelled') return `<span class="admin-badge" style="background:#f3f4f6;color:#666;">${escapeHtml(d.status)}</span>`;
           return `<span class="admin-badge admin-badge-${d.status.toLowerCase()}">${escapeHtml(d.status)}</span>`;
         };
-        const source = d => d.approvedBy === 'auto' ? `<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic${d.matchedBy === 'wallet' ? ' (sender wallet)' : ''}</span>`
+        const source = d => d.approvedBy === 'auto' ? `<br><span style="font-size:0.72rem;color:#15803d;">&#9889; Automatic${d.matchedBy === 'wallet' ? ' (sender wallet)' : d.matchedBy === 'txid' ? ' (TxID by user)' : ''}</span>`
           : d.auto ? '<br><span style="font-size:0.72rem;color:#888;">Automatic request</span>'
           : d.approvedBy === 'admin' ? '<br><span style="font-size:0.72rem;color:#888;">Added by admin</span>' : '';
         document.getElementById('depositRows').innerHTML = deposits.map(d => `<tr>
