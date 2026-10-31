@@ -3512,10 +3512,10 @@
       openModal('reserveRulesModal');
     }
 
-    // ---- Rounds: one reservation a day, 20 hours apart; each reservation pays the full daily % ----
+    // ---- Rounds: reserve every 24 hours (1 a day); each reservation pays the full daily % ----
     let reserveCooldownInterval = null;
     let reserveRoundsPerDay = 1;
-    let reserveRoundHours = 20;
+    let reserveRoundHours = 24;
 
     function roundPctOf(lv) { return lv.roundPct != null ? lv.roundPct : lv.rewardPct / reserveRoundsPerDay; }
     function fmtPct(n) { return String(parseFloat(Number(n || 0).toFixed(2))); }

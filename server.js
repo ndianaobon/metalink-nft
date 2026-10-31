@@ -1467,10 +1467,10 @@ app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
 
 // ===================== RESERVE ROUTES =====================
 
-// One round a day: a user can reserve again 20 hours after their last reservation. A level's
+// One round a day: a user can reserve again 24 hours after their last reservation. A level's
 // reward % is per day, so each reservation pays the full %.
 const RESERVE_ROUNDS_PER_DAY = 1;
-const RESERVE_COOLDOWN_MS = 20 * 60 * 60 * 1000;
+const RESERVE_COOLDOWN_MS = (24 / RESERVE_ROUNDS_PER_DAY) * 60 * 60 * 1000;
 const roundPctOf = level => parseFloat((level.rewardPct / RESERVE_ROUNDS_PER_DAY).toFixed(4));
 
 function getNextReservationAt(myOrders) {
@@ -1544,7 +1544,7 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
 app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
   const emails = [];
   const result = await tx(async c => {
-    // Locking the user first also serializes the 20h cooldown check, so a double-click can't reserve twice.
+    // Locking the user first also serializes the 24h cooldown check, so a double-click can't reserve twice.
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
 
