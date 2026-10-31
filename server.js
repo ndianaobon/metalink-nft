@@ -14,6 +14,7 @@ const db = require('./db');
 const { pool, tx } = db;
 const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
+const { incomeSince } = require('./income');
 const depositWatch = require('./deposit-watch');
 const depositAddresses = require('./deposit-addresses');
 const depositSweep = require('./deposit-sweep');
@@ -986,7 +987,18 @@ app.get('/api/user/profile', authMiddleware, async (req, res) => {
   res.json(publicProfile(user));
 });
 
-const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/;
+// Income Overview's Daily column. `since` is the start of the user's own day, sent by the app;
+// without a valid one the day starts at midnight UTC.
+app.get('/api/user/income-today', authMiddleware, async (req, res) => {
+  let since = new Date(req.query.since);
+  if (isNaN(since)) {
+    since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+  }
+  res.json(incomeSince(await db.listDocs(pool, 'transactions', { userId: req.userId }), since));
+});
+
+const USERNAME_RE =/^[A-Za-z0-9_-]{3,20}$/;
 const AVATAR_RE = /^(\/uploads\/[A-Za-z0-9_-]+\.(png|jpe?g|gif|webp)|data:image\/(png|jpe?g|gif|webp);base64,[A-Za-z0-9+/]+=*)$/;
 
 app.put('/api/user/profile', authMiddleware, async (req, res) => {
