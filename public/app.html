@@ -3495,7 +3495,7 @@
       if (!lv) { el.textContent = ''; return; }
       el.innerHTML = lv.min > reserveBalance
         ? `Your balance (${fmt(reserveBalance)} USDT) is below the minimum for this level. Deposit at least ${fmt(lv.min - reserveBalance)} USDT more to reserve.`
-        : `Balance: <strong>${fmt(reserveBalance)} USDT</strong> &middot; A random item between ${fmtNum(lv.min)} and ${fmtNum(Math.min(lv.max, reserveBalance))} USDT is drawn at LV ${lv.level}.<br>${reserveRoundsPerDay} rounds a day, every ${reserveRoundHours} hours &middot; <strong>${fmtPct(roundPctOf(lv))}%</strong> per round = ${lv.rewardPct}% a day.`;
+        : `Balance: <strong>${fmt(reserveBalance)} USDT</strong> &middot; A random item between ${fmtNum(lv.min)} and ${fmtNum(Math.min(lv.max, reserveBalance))} USDT is drawn at LV ${lv.level}.<br>One reservation every ${reserveRoundHours} hours &middot; <strong>${fmtPct(roundPctOf(lv))}%</strong> reward per reservation.`;
       const btn = document.getElementById('reserveBtn');
       if (!reserveCooldownInterval) btn.disabled = lv.min > reserveBalance;
     }
@@ -3506,16 +3506,16 @@
         <div class="reserve-rules-row">
           <span class="rr-level">LV ${lv.level}</span>
           <span class="rr-range">${fmtNum(lv.min)} &ndash; ${fmtNum(lv.max)} USDT</span>
-          <span class="rr-pct">${lv.rewardPct}%<small style="display:block;font-weight:500;color:var(--text-muted);font-size:0.7rem;">${fmtPct(roundPctOf(lv))}% / round</small></span>
+          <span class="rr-pct">${lv.rewardPct}%</span>
         </div>
-      `).join('') + `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">The % is per day. You can reserve every ${reserveRoundHours} hours (${reserveRoundsPerDay} rounds a day), and each round pays a third of the level's %, so ${reserveRoundsPerDay} rounds add up to the full daily %. The amount is returned to your balance after the draw, plus the reward if you win.</p>`;
+      `).join('') + `<p style="font-size:0.78rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">You can reserve once every ${reserveRoundHours} hours, and each reservation pays the level's full %. The amount is returned to your balance after the draw, plus the reward if you win.</p>`;
       openModal('reserveRulesModal');
     }
 
-    // ---- Rounds: reserve every 8 hours (3 a day); each round pays a third of the daily % ----
+    // ---- Rounds: one reservation a day, 20 hours apart; each reservation pays the full daily % ----
     let reserveCooldownInterval = null;
-    let reserveRoundsPerDay = 3;
-    let reserveRoundHours = 8;
+    let reserveRoundsPerDay = 1;
+    let reserveRoundHours = 20;
 
     function roundPctOf(lv) { return lv.roundPct != null ? lv.roundPct : lv.rewardPct / reserveRoundsPerDay; }
     function fmtPct(n) { return String(parseFloat(Number(n || 0).toFixed(2))); }

@@ -1467,10 +1467,10 @@ app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
 
 // ===================== RESERVE ROUTES =====================
 
-// Three rounds a day: a user can reserve again 8 hours after their last reservation. A level's
-// reward % is per day, so each round pays a third of it and three rounds add up to the full %.
-const RESERVE_ROUNDS_PER_DAY = 3;
-const RESERVE_COOLDOWN_MS = (24 / RESERVE_ROUNDS_PER_DAY) * 60 * 60 * 1000;
+// One round a day: a user can reserve again 20 hours after their last reservation. A level's
+// reward % is per day, so each reservation pays the full %.
+const RESERVE_ROUNDS_PER_DAY = 1;
+const RESERVE_COOLDOWN_MS = 20 * 60 * 60 * 1000;
 const roundPctOf = level => parseFloat((level.rewardPct / RESERVE_ROUNDS_PER_DAY).toFixed(4));
 
 function getNextReservationAt(myOrders) {
@@ -1544,13 +1544,13 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
 app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
   const emails = [];
   const result = await tx(async c => {
-    // Locking the user first also serializes the 8h cooldown check, so a double-click can't reserve twice.
+    // Locking the user first also serializes the 20h cooldown check, so a double-click can't reserve twice.
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
 
     const existingOrders = await db.listDocs(c, 'reserve_orders', { userId: req.userId });
     const nextReservationAt = getNextReservationAt(existingOrders);
-    if (nextReservationAt) return { status: 400, body: { error: `You can reserve once every ${RESERVE_COOLDOWN_MS / 3600000} hours (${RESERVE_ROUNDS_PER_DAY} rounds a day)`, nextReservationAt } };
+    if (nextReservationAt) return { status: 400, body: { error: `You can reserve once every ${RESERVE_COOLDOWN_MS / 3600000} hours`, nextReservationAt } };
 
     const RESERVE_LEVELS = await getReserveLevels(c);
     const balance = user.walletBalance;
