@@ -2163,6 +2163,7 @@
               <div class="my-income-col-title">Daily</div>
               <div class="my-income-row"><span class="label">Comprehensive</span><span class="val" id="myDailyComp">$0.00</span></div>
               <div class="my-income-row"><span class="label">Reserve</span><span class="val" id="myDailyReserve">$0.00</span></div>
+              <div class="my-income-row"><span class="label">Stake/Earn</span><span class="val" id="myDailyPlans">$0.00</span></div>
               <div class="my-income-row"><span class="label">Team</span><span class="val" id="myDailyTeam">$0.00</span></div>
               <div class="my-income-row"><span class="label">Activity</span><span class="val" id="myDailyActivity">$0.00</span></div>
             </div>
@@ -2170,10 +2171,12 @@
               <div class="my-income-col-title">Total</div>
               <div class="my-income-row"><span class="label">Comprehensive</span><span class="val" id="myTotalComp">$0.00</span></div>
               <div class="my-income-row"><span class="label">Reserve</span><span class="val" id="myTotalReserve">$0.00</span></div>
+              <div class="my-income-row"><span class="label">Stake/Earn</span><span class="val" id="myTotalPlans">$0.00</span></div>
               <div class="my-income-row"><span class="label">Team</span><span class="val" id="myTotalTeam">$0.00</span></div>
               <div class="my-income-row"><span class="label">Activity</span><span class="val" id="myTotalActivity">$0.00</span></div>
             </div>
           </div>
+          <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">Stake/Earn includes profit from running plans. Claim a plan to add its profit to your balance.</p>
         </div>
 
         <!-- My Team -->
@@ -3924,21 +3927,20 @@
         } else { avatar.textContent = (p.username || 'U').charAt(0).toUpperCase(); }
 
         const di = p.dailyIncome || {};
-        document.getElementById('myTotalComp').textContent = '$' + fmt(p.totalIncome || 0);
-        document.getElementById('myTotalReserve').textContent = '$' + fmt(di.reserve || 0);
-        document.getElementById('myTotalTeam').textContent = '$' + fmt(di.team || 0);
-        document.getElementById('myTotalActivity').textContent = '$' + fmt(di.activity || 0);
         setMoney('myTeamRewards', fmt(di.team || 0));
 
         try {
           const now = new Date();
           const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
-          const today = await api('/api/user/income-today?since=' + encodeURIComponent(startOfDay));
-          document.getElementById('myDailyComp').textContent = '$' + fmt(today.comprehensive);
-          document.getElementById('myDailyReserve').textContent = '$' + fmt(today.reserve);
-          document.getElementById('myDailyTeam').textContent = '$' + fmt(today.team);
-          document.getElementById('myDailyActivity').textContent = '$' + fmt(today.activity);
-        } catch (e) {}
+          const income = await api('/api/user/income-overview?since=' + encodeURIComponent(startOfDay));
+          [['Daily', income.daily], ['Total', income.total]].forEach(([col, r]) => {
+            document.getElementById('my' + col + 'Comp').textContent = '$' + fmt(r.comprehensive);
+            document.getElementById('my' + col + 'Reserve').textContent = '$' + fmt(r.reserve);
+            document.getElementById('my' + col + 'Plans').textContent = '$' + fmt(r.plans);
+            document.getElementById('my' + col + 'Team').textContent = '$' + fmt(r.team);
+            document.getElementById('my' + col + 'Activity').textContent = '$' + fmt(r.activity);
+          });
+        } catch (e) { console.error(e); }
 
         try {
           const team = await api('/api/user/team');

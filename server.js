@@ -14,7 +14,7 @@ const db = require('./db');
 const { pool, tx } = db;
 const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
-const { incomeSince } = require('./income');
+const { incomeOverview } = require('./income');
 const depositWatch = require('./deposit-watch');
 const depositAddresses = require('./deposit-addresses');
 const depositSweep = require('./deposit-sweep');
@@ -987,15 +987,22 @@ app.get('/api/user/profile', authMiddleware, async (req, res) => {
   res.json(publicProfile(user));
 });
 
-// Income Overview's Daily column. `since` is the start of the user's own day, sent by the app;
-// without a valid one the day starts at midnight UTC.
-app.get('/api/user/income-today', authMiddleware, async (req, res) => {
+// Income Overview. `since` is the start of the user's own day, sent by the app; without a valid
+// one the day starts at midnight UTC.
+app.get('/api/user/income-overview', authMiddleware, async (req, res) => {
   let since = new Date(req.query.since);
   if (isNaN(since)) {
     since = new Date();
     since.setUTCHours(0, 0, 0, 0);
   }
-  res.json(incomeSince(await db.listDocs(pool, 'transactions', { userId: req.userId }), since));
+  const [user, txs, stakes, earnPositions] = await Promise.all([
+    db.getUser(pool, req.userId),
+    db.listDocs(pool, 'transactions', { userId: req.userId }),
+    db.listDocs(pool, 'user_stakes', { userId: req.userId }),
+    db.listDocs(pool, 'earn_positions', { userId: req.userId })
+  ]);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json(incomeOverview({ user, txs, stakes, earnPositions, since }));
 });
 
 const USERNAME_RE =/^[A-Za-z0-9_-]{3,20}$/;
