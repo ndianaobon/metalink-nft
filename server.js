@@ -15,6 +15,7 @@ const { pool, tx } = db;
 const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
 const { incomeOverview } = require('./income');
+const { reservationDay, nextReservationAt } = require('./reserve-day');
 const depositWatch = require('./deposit-watch');
 const depositAddresses = require('./deposit-addresses');
 const depositSweep = require('./deposit-sweep');
@@ -172,7 +173,7 @@ function welcomeEmailHtml(username, uid) {
         <li><strong>Daily check-in</strong> &mdash; claim your sign-in reward every 24 hours</li>
         <li><strong>Invite friends</strong> &mdash; earn team commission when the people you refer make deposits</li>
       </ul>
-      ${emailButton('Go to My Account', SITE_URL + '/app.html')}
+      ${emailButton('Go to My Account', SITE_URL + '/app')}
       <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#474d57;">Join our community on Telegram for news and support: <a href="${TELEGRAM_URL}" style="color:#4F46E5;font-weight:700;text-decoration:none;">t.me/metaLinkNFT</a></p>
     </div>
     ${emailFooter()}
@@ -204,7 +205,7 @@ function transactionEmailHtml({ title, titleColor = '#1e2329', greeting, message
       <p style="margin:0 0 12px;font-size:15px;line-height:1.6;color:#474d57;">${greeting}</p>
       <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#474d57;">${message}</p>
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #eaecef;">${detailRows}</table>
-      ${emailButton('Visit Your Account', SITE_URL + '/app.html')}
+      ${emailButton('Visit Your Account', SITE_URL + '/app')}
     </div>
     ${emailFooter()}
   </div></div>`;
@@ -307,7 +308,7 @@ function levelUpgradeEmailHtml(username, level, balance) {
         <tr><td style="padding:0 16px 14px;font-size:13px;color:#707a8a;">Current balance</td><td style="padding:0 16px 14px;text-align:right;font-size:15px;font-weight:800;">${fmtMoney(balance)} USDT</td></tr>
       </table>
       <p style="margin:0;font-size:15px;line-height:1.6;color:#474d57;">Higher levels unlock better opportunities across the platform. Keep growing your balance to reach the next one &mdash; and share your win with the community!</p>
-      ${emailButton('Open My Account', SITE_URL + '/app.html')}
+      ${emailButton('Open My Account', SITE_URL + '/app')}
     </div>
     ${emailFooter()}
   </div></div>`;
@@ -1474,18 +1475,10 @@ app.post('/api/earn/:id/claim', authMiddleware, async (req, res) => {
 
 // ===================== RESERVE ROUTES =====================
 
-// One round a day: a user can reserve again 24 hours after their last reservation. A level's
-// reward % is per day, so each reservation pays the full %.
+// One reservation a day: the day resets at 6:00 AM UK time (see reserve-day.js). A level's reward %
+// is per day, so each reservation pays the full %.
 const RESERVE_ROUNDS_PER_DAY = 1;
-const RESERVE_COOLDOWN_MS = (24 / RESERVE_ROUNDS_PER_DAY) * 60 * 60 * 1000;
 const roundPctOf = level => parseFloat((level.rewardPct / RESERVE_ROUNDS_PER_DAY).toFixed(4));
-
-function getNextReservationAt(myOrders) {
-  if (!myOrders.length) return null;
-  const lastOrder = myOrders.reduce((latest, o) => new Date(o.reservationDate) > new Date(latest.reservationDate) ? o : latest);
-  const nextAt = new Date(lastOrder.reservationDate).getTime() + RESERVE_COOLDOWN_MS;
-  return nextAt > Date.now() ? new Date(nextAt).toISOString() : null;
-}
 
 // Used until the admin saves their own levels from the dashboard (stored in settings 'reserve_levels').
 const DEFAULT_RESERVE_LEVELS = [
@@ -1540,9 +1533,9 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
     reservationRange: `${Math.min(...RESERVE_LEVELS.map(l => l.min))} - ${Math.max(...RESERVE_LEVELS.map(l => l.max))}`,
     walletBalance: user?.walletBalance || 0,
     balanceForReservation: Math.min(user?.walletBalance || 0, Math.max(...RESERVE_LEVELS.map(l => l.max))),
-    nextReservationAt: getNextReservationAt(myOrders),
+    nextReservationAt: nextReservationAt(myOrders),
+    nextResetAt: reservationDay().end.toISOString(),
     roundsPerDay: RESERVE_ROUNDS_PER_DAY,
-    roundHours: RESERVE_COOLDOWN_MS / 3600000,
     levels: RESERVE_LEVELS.map(lv => ({ ...lv, roundPct: roundPctOf(lv) })),
     orders: myOrders
   });
@@ -1551,13 +1544,13 @@ app.get('/api/reserve/orders', authMiddleware, async (req, res) => {
 app.post('/api/reserve/orders', authMiddleware, async (req, res) => {
   const emails = [];
   const result = await tx(async c => {
-    // Locking the user first also serializes the 24h cooldown check, so a double-click can't reserve twice.
+    // Locking the user first also serializes the once-a-day check, so a double-click can't reserve twice.
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
 
     const existingOrders = await db.listDocs(c, 'reserve_orders', { userId: req.userId });
-    const nextReservationAt = getNextReservationAt(existingOrders);
-    if (nextReservationAt) return { status: 400, body: { error: `You can reserve once every ${RESERVE_COOLDOWN_MS / 3600000} hours`, nextReservationAt } };
+    const nextAt = nextReservationAt(existingOrders);
+    if (nextAt) return { status: 400, body: { error: 'You have already reserved today. Reservations reset at 6:00 AM UK time.', nextReservationAt: nextAt } };
 
     const RESERVE_LEVELS = await getReserveLevels(c);
     const balance = user.walletBalance;
@@ -3879,6 +3872,13 @@ app.put('/api/admin/platform-config', adminMiddleware, async (req, res) => {
   });
 
   res.status(result.status).json(result.body);
+});
+
+// The app page lives outside public/: Hostinger serves files in public/ itself, without the no-cache
+// header above, so phones kept showing an old copy of it after a deploy. public/app.html redirects here.
+app.get('/app', (req, res) => {
+  res.set('Cache-Control', 'no-cache');
+  res.sendFile(path.join(__dirname, 'views', 'app.html'));
 });
 
 // Serve admin page

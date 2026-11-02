@@ -40,11 +40,11 @@ if (mobileMenuBtn && navLinks) {
 try {
   if (localStorage.getItem('mlk_token')) {
     document.querySelectorAll('[data-auth-login]').forEach(a => {
-      a.href = '/app.html';
+      a.href = '/app';
       const label = a.querySelector('span') || a;
       label.textContent = 'My Account';
     });
-    document.querySelectorAll('[data-app-tab]').forEach(a => { a.href = '/app.html#' + a.dataset.appTab; });
+    document.querySelectorAll('[data-app-tab]').forEach(a => { a.href = '/app#' + a.dataset.appTab; });
   }
 } catch (e) {}
 

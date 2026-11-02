@@ -351,7 +351,7 @@
     function appDestination() {
       let next = null;
       try { next = sessionStorage.getItem('mlk_next_tab'); sessionStorage.removeItem('mlk_next_tab'); } catch (e) {}
-      return APP_TABS.includes(next) ? '/app.html#' + next : '/app.html';
+      return APP_TABS.includes(next) ? '/app#' + next : '/app';
     }
 
     function showRedirectLoader() {
