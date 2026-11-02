@@ -60,10 +60,24 @@ async function waitBscReceipt(hash, rpcUrls) {
 
 const tronClient = apiKey => new TronWeb({ fullHost: 'https://api.trongrid.io', headers: apiKey ? { 'TRON-PRO-API-KEY': apiKey } : {} });
 
+// TronGrid answers 429 ("too many requests") when called too quickly, especially without an API
+// key. A 429 means the request was turned away, so it is safe to wait and send it again.
+const isRateLimited = e => !!e && ((e.response && e.response.status === 429) || /status code 429/.test(String(e.message)));
+async function tronCall(fn, { tries = 6, waitMs = 2000 } = {}) {
+  for (let n = 1; ; n++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!isRateLimited(e) || n >= tries) throw e;
+      await sleep(waitMs * 2 ** (n - 1));
+    }
+  }
+}
+
 // The fee wallet's native balance as a number of TRX / BNB.
 async function feeWalletBalance(root, network, { rpcUrl, apiKey }) {
   const addr = feeWalletAddress(root, network);
-  if (network === 'trc20') return (await tronClient(apiKey).trx.getBalance(addr)) / 1e6;
+  if (network === 'trc20') return (await tronCall(() => tronClient(apiKey).trx.getBalance(addr))) / 1e6;
   return Number(ethers.formatEther(await new ethers.JsonRpcProvider(rpcUrl, 56).getBalance(addr)));
 }
 
@@ -109,26 +123,30 @@ async function sweepBsc({ root, indexes, to, min = 1, go = false, rpcUrl, log = 
   return out;
 }
 
-async function sweepTron({ root, indexes, to, min = 1, go = false, apiKey, log = console.log }) {
+async function sweepTron({ root, indexes, to, min = 1, go = false, apiKey, log = console.log, pauseMs = 400 }) {
   if (!isAddress('trc20', to)) throw new Error('The company TRC20 address is not valid');
   const tw = tronClient(apiKey);
   const feeKey = hexKey(root.derive(PATHS.trc20.fee));
   const feeAddr = TronWeb.address.fromPrivateKey(feeKey);
   const account = root.derive(PATHS.trc20.account);
-  const params = await tw.trx.getChainParameters();
+  const params = await tronCall(() => tw.trx.getChainParameters());
   const energyFee = (params.find(p => p.key === 'getEnergyFee') || { value: 210 }).value; // sun per energy
   const minUnits = BigInt(Math.round(Number(min) * 1e6));
   const out = { total: 0, count: 0, fees: 0, sent: [] };
-  await log(`Fee wallet ${feeAddr}: ${(await tw.trx.getBalance(feeAddr)) / 1e6} TRX`);
+  await log(`Fee wallet ${feeAddr}: ${(await tronCall(() => tw.trx.getBalance(feeAddr))) / 1e6} TRX`);
 
   const usdtBalance = async addr => {
-    const r = await tw.transactionBuilder.triggerConstantContract(USDT_TRC20, 'balanceOf(address)', {}, [{ type: 'address', value: addr }], addr);
+    const r = await tronCall(() => tw.transactionBuilder.triggerConstantContract(USDT_TRC20, 'balanceOf(address)', {}, [{ type: 'address', value: addr }], addr));
     return BigInt('0x' + ((r.constant_result && r.constant_result[0]) || '0'));
   };
   const waitTx = async txid => {
     for (let n = 0; n < 40; n++) {
       await sleep(3000);
-      const info = await tw.trx.getTransactionInfo(txid);
+      let info;
+      try { info = await tw.trx.getTransactionInfo(txid); } catch (e) {
+        if (isRateLimited(e)) continue;
+        throw e;
+      }
       if (info && info.blockNumber) {
         if (info.receipt && info.receipt.result && info.receipt.result !== 'SUCCESS') throw new Error(`Transaction ${txid} failed: ${info.receipt.result}`);
         return info;
@@ -140,12 +158,13 @@ async function sweepTron({ root, indexes, to, min = 1, go = false, apiKey, log =
   for (const i of indexes) {
     const key = hexKey(account.deriveChild(0).deriveChild(i));
     const addr = TronWeb.address.fromPrivateKey(key);
+    if (pauseMs) await sleep(pauseMs); // stay under TronGrid's request limit
     const bal = await usdtBalance(addr);
     if (bal === 0n || bal < minUnits) continue;
     const transferParams = [{ type: 'address', value: to }, { type: 'uint256', value: bal.toString() }];
     let energy = 65000;
     try {
-      const est = await tw.transactionBuilder.triggerConstantContract(USDT_TRC20, 'transfer(address,uint256)', {}, transferParams, addr);
+      const est = await tronCall(() => tw.transactionBuilder.triggerConstantContract(USDT_TRC20, 'transfer(address,uint256)', {}, transferParams, addr));
       if (est.energy_used) energy = est.energy_used;
     } catch (e) { /* use the typical amount */ }
     // Energy plus about 0.4 TRX of bandwidth, with some room.
@@ -154,17 +173,20 @@ async function sweepTron({ root, indexes, to, min = 1, go = false, apiKey, log =
     await log(`#${i} ${addr}: ${amount} USDT (fee about ${(fee / 1e6).toFixed(2)} TRX)`);
     out.total += amount; out.count++; out.fees += fee / 1e6;
     if (!go) continue;
-    const trx = await tw.trx.getBalance(addr);
+    const trx = await tronCall(() => tw.trx.getBalance(addr));
     if (trx < fee) {
-      // The first TRX sent to an address also activates it on TRON.
-      const top = await tw.trx.sendTrx(addr, Math.max(fee - trx, 1100000), feeKey);
-      if (!top.result) throw new Error('Could not send TRX for fees: ' + JSON.stringify(top));
-      await waitTx(top.txid || top.transaction.txID);
+      // The first TRX sent to an address also activates it on TRON. It is signed once, so a resend
+      // after a 429 is the same transaction and can't pay twice.
+      const topUp = await tronCall(() => tw.transactionBuilder.sendTrx(addr, Math.max(fee - trx, 1100000), feeAddr));
+      const topSigned = await tw.trx.sign(topUp, feeKey);
+      const top = await tronCall(() => tw.trx.sendRawTransaction(topSigned));
+      if (!top.result && top.code !== 'DUP_TRANSACTION_ERROR') throw new Error('Could not send TRX for fees: ' + JSON.stringify(top));
+      await waitTx(topSigned.txID);
     }
-    const built = await tw.transactionBuilder.triggerSmartContract(USDT_TRC20, 'transfer(address,uint256)', { feeLimit: fee + 2000000 }, transferParams, addr);
+    const built = await tronCall(() => tw.transactionBuilder.triggerSmartContract(USDT_TRC20, 'transfer(address,uint256)', { feeLimit: fee + 2000000 }, transferParams, addr));
     const signed = await tw.trx.sign(built.transaction, key);
-    const sent = await tw.trx.sendRawTransaction(signed);
-    if (!sent.result) throw new Error(`Transfer from #${i} was rejected: ${JSON.stringify(sent)}`);
+    const sent = await tronCall(() => tw.trx.sendRawTransaction(signed));
+    if (!sent.result && sent.code !== 'DUP_TRANSACTION_ERROR') throw new Error(`Transfer from #${i} was rejected: ${JSON.stringify(sent)}`);
     await waitTx(signed.txID);
     await log(`   sent -> ${signed.txID}`);
     out.sent.push({ index: i, address: addr, amount, txid: signed.txID });
@@ -174,5 +196,5 @@ async function sweepTron({ root, indexes, to, min = 1, go = false, apiKey, log =
 
 module.exports = {
   PATHS, rootFromMnemonic, accountXpub, feeWalletAddress, feeWalletBalance, isAddress,
-  tronAddressOf, bscAddressOf, sweepBsc, sweepTron
+  tronAddressOf, bscAddressOf, sweepBsc, sweepTron, tronCall
 };
