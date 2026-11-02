@@ -1628,7 +1628,8 @@ app.get('/api/assets', authMiddleware, async (req, res) => {
   const hiddenWithdrawals = new Set(withdrawals.filter(w => w.status === 'Rejected' && w.hiddenFromUser).map(w => w.id));
 
   const totalWithdrawn = withdrawals.filter(w => w.status === 'Approved').reduce((s, w) => s + w.amount, 0);
-  const notWithdrawn = user.totalIncome - totalWithdrawn;
+  // "Undrawn" is what the user can withdraw right now: their balance (see POST /api/withdrawals).
+  const notWithdrawn = user.walletBalance;
 
   // Everything that changed the balance comes from the ledger. Deposits/withdrawals the ledger doesn't
   // cover (still pending, rejected, or from before the ledger existed) come from their own records.
