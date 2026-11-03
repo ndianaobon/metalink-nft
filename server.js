@@ -16,6 +16,7 @@ const { readDeviceToken, readPlatform, hashDeviceToken } = require('./device');
 const { analyzeAccount, withdrawalDecision, nextReviewStatus } = require('./risk');
 const { incomeOverview } = require('./income');
 const { reservationDay, nextReservationAt } = require('./reserve-day');
+const luckyDraw = require('./lucky-draw');
 const depositWatch = require('./deposit-watch');
 const depositAddresses = require('./deposit-addresses');
 const depositSweep = require('./deposit-sweep');
@@ -557,6 +558,7 @@ function checkAndApplyLevelUpgrade(user, config, emails) {
     if (user.walletBalance >= threshold && lv > newLevel) newLevel = lv;
   }
   if (newLevel > (user.level || 0)) {
+    luckyDraw.awardLevelPoints(user, config, user.level || 0, newLevel);
     user.level = newLevel;
     emails.push([user.email, `Congratulations! You've reached Level ${newLevel}`, levelUpgradeEmailHtml(user.username, newLevel, user.walletBalance)]);
   }
@@ -580,6 +582,8 @@ const TX_LABELS = {
   earn_income: 'Earn Income',
   reserve_reward: 'Reservation Reward',
   team_commission: 'Team Commission',
+  lucky_draw: 'Lucky Draw Prize',
+  points_purchase: 'Lucky Draw Points',
   admin_credit: 'Balance Credit',
   admin_debit: 'Balance Deduction'
 };
@@ -604,7 +608,7 @@ function sendQueuedEmails(emails) {
 }
 
 function publicProfile(user) {
-  const { password, secondPassword, ...profile } = user;
+  const { password, secondPassword, drawPointsLog, ...profile } = user;
   return profile;
 }
 
@@ -2181,6 +2185,151 @@ app.post('/api/rewards/:id/claim', authMiddleware, async (req, res) => {
   res.status(result.status).json(result.body);
 });
 
+// ===================== LUCKY DRAW =====================
+// Points buy spins of a prize wheel (see lucky-draw.js). The user row is locked while claiming,
+// buying or spinning, so a double tap can't spend the same points twice.
+
+const maskName = name => {
+  const n = String(name || '');
+  return n.length <= 2 ? n.charAt(0) + '***' : n.slice(0, 2) + '***' + n.slice(-1);
+};
+
+function dailyPointsStatus(user, s) {
+  const { start, end } = reservationDay();
+  const claimed = !!user.lastDrawDailyAt && new Date(user.lastDrawDailyAt) >= start;
+  return { points: s.dailyPoints, canClaim: s.enabled && s.dailyPoints > 0 && !claimed, nextAt: claimed ? end.toISOString() : null };
+}
+
+const drawSummary = d => ({ id: d.id, createdAt: d.createdAt, times: d.times, cost: d.cost, total: d.total, prizes: d.prizes });
+
+app.get('/api/lucky-draw', authMiddleware, async (req, res) => {
+  const user = await db.getUser(pool, req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  const s = luckyDraw.settingsOf(await getConfig());
+  const odds = luckyDraw.prizeOdds(s.prizes);
+  const [mine, recent] = await Promise.all([
+    pool.query('SELECT data FROM app.lucky_draws WHERE user_id = $1 ORDER BY seq DESC LIMIT 50', [user.id]),
+    pool.query("SELECT data FROM app.lucky_draws WHERE (data->>'total')::numeric > 0 ORDER BY seq DESC LIMIT 20")
+  ]);
+  res.json({
+    enabled: s.enabled,
+    points: user.drawPoints || 0,
+    earned: user.drawPointsEarned || 0,
+    pointsBy: user.drawPointsBy || {},
+    walletBalance: user.walletBalance,
+    level: user.level || 0,
+    spinCost: s.spinCost,
+    tenSpinCost: s.tenSpinCost,
+    prizes: s.prizes.map((p, i) => ({ amount: p.amount, odds: Math.round(odds[i] * 100) / 100 })),
+    daily: dailyPointsStatus(user, s),
+    buy: { enabled: s.buyEnabled, points: s.buyPoints, price: s.buyPrice },
+    levelPoints: s.levelPoints,
+    inviteTiers: s.inviteTiers,
+    redeposit: { min: s.redepositMin, pct: s.redepositPct },
+    history: (user.drawPointsLog || []).slice(0, 50),
+    myDraws: mine.rows.map(r => drawSummary(r.data)),
+    recentWinners: recent.rows.map(r => ({ name: maskName(r.data.username), amount: r.data.total, createdAt: r.data.createdAt }))
+  });
+});
+
+app.post('/api/lucky-draw/daily', authMiddleware, async (req, res) => {
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    const s = luckyDraw.settingsOf(await getConfig(c));
+    const status = dailyPointsStatus(user, s);
+    if (!status.canClaim) {
+      return { status: 400, body: { error: status.nextAt ? 'You have already claimed today\'s points. They reset at 6:00 AM UK time.' : 'Daily points are not available right now', nextAt: status.nextAt } };
+    }
+    user.lastDrawDailyAt = new Date().toISOString();
+    luckyDraw.addPoints(user, s.dailyPoints, 'daily', 'Daily points');
+    await db.saveUser(c, user);
+    return { status: 200, body: { claimed: s.dailyPoints, points: user.drawPoints, daily: dailyPointsStatus(user, s) } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+app.post('/api/lucky-draw/buy', authMiddleware, async (req, res) => {
+  const packs = Number(req.body.packs);
+  if (!Number.isInteger(packs) || packs < 1 || packs > 100) return res.status(400).json({ error: 'Choose from 1 to 100 packs' });
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    const s = luckyDraw.settingsOf(await getConfig(c));
+    if (!s.enabled || !s.buyEnabled) return { status: 400, body: { error: 'Buying points is not available right now' } };
+    const price = Math.round(packs * s.buyPrice * 100) / 100;
+    const points = packs * s.buyPoints;
+    if (user.walletBalance < price) return { status: 400, body: { error: 'Insufficient balance' } };
+    user.walletBalance = Math.round((user.walletBalance - price) * 1e5) / 1e5;
+    await recordTx(c, user, 'points_purchase', -price, `${points} points`);
+    luckyDraw.addPoints(user, points, 'buy', `Bought with ${price} USDT`);
+    await db.saveUser(c, user);
+    return { status: 200, body: { bought: points, price, points: user.drawPoints, walletBalance: user.walletBalance } };
+  });
+  res.status(result.status).json(result.body);
+});
+
+app.post('/api/lucky-draw/spin', authMiddleware, async (req, res) => {
+  const times = Number(req.body.times) === 10 ? 10 : 1;
+  const emails = [];
+  const result = await tx(async c => {
+    const user = await db.getUser(c, req.userId, { lock: true });
+    if (!user) return { status: 404, body: { error: 'User not found' } };
+    const cfg = await getConfig(c);
+    const s = luckyDraw.settingsOf(cfg);
+    if (!s.enabled) return { status: 400, body: { error: 'The Lucky Draw is closed right now' } };
+    const cost = times === 10 ? s.tenSpinCost : s.spinCost;
+    if ((user.drawPoints || 0) < cost) return { status: 400, body: { error: `You need ${cost} points for ${times === 10 ? '10 spins' : 'a spin'}`, points: user.drawPoints || 0 } };
+
+    const slots = Array.from({ length: times }, () => luckyDraw.pickSlot(s.prizes));
+    const prizes = slots.map(i => s.prizes[i].amount);
+    const total = Math.round(prizes.reduce((a, b) => a + b, 0) * 100) / 100;
+    luckyDraw.spendPoints(user, cost, times === 10 ? '10 spins' : '1 spin');
+    const draw = { id: generateId(), userId: user.id, username: user.username, times, cost, slots, prizes, total, createdAt: new Date().toISOString() };
+    if (total > 0) {
+      user.walletBalance += total;
+      await recordTx(c, user, 'lucky_draw', total, times === 10 ? `10 spins: ${prizes.join(' + ')} USDT` : 'Wheel spin', draw.id);
+      user.totalIncome += total;
+      user.dailyIncome = user.dailyIncome || {};
+      user.dailyIncome.activity = (user.dailyIncome.activity || 0) + total;
+      checkAndApplyLevelUpgrade(user, cfg, emails);
+    }
+    await db.insertDoc(c, 'lucky_draws', draw);
+    await db.saveUser(c, user);
+    return { status: 200, body: { ...drawSummary(draw), slots, points: user.drawPoints, walletBalance: user.walletBalance } };
+  });
+  sendQueuedEmails(emails);
+  res.status(result.status).json(result.body);
+});
+
+app.get('/api/admin/lucky-draw', adminMiddleware, async (req, res) => {
+  const s = luckyDraw.settingsOf(await getConfig());
+  const [draws, bought, held] = await Promise.all([
+    pool.query(`SELECT COALESCE(SUM((data->>'times')::int), 0)::int AS spins, COALESCE(SUM((data->>'cost')::numeric), 0)::float AS points,
+      COALESCE(SUM((data->>'total')::numeric), 0)::float AS paid, COUNT(DISTINCT user_id)::int AS players FROM app.lucky_draws`),
+    pool.query("SELECT COALESCE(-SUM((data->>'amount')::numeric), 0)::float AS usdt FROM app.transactions WHERE data->>'type' = 'points_purchase'"),
+    pool.query("SELECT COALESCE(SUM((data->>'drawPoints')::numeric), 0)::float AS points FROM app.users")
+  ]);
+  res.json({
+    settings: s,
+    odds: luckyDraw.prizeOdds(s.prizes),
+    expectedPrize: luckyDraw.expectedPrize(s.prizes),
+    stats: { ...draws.rows[0], purchasedUsdt: bought.rows[0].usdt, pointsHeld: held.rows[0].points }
+  });
+});
+
+app.put('/api/admin/lucky-draw', adminMiddleware, async (req, res) => {
+  const { settings, error } = luckyDraw.validateSettings(req.body || {});
+  if (error) return res.status(400).json({ error });
+  await tx(async c => {
+    await c.query('SELECT pg_advisory_xact_lock(424244)');
+    const config = await getConfig(c);
+    config.luckyDraw = settings;
+    await db.setSetting(c, 'platform_config', config);
+  });
+  res.json(luckyDraw.settingsOf({ luckyDraw: settings }));
+});
+
 app.get('/api/admin/rewards', adminMiddleware, async (req, res) => {
   const rewards = await getGiftRewards();
   const { rows } = await pool.query(`
@@ -2992,7 +3141,25 @@ async function creditDeposit(c, d, emails) {
   checkAndApplyLevelUpgrade(user, cfg, emails);
   const { subject, html } = depositEmail('approved', user.username, d, user.walletBalance);
   emails.push([user.email, subject, html]);
+
+  // Lucky Draw points: a first deposit makes the user a valid member, which earns their inviter
+  // points; a later deposit ("re-deposit") earns the user points worth a % of it.
+  const draw = luckyDraw.settingsOf(cfg);
+  let inviter = null;
+  if (draw.enabled) {
+    const earlier = await c.query("SELECT 1 FROM app.deposits WHERE user_id = $1 AND data->>'status' = 'Approved' AND id <> $2 LIMIT 1", [user.id, d.id]);
+    if (earlier.rows.length) {
+      luckyDraw.addPoints(user, luckyDraw.redepositPointsFor(d.amount, draw), 'redeposit', `Re-deposit of ${d.amount} USDT`);
+    } else if (user.referredBy) {
+      const pts = luckyDraw.invitePointsFor(d.amount, draw.inviteTiers);
+      if (pts > 0 && (inviter = await db.getUser(c, user.referredBy, { lock: true }))) {
+        luckyDraw.addPoints(inviter, pts, 'invite', `${user.username} became a valid member (${d.amount} USDT)`);
+      }
+    }
+  }
   await db.saveUser(c, user);
+  // The referral loop below loads the inviter again, so save these points first.
+  if (inviter) await db.saveUser(c, inviter);
 
   if (!d.referralPaid) {
     const tiers = [

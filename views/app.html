@@ -1757,6 +1757,182 @@
       .my-func-btn:hover { transform: translateY(-1px); }
       .reserve-result-confirm-btn:hover { transform: translateY(-1px); }
     }
+    /* ---- Lucky Draw ---- */
+    .ld-banner {
+      position: relative; overflow: hidden; width: 100%; display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px; margin-bottom: 16px; border: 1px solid rgba(245,196,81,0.35); border-radius: 18px; cursor: pointer;
+      background: radial-gradient(circle at 12% 50%, rgba(245,196,81,0.28), transparent 45%), linear-gradient(120deg, #1B1450, #3A1F8F 55%, #5B2DBF);
+      color: #fff; font-family: var(--font); text-align: left; box-shadow: 0 10px 30px rgba(59,31,143,0.35);
+    }
+    .ld-banner::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%;
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,0.18), transparent);
+      animation: ldShine 3.6s ease-in-out infinite;
+    }
+    @keyframes ldShine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
+    .ld-banner-wheel { width: 54px; height: 54px; flex-shrink: 0; animation: ldIdle 14s linear infinite; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4)); }
+    @keyframes ldIdle { to { transform: rotate(360deg); } }
+    .ld-banner-text { flex: 1; min-width: 0; }
+    .ld-banner-title { font-size: 1.02rem; font-weight: 800; letter-spacing: 0.2px; }
+    .ld-banner-sub { font-size: 0.78rem; color: rgba(255,255,255,0.75); margin-top: 2px; }
+    .ld-banner-go {
+      flex-shrink: 0; padding: 8px 16px; border-radius: 999px; font-weight: 800; font-size: 0.82rem; color: #2A1A00;
+      background: linear-gradient(180deg, #FFE08A, #F5B731); box-shadow: 0 4px 12px rgba(245,183,49,0.45);
+    }
+
+    .ld-stage {
+      position: relative; overflow: hidden; border-radius: 26px; padding: 18px 16px 22px; color: #fff;
+      background: radial-gradient(circle at 50% 38%, #4B2CB8 0%, #241466 42%, #0E0A2E 100%);
+      box-shadow: 0 18px 50px rgba(20,10,70,0.45); border: 1px solid rgba(255,255,255,0.08);
+    }
+    .ld-rays { position: absolute; left: 50%; top: 40%; width: 640px; height: 640px; margin: -320px 0 0 -320px; pointer-events: none; opacity: 0.6; animation: ldIdle 60s linear infinite; }
+    .ld-stage > * { position: relative; }
+    .ld-stage > .ld-rays { position: absolute; }
+    .ld-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .ld-kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; color: #F5C451; }
+    .ld-title { font-size: 1.6rem; font-weight: 900; line-height: 1.15; color: #fff; }
+    .ld-sub { font-size: 0.8rem; color: rgba(255,255,255,0.65); margin-top: 2px; }
+    .ld-rules-btn {
+      flex-shrink: 0; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #fff;
+      font-family: var(--font); font-size: 0.78rem; font-weight: 600; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+    }
+    .ld-ticker {
+      margin: 14px 0 6px; height: 30px; overflow: hidden; border-radius: 999px; background: rgba(0,0,0,0.28);
+      border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center;
+    }
+    .ld-ticker-icon { flex-shrink: 0; padding: 0 8px 0 12px; color: #F5C451; display: flex; }
+    .ld-ticker-viewport { flex: 1; overflow: hidden; white-space: nowrap; }
+    .ld-ticker-track { display: inline-block; white-space: nowrap; animation: ldTicker 30s linear infinite; font-size: 0.78rem; color: rgba(255,255,255,0.85); }
+    .ld-ticker-track span { margin-right: 28px; }
+    .ld-ticker-track b { color: #FFD66B; }
+    @keyframes ldTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+    .ld-wheel-wrap { position: relative; width: 100%; max-width: 340px; margin: 14px auto 6px; }
+    .ld-wheel-wrap::before { content: ''; display: block; padding-top: 100%; }
+    .ld-rim {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%;
+      background: linear-gradient(145deg, #FFE9A8, #E3A723 40%, #FFF1C2 60%, #B57E12);
+      box-shadow: 0 0 0 4px rgba(255,214,107,0.15), 0 0 40px rgba(255,196,64,0.35), inset 0 0 12px rgba(0,0,0,0.35);
+    }
+    .ld-rim-inner { position: absolute; top: 5.5%; left: 5.5%; right: 5.5%; bottom: 5.5%; border-radius: 50%; background: #170E45; box-shadow: inset 0 0 16px rgba(0,0,0,0.6); }
+    .ld-light { position: absolute; width: 3.4%; height: 3.4%; margin: -1.7% 0 0 -1.7%; border-radius: 50%; background: #FFF6D6; box-shadow: 0 0 8px #FFE08A; animation: ldBlink 1.2s ease-in-out infinite; }
+    .ld-light.alt { animation-delay: 0.6s; }
+    .ld-stage.spinning .ld-light { animation-duration: 0.3s; }
+    @keyframes ldBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .ld-wheel {
+      position: absolute; top: 7.5%; left: 7.5%; width: 85%; height: 85%; display: block;
+      transform: rotate(0deg); transition: transform 5.4s cubic-bezier(0.12, 0.72, 0.1, 1);
+    }
+    .ld-pointer {
+      position: absolute; left: 50%; top: -2%; width: 13%; margin-left: -6.5%; z-index: 3;
+      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.45));
+    }
+    .ld-hub {
+      position: absolute; left: 50%; top: 50%; width: 27%; height: 27%; margin: -13.5% 0 0 -13.5%; z-index: 2;
+      border-radius: 50%; border: 4px solid #FFE6A0; cursor: pointer; font-family: var(--font); color: #2A1A00; padding: 0;
+      background: radial-gradient(circle at 35% 30%, #FFF4CC, #F5C451 45%, #C98A12 100%);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.5), inset 0 -4px 8px rgba(120,70,0,0.35);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+      transition: transform 0.15s ease;
+    }
+    .ld-hub:active { transform: scale(0.94); }
+    .ld-hub:disabled { cursor: default; filter: saturate(0.6); }
+    .ld-hub b { font-size: 1.05rem; font-weight: 900; letter-spacing: 1px; }
+    .ld-hub small { font-size: 0.62rem; font-weight: 700; opacity: 0.8; }
+
+    .ld-points {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px auto 0; max-width: 380px;
+      padding: 10px 10px 10px 16px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+    }
+    .ld-points-label { font-size: 0.76rem; color: rgba(255,255,255,0.65); }
+    .ld-points-val { display: flex; align-items: center; gap: 7px; font-size: 1.35rem; font-weight: 900; color: #FFD66B; }
+    .ld-points-val.bump { animation: ldBump 0.5s ease; }
+    @keyframes ldBump { 40% { transform: scale(1.2); } }
+    .ld-points-buy {
+      border: none; border-radius: 12px; padding: 9px 14px; cursor: pointer; font-family: var(--font); font-weight: 700; font-size: 0.8rem;
+      color: #fff; background: rgba(255,255,255,0.14);
+    }
+    .ld-actions { display: flex; gap: 12px; margin: 16px auto 0; max-width: 380px; }
+    .ld-btn {
+      flex: 1; border: none; border-radius: 16px; padding: 12px 8px; cursor: pointer; font-family: var(--font); color: #fff;
+      display: flex; flex-direction: column; align-items: center; line-height: 1.25; transition: transform 0.15s ease, filter 0.15s ease;
+    }
+    .ld-btn:active { transform: translateY(2px); }
+    .ld-btn:disabled { filter: grayscale(0.5) brightness(0.8); cursor: default; }
+    .ld-btn b { font-size: 1rem; font-weight: 800; }
+    .ld-btn small { font-size: 0.72rem; opacity: 0.85; }
+    .ld-btn-one { background: linear-gradient(180deg, #6D5BFF, #4F46E5); box-shadow: 0 6px 0 #3127A8, 0 10px 22px rgba(79,70,229,0.45); }
+    .ld-btn-ten { background: linear-gradient(180deg, #FF7AA8, #E5487C); box-shadow: 0 6px 0 #A82A57, 0 10px 22px rgba(229,72,124,0.45); }
+
+    .ld-tabs { display: flex; gap: 6px; margin: 20px 0 14px; padding: 5px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); overflow-x: auto; }
+    .ld-tab {
+      flex: 1; white-space: nowrap; border: none; background: none; padding: 9px 10px; border-radius: 10px; cursor: pointer;
+      font-family: var(--font); font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);
+    }
+    .ld-tab.active { background: var(--primary); color: #fff; }
+    .ld-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; margin-bottom: 12px; }
+    .ld-task { display: flex; align-items: center; gap: 12px; }
+    .ld-task-icon { width: 42px; height: 42px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: #fff; }
+    .ld-task-body { flex: 1; min-width: 0; }
+    .ld-task-title { font-weight: 700; font-size: 0.92rem; }
+    .ld-task-desc { font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px; }
+    .ld-task-pts { display: inline-flex; align-items: center; gap: 4px; font-size: 0.75rem; font-weight: 700; color: #D99A0B; margin-top: 4px; }
+    .ld-task-btn {
+      flex-shrink: 0; border: none; border-radius: 10px; padding: 8px 14px; cursor: pointer; font-family: var(--font); font-weight: 700; font-size: 0.8rem;
+      background: var(--primary); color: #fff;
+    }
+    .ld-task-btn:disabled { background: var(--surface-hover); color: var(--text-muted); cursor: default; }
+    .ld-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .ld-chip { font-size: 0.74rem; padding: 4px 9px; border-radius: 999px; background: var(--surface-hover); color: var(--text-secondary); }
+    .ld-chip.done { background: rgba(20,184,166,0.14); color: var(--positive); }
+    .ld-chip.next { background: rgba(79,70,229,0.14); color: var(--primary); font-weight: 700; }
+    .ld-buy-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+    .ld-stepper { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .ld-stepper button { width: 34px; height: 34px; border: none; background: var(--surface-hover); color: var(--text); font-size: 1.1rem; cursor: pointer; }
+    .ld-stepper input { width: 46px; height: 34px; border: none; text-align: center; background: var(--surface); color: var(--text); font-family: var(--font); font-weight: 700; font-size: 0.9rem; }
+    .ld-buy-total { flex: 1; font-size: 0.8rem; color: var(--text-secondary); min-width: 0; }
+    .ld-buy-total b { color: var(--text); }
+    .ld-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
+    .ld-row:last-child { border-bottom: none; }
+    .ld-row-sub { font-size: 0.74rem; color: var(--text-muted); }
+    .ld-plus { color: var(--positive); font-weight: 700; white-space: nowrap; }
+    .ld-minus { color: var(--negative); font-weight: 700; white-space: nowrap; }
+    .ld-empty { text-align: center; padding: 26px 10px; color: var(--text-muted); font-size: 0.85rem; }
+    .ld-odds { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-top: 8px; }
+    .ld-odds td { padding: 7px 4px; border-bottom: 1px solid var(--border); }
+    .ld-odds td:last-child { text-align: right; color: var(--text-secondary); }
+    .ld-rules { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.65; padding-left: 18px; margin: 0; }
+    .ld-section-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 4px; }
+
+    .ld-result {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
+      padding: 16px; background: rgba(6,4,20,0.72);
+    }
+    .ld-result-card {
+      position: relative; width: 100%; max-width: 360px; border-radius: 24px; padding: 26px 18px 18px; text-align: center; color: #fff;
+      background: radial-gradient(circle at 50% 0%, #6A45E8, #2A1777 60%, #170E45); border: 1px solid rgba(255,214,107,0.4);
+      box-shadow: 0 0 60px rgba(245,196,81,0.3); animation: ldPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+    }
+    @keyframes ldPop { from { transform: scale(0.6); opacity: 0; } }
+    .ld-result-kicker { font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; color: #F5C451; font-weight: 700; }
+    .ld-result-coin { width: 64px; height: 64px; margin: 10px auto 0; }
+    .ld-result-amount { font-size: 2.5rem; font-weight: 900; margin: 4px 0 2px; color: #FFD66B; text-shadow: 0 2px 14px rgba(245,183,49,0.5); }
+    .ld-result-note { font-size: 0.8rem; color: rgba(255,255,255,0.7); }
+    .ld-result-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 16px 0 4px; }
+    .ld-result-grid div { padding: 8px 2px; border-radius: 10px; background: rgba(255,255,255,0.08); font-size: 0.78rem; font-weight: 800; color: #FFD66B; animation: ldPop 0.4s both; }
+    .ld-result-grid div small { display: block; font-size: 0.58rem; font-weight: 600; color: rgba(255,255,255,0.6); }
+    .ld-result-grid div.big { background: linear-gradient(180deg, rgba(245,196,81,0.35), rgba(245,196,81,0.12)); }
+    .ld-result-btn {
+      width: 100%; margin-top: 16px; border: none; border-radius: 14px; padding: 13px; cursor: pointer; font-family: var(--font);
+      font-weight: 800; font-size: 0.95rem; color: #2A1A00; background: linear-gradient(180deg, #FFE08A, #F5B731);
+    }
+    .ld-confetti { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 24px; }
+    .ld-confetti i { position: absolute; top: -12px; width: 7px; height: 12px; border-radius: 2px; animation: ldFall 1.8s ease-in forwards; }
+    @keyframes ldFall { to { transform: translateY(460px) rotate(540deg); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .ld-banner::after, .ld-banner-wheel, .ld-rays, .ld-light, .ld-ticker-track { animation: none; }
+      .ld-wheel { transition-duration: 1.2s; }
+    }
   </style>
 </head>
 <body>
@@ -2179,6 +2355,16 @@
           <p style="font-size:0.75rem;color:var(--text-muted);margin-top:12px;line-height:1.5;">Stake/Earn includes profit from running plans. Claim a plan to add its profit to your balance.</p>
         </div>
 
+        <!-- Lucky Draw -->
+        <button class="ld-banner" id="ldBanner" onclick="openDrawPage()" style="display:none;">
+          <svg class="ld-banner-wheel" id="ldBannerWheel" viewBox="0 0 200 200" aria-hidden="true"></svg>
+          <span class="ld-banner-text">
+            <span class="ld-banner-title" style="display:block;">Lucky Draw</span>
+            <span class="ld-banner-sub" style="display:block;" id="ldBannerSub">Spin the wheel to win USDT</span>
+          </span>
+          <span class="ld-banner-go">Spin</span>
+        </button>
+
         <!-- My Team -->
         <div class="my-section-card">
           <div class="my-section-title my-team-title">My Team</div>
@@ -2404,6 +2590,61 @@
 
         <div class="orders-summary" id="ordersSummary"></div>
         <div id="teamOrdersList"></div>
+      </div>
+
+      <!-- Lucky Draw: spend points on a prize wheel that pays USDT -->
+      <div class="team-page" id="drawPageView">
+        <button class="team-back-btn" onclick="closeTeamPage()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+          Back to My
+        </button>
+        <div class="ld-stage" id="ldStage">
+          <svg class="ld-rays" viewBox="0 0 200 200" aria-hidden="true" id="ldRays"></svg>
+          <div class="ld-head">
+            <div>
+              <div class="ld-kicker">MetaLink NFT</div>
+              <div class="ld-title">Lucky Draw</div>
+              <div class="ld-sub" id="ldSub">Spin the wheel and win USDT</div>
+            </div>
+            <button class="ld-rules-btn" onclick="ldShowTab('rules', true)">Rules</button>
+          </div>
+          <div class="ld-ticker" id="ldTickerBox" style="display:none;">
+            <span class="ld-ticker-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.9 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7L2 9.5l7.1-.6z"/></svg></span>
+            <div class="ld-ticker-viewport"><div class="ld-ticker-track" id="ldTicker"></div></div>
+          </div>
+          <div class="ld-wheel-wrap">
+            <div class="ld-rim"><div class="ld-rim-inner"></div><div id="ldLights"></div></div>
+            <svg class="ld-wheel" id="ldWheel" viewBox="0 0 200 200" aria-label="Prize wheel"></svg>
+            <svg class="ld-pointer" viewBox="0 0 40 52" aria-hidden="true">
+              <defs><linearGradient id="ldPtrGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3C4"/><stop offset="1" stop-color="#E0A11B"/></linearGradient></defs>
+              <path d="M20 50 L4 14 A16 16 0 1 1 36 14 Z" fill="url(#ldPtrGrad)" stroke="#8A5A00" stroke-width="2"/>
+              <circle cx="20" cy="15" r="6" fill="#7C3AED" stroke="#FFF3C4" stroke-width="2"/>
+            </svg>
+            <button class="ld-hub" id="ldHub" onclick="ldSpin(1)" aria-label="Spin once"><b>SPIN</b><small id="ldHubCost">10 pts</small></button>
+          </div>
+          <div class="ld-points">
+            <div>
+              <div class="ld-points-label">My points</div>
+              <div class="ld-points-val" id="ldPointsBox">
+                <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="#F5B731"/><circle cx="12" cy="12" r="7" fill="none" stroke="#FFE7A3" stroke-width="1.5"/><path d="M12 7.5l1.4 2.9 3.1.4-2.3 2.2.6 3.1-2.8-1.5-2.8 1.5.6-3.1-2.3-2.2 3.1-.4z" fill="#FFF6D6"/></svg>
+                <span id="ldPoints">0</span>
+              </div>
+            </div>
+            <button class="ld-points-buy" id="ldBuyShortcut" onclick="ldShowTab('earn', true)">+ Get points</button>
+          </div>
+          <div class="ld-actions">
+            <button class="ld-btn ld-btn-one" id="ldSpinOne" onclick="ldSpin(1)"><b>Draw ×1</b><small id="ldCostOne">10 points</small></button>
+            <button class="ld-btn ld-btn-ten" id="ldSpinTen" onclick="ldSpin(10)"><b>Draw ×10</b><small id="ldCostTen">95 points</small></button>
+          </div>
+        </div>
+
+        <div class="ld-tabs" id="ldTabs">
+          <button class="ld-tab active" data-ldtab="earn" onclick="ldShowTab('earn')">Earn</button>
+          <button class="ld-tab" data-ldtab="wins" onclick="ldShowTab('wins')">Winnings</button>
+          <button class="ld-tab" data-ldtab="history" onclick="ldShowTab('history')">History</button>
+          <button class="ld-tab" data-ldtab="rules" onclick="ldShowTab('rules')">Rules</button>
+        </div>
+        <div id="ldPanel"><div class="ld-empty">Loading…</div></div>
       </div>
 
       <!-- Tutorials: the MetaLink NFT platform guide (PDF pages as images) -->
@@ -3060,7 +3301,7 @@
       else if (tab === 'earn') loadEarn();
       else if (tab === 'reserve') loadReserve();
       else if (tab === 'assets') loadAssets();
-      else if (tab === 'my') { loadProfile(); loadCheckin(); loadGiftRewards(); }
+      else if (tab === 'my') { loadProfile(); loadCheckin(); loadGiftRewards(); loadDrawBanner(); }
       if (tab === 'stake') loadCheckin();
     }
 
@@ -4035,6 +4276,8 @@
       document.getElementById('tutorialPageView').classList.remove('active');
       document.getElementById('giftPageView').classList.remove('active');
       document.getElementById('invitePageView').classList.remove('active');
+      document.getElementById('drawPageView').classList.remove('active');
+      clearInterval(ldDailyTimer);
       document.getElementById('myMainView').style.display = '';
     }
 
@@ -5629,6 +5872,313 @@
       localStorage.removeItem('mlk_token');
       localStorage.removeItem('mlk_user');
       window.location.href = '/signup.html#login';
+    }
+
+    // ---- Lucky Draw ----
+    // The server picks every prize (POST /api/lucky-draw/spin); the wheel only animates to the slot it returns.
+    let ldData = null, ldTabName = 'earn', ldSpinning = false, ldRotation = 0, ldPacks = 1, ldDailyTimer = null;
+
+    function ldPoint(r, deg) {
+      const a = deg * Math.PI / 180;
+      return (100 + r * Math.sin(a)).toFixed(2) + ' ' + (100 - r * Math.cos(a)).toFixed(2);
+    }
+    function ldAmt(n) { n = Number(n || 0); return n % 1 ? n.toFixed(2) : String(n); }
+    function ldPts(n) { return String(parseFloat(Number(n || 0).toFixed(2))); }
+    function ldDate(iso) { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+
+    // The wheel as SVG. Slot 0 is at the top and slots go clockwise, as on the server.
+    // `id` prefixes the gradient ids, since the My page banner draws a second, smaller wheel.
+    function ldWheelSvg(prizes, id, compact) {
+      const n = prizes.length, step = 360 / n, r = 100;
+      const amounts = prizes.map(p => p.amount).sort((a, b) => b - a);
+      const bigFrom = amounts[Math.min(1, n - 1)]; // the two largest prizes are drawn in gold
+      let s = '<defs>' +
+        '<radialGradient id="' + id + 'A" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#6247DA"/><stop offset="1" stop-color="#3A2496"/></radialGradient>' +
+        '<radialGradient id="' + id + 'B" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#33228A"/><stop offset="1" stop-color="#1C1252"/></radialGradient>' +
+        '<radialGradient id="' + id + 'G" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#FFE7A0"/><stop offset="1" stop-color="#E3A21E"/></radialGradient>' +
+        '</defs>';
+      prizes.forEach((p, i) => {
+        const a = i * step, big = p.amount >= bigFrom && p.amount > 0;
+        const fill = big ? id + 'G' : (i % 2 ? id + 'B' : id + 'A');
+        s += '<path d="M100 100 L' + ldPoint(r, a - step / 2) + ' A' + r + ' ' + r + ' 0 0 1 ' + ldPoint(r, a + step / 2) + ' Z" fill="url(#' + fill + ')" stroke="#F5C451" stroke-width="1.2"/>';
+        if (compact) return;
+        const ink = big ? '#3A2200' : '#FFFFFF';
+        s += '<g transform="rotate(' + a + ' 100 100)">' +
+          '<circle cx="100" cy="24" r="9" fill="#26A17B" stroke="' + (big ? '#7A4D00' : '#FFFFFF') + '" stroke-width="1.2"/>' +
+          '<path d="M95.2 19.6h9.6v2.3h-3.6v8.3h-2.4v-8.3h-3.6z" fill="#FFFFFF"/>' +
+          '<path d="M96.4 24.6c2.2.5 5 .5 7.2 0" stroke="#FFFFFF" stroke-width="1.1" fill="none"/>' +
+          '<text x="100" y="48" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="' + (String(ldAmt(p.amount)).length > 3 ? 11.5 : 13.5) + '" font-weight="900" fill="' + ink + '">' + ldAmt(p.amount) + '</text>' +
+          '<text x="100" y="58" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="6.5" font-weight="700" letter-spacing="0.8" fill="' + ink + '" opacity="0.8">USDT</text>' +
+          '</g>';
+      });
+      s += '<circle cx="100" cy="100" r="99" fill="none" stroke="#F5C451" stroke-width="2"/>';
+      if (compact) s += '<circle cx="100" cy="100" r="26" fill="#F5C451" stroke="#FFF1C2" stroke-width="6"/>';
+      return s;
+    }
+
+    function ldBuildStatic() {
+      const lights = document.getElementById('ldLights');
+      if (lights && !lights.children.length) {
+        let h = '';
+        for (let i = 0; i < 16; i++) {
+          const a = i * 22.5 * Math.PI / 180;
+          h += '<span class="ld-light' + (i % 2 ? ' alt' : '') + '" style="left:' + (50 + 47.2 * Math.sin(a)).toFixed(2) + '%;top:' + (50 - 47.2 * Math.cos(a)).toFixed(2) + '%"></span>';
+        }
+        lights.innerHTML = h;
+      }
+      const rays = document.getElementById('ldRays');
+      if (rays && !rays.children.length) {
+        let h = '';
+        for (let i = 0; i < 16; i++) h += '<path d="M100 100 L' + ldPoint(150, i * 22.5 - 4) + ' L' + ldPoint(150, i * 22.5 + 4) + ' Z" fill="#FFFFFF" opacity="0.07"/>';
+        rays.innerHTML = h;
+      }
+    }
+
+    function ldMaxPrize(d) {
+      return d.prizes.reduce((m, p) => (p.odds > 0 && p.amount > m ? p.amount : m), 0);
+    }
+
+    // My page banner (hidden while the draw is switched off).
+    async function loadDrawBanner() {
+      try { ldData = await api('/api/lucky-draw'); } catch (e) { return; }
+      const banner = document.getElementById('ldBanner');
+      banner.style.display = ldData.enabled ? '' : 'none';
+      if (!ldData.enabled) return;
+      document.getElementById('ldBannerWheel').innerHTML = ldWheelSvg(ldData.prizes, 'ldBw', true);
+      document.getElementById('ldBannerSub').textContent = ldPts(ldData.points) + ' points · win up to ' + ldAmt(ldMaxPrize(ldData)) + ' USDT';
+    }
+
+    function openDrawPage() {
+      document.getElementById('myMainView').style.display = 'none';
+      document.querySelectorAll('.team-page').forEach(p => p.classList.remove('active'));
+      document.getElementById('drawPageView').classList.add('active');
+      document.querySelector('.app-body').scrollTop = 0;
+      ldBuildStatic();
+      if (ldData) ldRender();
+      loadDrawData();
+    }
+
+    async function loadDrawData() {
+      try { ldData = await api('/api/lucky-draw'); } catch (e) { toast(e.message, 'error'); return; }
+      ldRender();
+    }
+
+    function ldRender() {
+      const d = ldData;
+      document.getElementById('ldWheel').innerHTML = ldWheelSvg(d.prizes, 'ldW', false);
+      document.getElementById('ldCostOne').textContent = ldPts(d.spinCost) + ' points';
+      document.getElementById('ldCostTen').textContent = ldPts(d.tenSpinCost) + ' points';
+      document.getElementById('ldHubCost').textContent = ldPts(d.spinCost) + ' pts';
+      document.getElementById('ldSub').textContent = d.enabled ? 'Spin to win up to ' + ldAmt(ldMaxPrize(d)) + ' USDT' : 'The Lucky Draw is closed right now';
+      ldRenderPoints();
+      const box = document.getElementById('ldTickerBox');
+      if (d.recentWinners.length) {
+        const items = d.recentWinners.map(w => '<span>' + escapeHtml(w.name) + ' won <b>' + ldAmt(w.amount) + ' USDT</b></span>').join('');
+        const track = document.getElementById('ldTicker');
+        track.innerHTML = items + items; // twice, so the scroll loops without a gap
+        track.style.animationDuration = Math.max(16, d.recentWinners.length * 4) + 's';
+        box.style.display = '';
+      } else box.style.display = 'none';
+      ldSetSpinning(ldSpinning);
+      ldRenderPanel();
+    }
+
+    function ldRenderPoints(bump) {
+      document.getElementById('ldPoints').textContent = ldPts(ldData.points);
+      const el = document.getElementById('ldPointsBox');
+      if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    }
+
+    function ldSetSpinning(on) {
+      ldSpinning = on;
+      document.getElementById('ldStage').classList.toggle('spinning', on);
+      const closed = !ldData || !ldData.enabled;
+      ['ldSpinOne', 'ldSpinTen', 'ldHub'].forEach(id => { document.getElementById(id).disabled = on || closed; });
+    }
+
+    function ldShowTab(name, scroll) {
+      ldTabName = name;
+      document.querySelectorAll('.ld-tab').forEach(t => t.classList.toggle('active', t.dataset.ldtab === name));
+      if (ldData) ldRenderPanel();
+      if (scroll) document.getElementById('ldTabs').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function ldTask(icon, color, title, desc, pts, action) {
+      return '<div class="ld-task"><div class="ld-task-icon" style="background:' + color + '">' + icon + '</div>' +
+        '<div class="ld-task-body"><div class="ld-task-title">' + title + '</div><div class="ld-task-desc">' + desc + '</div>' +
+        (pts ? '<div class="ld-task-pts">' + pts + '</div>' : '') + '</div>' + (action || '') + '</div>';
+    }
+
+    const LD_ICONS = {
+      daily: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M9 16l2 2 4-4"/></svg>',
+      buy: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg>',
+      level: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+      invite: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
+      deposit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>'
+    };
+
+    function ldRenderPanel() {
+      const d = ldData, el = document.getElementById('ldPanel');
+      clearInterval(ldDailyTimer);
+      const by = d.pointsBy || {};
+      if (ldTabName === 'earn') {
+        let h = '<div class="ld-card">' + ldTask(LD_ICONS.daily, 'linear-gradient(135deg,#14B8A6,#0E8F82)', 'Daily points',
+          'Claim once a day. Resets at 6:00 AM UK time.', '+' + ldPts(d.daily.points) + ' point' + (d.daily.points === 1 ? '' : 's'),
+          '<button class="ld-task-btn" id="ldDailyBtn" onclick="ldClaimDaily(this)"' + (d.daily.canClaim ? '' : ' disabled') + '>' + (d.daily.canClaim ? 'Claim' : 'Claimed') + '</button>') + '</div>';
+        if (d.buy.enabled) {
+          h += '<div class="ld-card">' + ldTask(LD_ICONS.buy, 'linear-gradient(135deg,#F59E0B,#D97706)', 'Buy points',
+            ldPts(d.buy.points) + ' points for ' + ldAmt(d.buy.price) + ' USDT, paid from your balance.', '') +
+            '<div class="ld-buy-row"><div class="ld-stepper"><button onclick="ldStep(-1)" aria-label="Fewer">−</button>' +
+            '<input id="ldPacks" type="number" min="1" max="100" value="' + ldPacks + '" oninput="ldStep(0)" aria-label="Packs"><button onclick="ldStep(1)" aria-label="More">+</button></div>' +
+            '<div class="ld-buy-total" id="ldBuyTotal"></div><button class="ld-task-btn" onclick="ldBuy(this)">Buy</button></div></div>';
+        }
+        const lvChips = [1, 2, 3, 4, 5, 6].map(lv => '<span class="ld-chip' + (lv <= d.level ? ' done' : lv === d.level + 1 ? ' next' : '') + '">LV' + lv + ' · +' + ldPts(d.levelPoints[lv]) + '</span>').join('');
+        h += '<div class="ld-card">' + ldTask(LD_ICONS.level, 'linear-gradient(135deg,#7C3AED,#4F46E5)', 'Level up',
+          'Get points each time you reach a new level.', by.level ? ldPts(by.level) + ' points earned' : '') + '<div class="ld-chips">' + lvChips + '</div></div>';
+        if (d.inviteTiers.length) {
+          const tiers = d.inviteTiers.map(t => '<span class="ld-chip">' + ldAmt(t.minDeposit) + ' USDT · +' + ldPts(t.points) + '</span>').join('');
+          h += '<div class="ld-card">' + ldTask(LD_ICONS.invite, 'linear-gradient(135deg,#EC4899,#BE185D)', 'Invite valid members',
+            'Get points when someone you invite makes their first deposit. The bigger it is, the more points.', by.invite ? ldPts(by.invite) + ' points earned' : '',
+            '<button class="ld-task-btn" onclick="closeTeamPage(); openInvitePage();">Invite</button>') + '<div class="ld-chips">' + tiers + '</div></div>';
+        }
+        if (d.redeposit.pct > 0) {
+          h += '<div class="ld-card">' + ldTask(LD_ICONS.deposit, 'linear-gradient(135deg,#3B82F6,#1D4ED8)', 'Re-deposit points',
+            'Deposit ' + ldAmt(d.redeposit.min) + ' USDT or more again and get points worth ' + ldPts(d.redeposit.pct) + '% of it.', by.redeposit ? ldPts(by.redeposit) + ' points earned' : '',
+            '<button class="ld-task-btn" onclick="openDepositModal()">Deposit</button>') + '</div>';
+        }
+        el.innerHTML = h;
+        if (d.buy.enabled) ldStep(0);
+        if (!d.daily.canClaim && d.daily.nextAt) {
+          const tick = () => {
+            const ms = new Date(d.daily.nextAt).getTime() - Date.now();
+            const btn = document.getElementById('ldDailyBtn');
+            if (!btn) return clearInterval(ldDailyTimer);
+            if (ms <= 0) { clearInterval(ldDailyTimer); loadDrawData(); return; }
+            btn.textContent = fmtCountdown(ms);
+          };
+          tick();
+          ldDailyTimer = setInterval(tick, 1000);
+        }
+      } else if (ldTabName === 'wins') {
+        el.innerHTML = '<div class="ld-card">' + (d.myDraws.length ? d.myDraws.map(w =>
+          '<div class="ld-row"><div><div style="font-weight:700;">Draw ×' + w.times + '</div><div class="ld-row-sub">' + ldDate(w.createdAt) +
+          (w.times > 1 ? ' · ' + w.prizes.map(ldAmt).join(', ') : '') + '</div></div>' +
+          '<div style="text-align:right;"><div class="ld-plus">+' + ldAmt(w.total) + ' USDT</div><div class="ld-row-sub">−' + ldPts(w.cost) + ' points</div></div></div>').join('')
+          : '<div class="ld-empty">No spins yet. Your prizes will show here.</div>') + '</div>';
+      } else if (ldTabName === 'history') {
+        el.innerHTML = '<div class="ld-card">' + (d.history.length ? d.history.map(x =>
+          '<div class="ld-row"><div><div style="font-weight:600;">' + escapeHtml(x.note) + '</div><div class="ld-row-sub">' + ldDate(x.at) + '</div></div>' +
+          '<div class="' + (x.points < 0 ? 'ld-minus' : 'ld-plus') + '">' + (x.points < 0 ? '−' : '+') + ldPts(Math.abs(x.points)) + ' pts</div></div>').join('')
+          : '<div class="ld-empty">No points yet. Claim your daily points to start.</div>') + '</div>';
+      } else {
+        const odds = d.prizes.map(p => p).sort((a, b) => a.amount - b.amount);
+        el.innerHTML = '<div class="ld-card"><div class="ld-section-title">How it works</div><ol class="ld-rules">' +
+          '<li>Each spin costs ' + ldPts(d.spinCost) + ' points. 10 spins cost ' + ldPts(d.tenSpinCost) + ' points.</li>' +
+          '<li>Every spin wins a prize. Prizes are paid in USDT straight to your balance, and you can withdraw them.</li>' +
+          '<li>Get points by claiming them daily (resets at 6:00 AM UK time), reaching a new level, inviting members who deposit, depositing again' + (d.buy.enabled ? ', or buying them with your balance' : '') + '.</li>' +
+          '<li>Points can only be used for spins. They can\'t be withdrawn or transferred, and bought points can\'t be refunded.</li>' +
+          '<li>The result of each spin is picked at random by the server, with the chances below.</li></ol></div>' +
+          '<div class="ld-card"><div class="ld-section-title">Prizes and chances</div><table class="ld-odds">' +
+          odds.map(p => '<tr><td><b>' + ldAmt(p.amount) + ' USDT</b></td><td>' + (p.odds > 0 && p.odds < 0.01 ? '<0.01' : ldPts(p.odds)) + '%</td></tr>').join('') + '</table></div>';
+      }
+    }
+
+    function ldStep(delta) {
+      const input = document.getElementById('ldPacks');
+      let n = parseInt(input.value, 10);
+      if (isNaN(n)) n = 1;
+      n = Math.min(100, Math.max(1, n + delta));
+      if (delta) input.value = n;
+      ldPacks = n;
+      document.getElementById('ldBuyTotal').innerHTML = '<b>' + ldPts(n * ldData.buy.points) + ' points</b> for <b>' + ldAmt(Math.round(n * ldData.buy.price * 100) / 100) + ' USDT</b>' +
+        '<div class="ld-row-sub">Balance: ' + fmt(ldData.walletBalance) + ' USDT</div>';
+    }
+
+    async function ldBuy(btn) {
+      const price = Math.round(ldPacks * ldData.buy.price * 100) / 100, pts = ldPacks * ldData.buy.points;
+      if (price > ldData.walletBalance) { toast('Insufficient balance', 'error'); return; }
+      if (!confirm('Buy ' + ldPts(pts) + ' points for ' + ldAmt(price) + ' USDT from your balance?')) return;
+      btn.disabled = true;
+      try {
+        const r = await api('/api/lucky-draw/buy', { method: 'POST', body: JSON.stringify({ packs: ldPacks }) });
+        toast('+' + ldPts(r.bought) + ' points');
+        ldData.points = r.points;
+        ldRenderPoints(true);
+        updateHeaderBalance();
+        await loadDrawData();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+    }
+
+    async function ldClaimDaily(btn) {
+      btn.disabled = true;
+      try {
+        const r = await api('/api/lucky-draw/daily', { method: 'POST' });
+        toast('+' + ldPts(r.claimed) + ' point' + (r.claimed === 1 ? '' : 's'));
+        ldData.points = r.points;
+        ldRenderPoints(true);
+        await loadDrawData();
+      } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
+    }
+
+    // Turns the wheel so slot `slot` stops under the pointer. Returns how long the animation takes.
+    function ldAnimateTo(slot) {
+      const step = 360 / ldData.prizes.length;
+      const jitter = (Math.random() - 0.5) * (step - 14);
+      const base = ldRotation - (ldRotation % 360);
+      ldRotation = base + 360 * 6 + (360 - slot * step) + jitter;
+      document.getElementById('ldWheel').style.transform = 'rotate(' + ldRotation + 'deg)';
+      const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      return reduced ? 1300 : 5600;
+    }
+
+    async function ldSpin(times) {
+      if (ldSpinning || !ldData) return;
+      if (!ldData.enabled) { toast('The Lucky Draw is closed right now', 'error'); return; }
+      const cost = times === 10 ? ldData.tenSpinCost : ldData.spinCost;
+      if (ldData.points < cost) {
+        toast('You need ' + ldPts(cost) + ' points. Earn or buy points below.', 'error');
+        ldShowTab('earn', true);
+        return;
+      }
+      ldSetSpinning(true);
+      let r;
+      try { r = await api('/api/lucky-draw/spin', { method: 'POST', body: JSON.stringify({ times: times }) }); }
+      catch (e) { ldSetSpinning(false); toast(e.message, 'error'); return; }
+      ldData.points = r.points;
+      ldRenderPoints();
+      const wait = ldAnimateTo(r.slots[r.slots.length - 1]);
+      setTimeout(() => {
+        ldSetSpinning(false);
+        ldShowResult(r);
+        updateHeaderBalance();
+        loadDrawData();
+      }, wait);
+    }
+
+    function ldShowResult(r) {
+      const won = r.total > 0;
+      const coin = '<svg class="ld-result-coin" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#26A17B" stroke="#FFE08A" stroke-width="3"/><path d="M20 19h24v6h-9v22h-6V25h-9z" fill="#fff"/><ellipse cx="32" cy="30" rx="13" ry="3.2" fill="none" stroke="#fff" stroke-width="2.4"/></svg>';
+      let grid = '';
+      if (r.times > 1) {
+        const top = Math.max.apply(null, r.prizes);
+        grid = '<div class="ld-result-grid">' + r.prizes.map((p, i) => '<div class="' + (p === top && p > 0 ? 'big' : '') + '" style="animation-delay:' + (0.08 * i) + 's">' + ldAmt(p) + '<small>USDT</small></div>').join('') + '</div>';
+      }
+      let confetti = '';
+      if (won) {
+        const colors = ['#FFD66B', '#FF7AA8', '#6D5BFF', '#14B8A6', '#FFFFFF'];
+        for (let i = 0; i < 28; i++) {
+          confetti += '<i style="left:' + Math.round(Math.random() * 100) + '%;background:' + colors[i % colors.length] + ';animation-delay:' + (Math.random() * 0.5).toFixed(2) + 's;animation-duration:' + (1.4 + Math.random()).toFixed(2) + 's"></i>';
+        }
+      }
+      const ov = document.createElement('div');
+      ov.className = 'ld-result';
+      ov.innerHTML = '<div class="ld-result-card"><div class="ld-confetti">' + confetti + '</div>' +
+        '<div class="ld-result-kicker">' + (won ? 'Congratulations' : 'So close') + '</div>' + coin +
+        '<div class="ld-result-amount">+' + ldAmt(r.total) + ' USDT</div>' +
+        '<div class="ld-result-note">' + (won ? 'Added to your balance' : 'Better luck on the next spin') + ' · ' + ldPts(r.points) + ' points left</div>' + grid +
+        '<button class="ld-result-btn">' + (won ? 'Collect' : 'OK') + '</button></div>';
+      ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('ld-result-btn')) ov.remove(); });
+      document.body.appendChild(ov);
     }
 
     // ---- Init ----

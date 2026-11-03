@@ -8,7 +8,8 @@ const LEDGER_ROWS = {
   reserve_reward: 'reserve',
   team_commission: 'team',
   checkin: 'activity',
-  gift_reward: 'activity'
+  gift_reward: 'activity',
+  lucky_draw: 'activity'
 };
 
 function stakePlan(s) {

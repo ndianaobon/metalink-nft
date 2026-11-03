@@ -1263,7 +1263,7 @@ Type DELETE to confirm.`);
       // Gift rewards: shown to users behind the gift icon on the My page; each one is claimable once per user.
       async loadRewards(c) {
         try {
-          const rewards = await this.api('/admin/rewards');
+          const [rewards, draw] = await Promise.all([this.api('/admin/rewards'), this.api('/admin/lucky-draw')]);
           this.rewardsCache = rewards;
           const status = r => (r.active === false ? '<span class="admin-badge admin-badge-cancelled">Off</span>'
             : r.endsAt && new Date(r.endsAt) <= new Date() ? '<span class="admin-badge admin-badge-cancelled">Ended</span>'
@@ -1299,8 +1299,92 @@ Type DELETE to confirm.`);
                 </table>
               </div>
               ${rewards.length === 0 ? '<p style="text-align:center;color:#888;padding:20px;">No rewards yet. Create one!</p>' : ''}
-            </div>`;
+            </div>` + this.luckyDrawHtml(draw);
+          this.updateLuckyDrawOdds();
         } catch (e) { c.innerHTML = '<p>Failed to load</p>'; }
+      },
+
+      // Lucky Draw settings: users spend points on an 8-slot wheel that pays USDT into their balance.
+      luckyDrawHtml(draw) {
+        const s = draw.settings, st = draw.stats;
+        const field = (id, label, value, extra = '') => `<div class="admin-form-group" style="flex:1;min-width:140px;"><label class="admin-form-label">${label}</label><input class="admin-form-input" id="${id}" type="number" min="0" step="any" value="${value}" ${extra}></div>`;
+        const row = html => `<div style="display:flex;gap:12px;flex-wrap:wrap;">${html}</div>`;
+        const stat = (label, value) => `<div class="admin-stat-card"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+        return `
+          <div class="admin-table-card" style="margin-top:20px;">
+            <div class="admin-table-header"><h3>&#127905; Lucky Draw</h3>
+              <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" id="ldEnabled" ${s.enabled ? 'checked' : ''}> Open to users</label>
+            </div>
+            <p style="color:#888;font-size:0.85rem;margin:0 0 12px;">Users open it from the Lucky Draw banner on their My page. They spend points on spins; every spin wins one of the 8 prizes below, paid in USDT straight to their balance (withdrawable). The server picks each result using the chances you set.</p>
+            <div class="admin-stats" style="margin-bottom:16px;">
+              ${stat('Spins', st.spins)}${stat('Players', st.players)}${stat('Points spent', Number(st.points).toFixed(2))}
+              ${stat('USDT paid out', Number(st.paid).toFixed(2))}${stat('USDT from points sold', Number(st.purchasedUsdt).toFixed(2))}${stat('Points held by users', Number(st.pointsHeld).toFixed(2))}
+            </div>
+
+            <h4 style="margin:6px 0 8px;">Spins</h4>
+            ${row(field('ldSpinCost', 'Points per spin', s.spinCost, 'oninput="Admin.updateLuckyDrawOdds()"') + field('ldTenSpinCost', 'Points for 10 spins', s.tenSpinCost))}
+
+            <h4 style="margin:6px 0 8px;">Wheel prizes (clockwise from the top)</h4>
+            <p style="color:#888;font-size:0.8rem;margin:0 0 8px;">"Chance" is a weight: each prize's chance is its weight divided by the total of all weights. Use 0 for a prize that's shown but never won.</p>
+            <div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Slot</th><th>Prize (USDT)</th><th>Chance weight</th><th>Chance</th></tr></thead><tbody>
+              ${s.prizes.map((p, i) => `<tr><td>${i + 1}</td>
+                <td><input class="admin-form-input ld-prize-amt" type="number" min="0" step="any" value="${p.amount}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
+                <td><input class="admin-form-input ld-prize-chance" type="number" min="0" step="any" value="${p.chance}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
+                <td class="ld-prize-odds"></td></tr>`).join('')}
+            </tbody></table></div>
+            <p id="ldOddsNote" style="font-size:0.85rem;margin:8px 0 16px;"></p>
+
+            <h4 style="margin:6px 0 8px;">Ways to get points</h4>
+            ${row(field('ldDailyPoints', 'Daily points (reset 6:00 AM UK time)', s.dailyPoints))}
+            <label class="admin-form-label">Points for reaching each level</label>
+            ${row([1, 2, 3, 4, 5, 6].map(lv => field('ldLevel' + lv, 'Level ' + lv, s.levelPoints[lv])).join(''))}
+            <label class="admin-form-label">Invite points: when an invited member's first deposit reaches the amount, the inviter gets the points (highest tier reached)</label>
+            <div id="ldTiers">${s.inviteTiers.map(t => this.luckyDrawTierRow(t)).join('')}</div>
+            <button class="admin-btn admin-btn-edit" style="margin:4px 0 14px;" onclick="document.getElementById('ldTiers').insertAdjacentHTML('beforeend', Admin.luckyDrawTierRow({minDeposit:'',points:''}))">+ Add tier</button>
+            ${row(field('ldRedepositMin', 'Re-deposit: minimum deposit (USDT)', s.redepositMin) + field('ldRedepositPct', 'Re-deposit: points as % of the deposit', s.redepositPct))}
+            <div class="admin-form-group"><label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="ldBuyEnabled" ${s.buyEnabled ? 'checked' : ''}> Users can buy points with their balance</label></div>
+            ${row(field('ldBuyPoints', 'Points per pack', s.buyPoints, 'step="1"') + field('ldBuyPrice', 'Pack price (USDT)', s.buyPrice))}
+            <button class="admin-btn admin-btn-primary" onclick="Admin.saveLuckyDraw(this)">Save Lucky Draw settings</button>
+          </div>`;
+      },
+
+      luckyDrawTierRow(t) {
+        return `<div class="ld-tier" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+          <input class="admin-form-input ld-tier-min" type="number" min="0" step="any" value="${t.minDeposit}" placeholder="Deposit (USDT)" style="max-width:160px;">
+          <span>USDT &rarr;</span>
+          <input class="admin-form-input ld-tier-pts" type="number" min="0" step="any" value="${t.points}" placeholder="Points" style="max-width:120px;">
+          <span>points</span>
+          <button class="admin-btn admin-btn-delete" onclick="this.parentElement.remove()">Remove</button></div>`;
+      },
+
+      updateLuckyDrawOdds() {
+        const amts = [...document.querySelectorAll('.ld-prize-amt')].map(i => parseFloat(i.value) || 0);
+        const weights = [...document.querySelectorAll('.ld-prize-chance')].map(i => Math.max(0, parseFloat(i.value) || 0));
+        const total = weights.reduce((a, b) => a + b, 0);
+        document.querySelectorAll('.ld-prize-odds').forEach((td, i) => { td.textContent = total ? (weights[i] / total * 100).toFixed(2) + '%' : '-'; });
+        const ev = total ? amts.reduce((s, a, i) => s + a * weights[i] / total, 0) : 0;
+        const cost = parseFloat((document.getElementById('ldSpinCost') || {}).value) || 0;
+        const note = document.getElementById('ldOddsNote');
+        if (note) note.innerHTML = `Average prize per spin: <strong>${ev.toFixed(2)} USDT</strong>` + (cost ? ` (${(ev / cost).toFixed(2)} USDT per point)` : '') + '.';
+      },
+
+      async saveLuckyDraw(btn) {
+        const v = id => document.getElementById(id).value;
+        const body = {
+          enabled: document.getElementById('ldEnabled').checked,
+          spinCost: v('ldSpinCost'), tenSpinCost: v('ldTenSpinCost'), dailyPoints: v('ldDailyPoints'),
+          levelPoints: Object.fromEntries([1, 2, 3, 4, 5, 6].map(lv => [lv, v('ldLevel' + lv)])),
+          inviteTiers: [...document.querySelectorAll('.ld-tier')].map(r => ({ minDeposit: r.querySelector('.ld-tier-min').value, points: r.querySelector('.ld-tier-pts').value })),
+          redepositMin: v('ldRedepositMin'), redepositPct: v('ldRedepositPct'),
+          buyEnabled: document.getElementById('ldBuyEnabled').checked, buyPoints: v('ldBuyPoints'), buyPrice: v('ldBuyPrice'),
+          prizes: [...document.querySelectorAll('.ld-prize-amt')].map((a, i) => ({ amount: a.value, chance: document.querySelectorAll('.ld-prize-chance')[i].value }))
+        };
+        btn.disabled = true;
+        try {
+          await this.api('/admin/lucky-draw', { method: 'PUT', body: JSON.stringify(body) });
+          this.toast('Lucky Draw settings saved', 'success');
+          this.loadPage();
+        } catch (e) { btn.disabled = false; this.toast(e.message, 'error'); }
       },
 
       showRewardForm(id = null) {
