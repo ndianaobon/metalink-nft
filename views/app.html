@@ -2345,7 +2345,7 @@
             <div class="profile-uid uid-row"><span id="profileUid">UID: ---</span><button type="button" class="uid-copy-btn" onclick="copyUid(event)" title="Copy UID" aria-label="Copy UID"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div>
             <div class="my-profile-badges">
               <span class="my-badge">LV <span id="profileLevelBadge">0</span></span>
-              <span class="my-badge" id="profilePointsBadge">0 pts</span>
+              <span class="my-badge" id="profilePointsBadge" onclick="openDrawPage()" style="cursor:pointer;" title="Lucky Draw points">0 pts</span>
             </div>
           </div>
           <div class="my-profile-actions">
@@ -4238,7 +4238,7 @@
         document.getElementById('profileUid').textContent = 'UID: ' + p.uid;
         setMoney('profileBalance', '$' + fmt(p.walletBalance));
         document.getElementById('profileLevelBadge').textContent = p.level || 0;
-        document.getElementById('profilePointsBadge').textContent = fmt(p.points) + ' pts';
+        setPointsBadge(p.drawPoints);
         const avatar = document.getElementById('profileAvatar');
         if (p.avatar) {
           avatar.textContent = '';
@@ -5924,6 +5924,7 @@
         toast('+' + ldPts(r.claimed) + ' Lucky Draw point' + (r.claimed === 1 ? '' : 's') + ' · you have ' + ldPts(r.points));
         renderCheckin();
         if (ldData) { ldData.points = r.points; ldData.daily = r.daily; }
+        setPointsBadge(r.points);
         if (document.getElementById('page-my').classList.contains('active')) loadDrawBanner();
       } catch (e) {
         toast(e.message, 'error');
@@ -6087,6 +6088,7 @@
       document.getElementById('ldBannerWheel').innerHTML = ldWheelSvg(ldData.prizes, 'ldBw', true);
       document.getElementById('ldBannerWheel').setAttribute('viewBox', '24 24 252 252');
       document.getElementById('ldBannerSub').textContent = ldPts(ldData.points) + ' points · spin to win USDT';
+      setPointsBadge(ldData.points);
     }
 
     function openDrawPage() {
@@ -6130,8 +6132,15 @@
       ldRenderPanel();
     }
 
+    // The Lucky Draw point balance, also shown as the "pts" badge on the My page profile.
+    function setPointsBadge(points) {
+      const el = document.getElementById('profilePointsBadge');
+      if (el) el.textContent = ldPts(points) + ' pts';
+    }
+
     function ldRenderPoints(bump) {
       document.getElementById('ldPoints').textContent = ldPts(ldData.points);
+      setPointsBadge(ldData.points);
       const el = document.getElementById('ldPointsBox');
       if (bump) { el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
     }
