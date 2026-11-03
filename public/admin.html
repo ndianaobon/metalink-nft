@@ -1315,7 +1315,7 @@ Type DELETE to confirm.`);
             <div class="admin-table-header"><h3>&#127905; Lucky Draw</h3>
               <label style="display:flex;align-items:center;gap:8px;font-weight:600;"><input type="checkbox" id="ldEnabled" ${s.enabled ? 'checked' : ''}> Open to users</label>
             </div>
-            <p style="color:#888;font-size:0.85rem;margin:0 0 12px;">Users open it from the Lucky Draw banner on their My page. They spend points on spins; every spin wins one of the 8 prizes below, paid in USDT straight to their balance (withdrawable). The server picks each result using the chances you set.</p>
+            <p style="color:#888;font-size:0.85rem;margin:0 0 12px;">Users open it from the Lucky Draw banner on their My page. They spend points on spins; each spin lands on one slot of the wheel below and pays its prize in USDT straight to their balance (withdrawable). A 0 slot wins nothing. The server picks each result using the chances you set. Users see the prizes on the wheel but never the chances.</p>
             <div class="admin-stats" style="margin-bottom:16px;">
               ${stat('Spins', st.spins)}${stat('Players', st.players)}${stat('Points spent', Number(st.points).toFixed(2))}
               ${stat('USDT paid out', Number(st.paid).toFixed(2))}${stat('USDT from points sold', Number(st.purchasedUsdt).toFixed(2))}${stat('Points held by users', Number(st.pointsHeld).toFixed(2))}
@@ -1324,14 +1324,12 @@ Type DELETE to confirm.`);
             <h4 style="margin:6px 0 8px;">Spins</h4>
             ${row(field('ldSpinCost', 'Points per spin', s.spinCost, 'oninput="Admin.updateLuckyDrawOdds()"') + field('ldTenSpinCost', 'Points for 10 spins', s.tenSpinCost))}
 
-            <h4 style="margin:6px 0 8px;">Wheel prizes (clockwise from the top)</h4>
+            <h4 style="margin:6px 0 8px;">Wheel slots (clockwise from the top, 6 to 12)</h4>
             <p style="color:#888;font-size:0.8rem;margin:0 0 8px;">"Chance" is a weight: each prize's chance is its weight divided by the total of all weights. Use 0 for a prize that's shown but never won.</p>
-            <div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Slot</th><th>Prize (USDT)</th><th>Chance weight</th><th>Chance</th></tr></thead><tbody>
-              ${s.prizes.map((p, i) => `<tr><td>${i + 1}</td>
-                <td><input class="admin-form-input ld-prize-amt" type="number" min="0" step="any" value="${p.amount}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
-                <td><input class="admin-form-input ld-prize-chance" type="number" min="0" step="any" value="${p.chance}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
-                <td class="ld-prize-odds"></td></tr>`).join('')}
+            <div style="overflow-x:auto;"><table class="admin-table"><thead><tr><th>Slot</th><th>Prize (USDT, 0 = no prize)</th><th>Chance weight</th><th>Chance</th><th></th></tr></thead><tbody id="ldPrizeRows">
+              ${s.prizes.map(p => this.luckyDrawPrizeRow(p)).join('')}
             </tbody></table></div>
+            <button class="admin-btn admin-btn-edit" style="margin-top:6px;" onclick="Admin.addLuckyDrawSlot()">+ Add slot</button>
             <p id="ldOddsNote" style="font-size:0.85rem;margin:8px 0 16px;"></p>
 
             <h4 style="margin:6px 0 8px;">Ways to get points</h4>
@@ -1348,6 +1346,27 @@ Type DELETE to confirm.`);
           </div>`;
       },
 
+      luckyDrawPrizeRow(p) {
+        return `<tr class="ld-prize-row"><td class="ld-prize-num"></td>
+          <td><input class="admin-form-input ld-prize-amt" type="number" min="0" step="any" value="${p.amount}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
+          <td><input class="admin-form-input ld-prize-chance" type="number" min="0" step="any" value="${p.chance}" style="max-width:120px;" oninput="Admin.updateLuckyDrawOdds()"></td>
+          <td class="ld-prize-odds"></td>
+          <td><button class="admin-btn admin-btn-delete" onclick="Admin.removeLuckyDrawSlot(this)">Remove</button></td></tr>`;
+      },
+
+      addLuckyDrawSlot() {
+        const rows = document.getElementById('ldPrizeRows');
+        if (rows.children.length >= 12) { this.toast('The wheel can have at most 12 slots', 'error'); return; }
+        rows.insertAdjacentHTML('beforeend', this.luckyDrawPrizeRow({ amount: 0, chance: 10 }));
+        this.updateLuckyDrawOdds();
+      },
+
+      removeLuckyDrawSlot(btn) {
+        if (document.querySelectorAll('.ld-prize-row').length <= 6) { this.toast('The wheel needs at least 6 slots', 'error'); return; }
+        btn.closest('tr').remove();
+        this.updateLuckyDrawOdds();
+      },
+
       luckyDrawTierRow(t) {
         return `<div class="ld-tier" style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
           <input class="admin-form-input ld-tier-min" type="number" min="0" step="any" value="${t.minDeposit}" placeholder="Deposit (USDT)" style="max-width:160px;">
@@ -1362,6 +1381,7 @@ Type DELETE to confirm.`);
         const weights = [...document.querySelectorAll('.ld-prize-chance')].map(i => Math.max(0, parseFloat(i.value) || 0));
         const total = weights.reduce((a, b) => a + b, 0);
         document.querySelectorAll('.ld-prize-odds').forEach((td, i) => { td.textContent = total ? (weights[i] / total * 100).toFixed(2) + '%' : '-'; });
+        document.querySelectorAll('.ld-prize-num').forEach((td, i) => { td.textContent = i + 1; });
         const ev = total ? amts.reduce((s, a, i) => s + a * weights[i] / total, 0) : 0;
         const cost = parseFloat((document.getElementById('ldSpinCost') || {}).value) || 0;
         const note = document.getElementById('ldOddsNote');

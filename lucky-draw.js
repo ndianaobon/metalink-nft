@@ -1,4 +1,4 @@
-// Lucky Draw: users collect points and spend them on spins of an 8-slot wheel that pays USDT into
+// Lucky Draw: users collect points and spend them on spins of a prize wheel (6 to 12 slots) that pays USDT into
 // their balance. The settings live in platform_config.luckyDraw (edited on the admin Rewards page),
 // so checkAndApplyLevelUpgrade can award level-up points from the config it already has.
 //
@@ -7,7 +7,8 @@
 // a % of the amount). The server picks every prize; the wheel in the app only animates the result.
 const crypto = require('crypto');
 
-const SLOTS = 8;
+const MIN_SLOTS = 6, MAX_SLOTS = 12;
+const slotsOk = prizes => Array.isArray(prizes) && prizes.length >= MIN_SLOTS && prizes.length <= MAX_SLOTS;
 
 const DEFAULTS = {
   enabled: true,
@@ -26,16 +27,19 @@ const DEFAULTS = {
   buyEnabled: true,
   buyPoints: 5,
   buyPrice: 10,
-  // Clockwise from the top. `chance` is a relative weight; the app shows each as a % of the total.
+  // Clockwise from the top. `chance` is a relative weight (a prize's share of the total); users
+  // see the prizes on the wheel but never the chances. A 0 prize is a losing slot.
   prizes: [
-    { amount: 10, chance: 20 },
-    { amount: 5, chance: 30 },
-    { amount: 100, chance: 0.5 },
+    { amount: 5, chance: 24 },
+    { amount: 10, chance: 15 },
+    { amount: 0, chance: 12 },
     { amount: 30, chance: 2 },
-    { amount: 10, chance: 17 },
-    { amount: 500, chance: 0 },
-    { amount: 5, chance: 30 },
-    { amount: 200, chance: 0.5 }
+    { amount: 5, chance: 24 },
+    { amount: 100, chance: 0.5 },
+    { amount: 10, chance: 10 },
+    { amount: 0, chance: 12 },
+    { amount: 200, chance: 0.5 },
+    { amount: 500, chance: 0 }
   ]
 };
 
@@ -57,7 +61,7 @@ function settingsOf(config) {
     buyEnabled: pick('buyEnabled', DEFAULTS.buyEnabled) !== false,
     buyPoints: Number(pick('buyPoints', DEFAULTS.buyPoints)),
     buyPrice: Number(pick('buyPrice', DEFAULTS.buyPrice)),
-    prizes: (Array.isArray(s.prizes) && s.prizes.length === SLOTS ? s.prizes : DEFAULTS.prizes).map(p => ({ amount: Number(p.amount), chance: Number(p.chance) }))
+    prizes: (slotsOk(s.prizes) ? s.prizes : DEFAULTS.prizes).map(p => ({ amount: Number(p.amount), chance: Number(p.chance) }))
   };
 }
 
@@ -96,7 +100,7 @@ function validateSettings(body) {
     }
     settings.inviteTiers.sort((a, b) => a.minDeposit - b.minDeposit);
     const prizes = Array.isArray(body.prizes) ? body.prizes : [];
-    if (prizes.length !== SLOTS) throw new Error(`The wheel needs exactly ${SLOTS} prizes`);
+    if (!slotsOk(prizes)) throw new Error(`The wheel needs ${MIN_SLOTS} to ${MAX_SLOTS} prizes`);
     for (const [i, p] of prizes.entries()) {
       settings.prizes.push({
         amount: round2(num(p.amount, `Prize ${i + 1} amount`, { max: 1e6 })),
@@ -179,6 +183,6 @@ function spendPoints(user, points, note) {
 }
 
 module.exports = {
-  SLOTS, DEFAULTS, settingsOf, validateSettings, prizeOdds, expectedPrize, pickSlot,
+  MIN_SLOTS, MAX_SLOTS, DEFAULTS, settingsOf, validateSettings, prizeOdds, expectedPrize, pickSlot,
   invitePointsFor, redepositPointsFor, addPoints, spendPoints, awardLevelPoints
 };

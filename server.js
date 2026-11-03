@@ -2164,7 +2164,6 @@ app.get('/api/lucky-draw', authMiddleware, async (req, res) => {
   const user = await db.getUser(pool, req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
   const s = luckyDraw.settingsOf(await getConfig());
-  const odds = luckyDraw.prizeOdds(s.prizes);
   const [mine, recent] = await Promise.all([
     pool.query('SELECT data FROM app.lucky_draws WHERE user_id = $1 ORDER BY seq DESC LIMIT 50', [user.id]),
     pool.query("SELECT data FROM app.lucky_draws WHERE (data->>'total')::numeric > 0 ORDER BY seq DESC LIMIT 20")
@@ -2178,7 +2177,8 @@ app.get('/api/lucky-draw', authMiddleware, async (req, res) => {
     level: user.level || 0,
     spinCost: s.spinCost,
     tenSpinCost: s.tenSpinCost,
-    prizes: s.prizes.map((p, i) => ({ amount: p.amount, odds: Math.round(odds[i] * 100) / 100 })),
+    // Only what the wheel shows: the chances stay on the server (admin page only).
+    prizes: s.prizes.map(p => ({ amount: p.amount })),
     daily: dailyPointsStatus(user, s),
     buy: { enabled: s.buyEnabled, points: s.buyPoints, price: s.buyPrice },
     levelPoints: s.levelPoints,

@@ -1770,7 +1770,7 @@
       animation: ldShine 3.6s ease-in-out infinite;
     }
     @keyframes ldShine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
-    .ld-banner-wheel { width: 54px; height: 54px; flex-shrink: 0; animation: ldIdle 14s linear infinite; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.4)); }
+    .ld-banner-wheel { width: 56px; height: 56px; flex-shrink: 0; animation: ldIdle 14s linear infinite; filter: drop-shadow(0 3px 8px rgba(0,0,0,0.45)); }
     @keyframes ldIdle { to { transform: rotate(360deg); } }
     .ld-banner-text { flex: 1; min-width: 0; }
     .ld-banner-title { font-size: 1.02rem; font-weight: 800; letter-spacing: 0.2px; }
@@ -1780,24 +1780,32 @@
       background: linear-gradient(180deg, #FFE08A, #F5B731); box-shadow: 0 4px 12px rgba(245,183,49,0.45);
     }
 
+    /* Stage */
     .ld-stage {
-      position: relative; overflow: hidden; border-radius: 26px; padding: 18px 16px 22px; color: #fff;
-      background: radial-gradient(circle at 50% 38%, #4B2CB8 0%, #241466 42%, #0E0A2E 100%);
-      box-shadow: 0 18px 50px rgba(20,10,70,0.45); border: 1px solid rgba(255,255,255,0.08);
+      position: relative; overflow: hidden; border-radius: 28px; padding: 18px 16px 22px; color: #fff;
+      background:
+        radial-gradient(circle at 50% 46%, rgba(130,80,255,0.55) 0%, rgba(60,25,160,0.25) 38%, transparent 62%),
+        radial-gradient(circle at 15% 0%, rgba(255,92,157,0.25), transparent 40%),
+        radial-gradient(circle at 90% 100%, rgba(46,211,198,0.18), transparent 45%),
+        linear-gradient(180deg, #170B45 0%, #0B0728 100%);
+      box-shadow: 0 22px 60px rgba(20,10,70,0.5); border: 1px solid rgba(255,255,255,0.08);
     }
-    .ld-rays { position: absolute; left: 50%; top: 40%; width: 640px; height: 640px; margin: -320px 0 0 -320px; pointer-events: none; opacity: 0.6; animation: ldIdle 60s linear infinite; }
+    .ld-rays { position: absolute; left: 50%; top: 44%; width: 680px; height: 680px; margin: -340px 0 0 -340px; pointer-events: none; opacity: 0.7; animation: ldIdle 80s linear infinite; }
+    .ld-spark { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: #FFF6D6; box-shadow: 0 0 6px 2px rgba(255,214,107,0.7); pointer-events: none; animation: ldTwinkle 3s ease-in-out infinite; }
+    @keyframes ldTwinkle { 0%, 100% { opacity: 0; transform: scale(0.4); } 50% { opacity: 1; transform: scale(1); } }
     .ld-stage > * { position: relative; }
     .ld-stage > .ld-rays { position: absolute; }
+    .ld-stage > .ld-sparks { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; overflow: hidden; }
     .ld-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
     .ld-kicker { font-size: 0.7rem; font-weight: 700; letter-spacing: 2.4px; text-transform: uppercase; color: #F5C451; }
-    .ld-title { font-size: 1.6rem; font-weight: 900; line-height: 1.15; color: #fff; }
+    .ld-title { font-size: 1.6rem; font-weight: 900; line-height: 1.15; color: #fff; text-shadow: 0 2px 18px rgba(157,92,255,0.6); }
     .ld-sub { font-size: 0.8rem; color: rgba(255,255,255,0.65); margin-top: 2px; }
     .ld-rules-btn {
       flex-shrink: 0; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #fff;
       font-family: var(--font); font-size: 0.78rem; font-weight: 600; padding: 7px 12px; border-radius: 999px; cursor: pointer;
     }
     .ld-ticker {
-      margin: 14px 0 6px; height: 30px; overflow: hidden; border-radius: 999px; background: rgba(0,0,0,0.28);
+      margin: 14px 0 4px; height: 30px; overflow: hidden; border-radius: 999px; background: rgba(0,0,0,0.3);
       border: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center;
     }
     .ld-ticker-icon { flex-shrink: 0; padding: 0 8px 0 12px; color: #F5C451; display: flex; }
@@ -1807,42 +1815,46 @@
     .ld-ticker-track b { color: #FFD66B; }
     @keyframes ldTicker { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
-    .ld-wheel-wrap { position: relative; width: 100%; max-width: 340px; margin: 14px auto 6px; }
+    /* Wheel: a static frame (rim + bulbs), the turning wheel, a static gloss layer, the pointer and the hub. */
+    .ld-machine { position: relative; width: 100%; max-width: 350px; margin: 18px auto 0; }
+    .ld-wheel-wrap { position: relative; width: 100%; z-index: 1; }
     .ld-wheel-wrap::before { content: ''; display: block; padding-top: 100%; }
-    .ld-rim {
-      position: absolute; top: 0; left: 0; right: 0; bottom: 0; border-radius: 50%;
-      background: linear-gradient(145deg, #FFE9A8, #E3A723 40%, #FFF1C2 60%, #B57E12);
-      box-shadow: 0 0 0 4px rgba(255,214,107,0.15), 0 0 40px rgba(255,196,64,0.35), inset 0 0 12px rgba(0,0,0,0.35);
-    }
-    .ld-rim-inner { position: absolute; top: 5.5%; left: 5.5%; right: 5.5%; bottom: 5.5%; border-radius: 50%; background: #170E45; box-shadow: inset 0 0 16px rgba(0,0,0,0.6); }
-    .ld-light { position: absolute; width: 3.4%; height: 3.4%; margin: -1.7% 0 0 -1.7%; border-radius: 50%; background: #FFF6D6; box-shadow: 0 0 8px #FFE08A; animation: ldBlink 1.2s ease-in-out infinite; }
-    .ld-light.alt { animation-delay: 0.6s; }
-    .ld-stage.spinning .ld-light { animation-duration: 0.3s; }
-    @keyframes ldBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
-    .ld-wheel {
-      position: absolute; top: 7.5%; left: 7.5%; width: 85%; height: 85%; display: block;
-      transform: rotate(0deg); transition: transform 5.4s cubic-bezier(0.12, 0.72, 0.1, 1);
-    }
-    .ld-pointer {
-      position: absolute; left: 50%; top: -2%; width: 13%; margin-left: -6.5%; z-index: 3;
-      filter: drop-shadow(0 4px 6px rgba(0,0,0,0.45));
-    }
+    .ld-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: block; }
+    .ld-frame { filter: drop-shadow(0 14px 22px rgba(0,0,0,0.55)); }
+    .ld-wheel { transform-origin: 50% 50%; will-change: transform; }
+    .ld-gloss { pointer-events: none; }
+    .ld-bulb-glow { opacity: 0.15; transition: opacity 0.12s; }
+    .ld-bulb-core { fill: #8A6A2A; transition: fill 0.12s; }
+    .ld-bulb.on .ld-bulb-glow { opacity: 1; }
+    .ld-bulb.on .ld-bulb-core { fill: #FFFBEA; }
+    #ldWinGlow { opacity: 0; }
+    #ldWinGlow.flash { animation: ldWinFlash 0.5s ease-in-out 4; }
+    @keyframes ldWinFlash { 50% { opacity: 0.55; } }
+    .ld-pointer { position: absolute; left: 50%; top: -3.5%; width: 15%; margin-left: -7.5%; z-index: 3; transform-origin: 50% 22%; filter: drop-shadow(0 5px 6px rgba(0,0,0,0.5)); }
+    .ld-pointer.kick { animation: ldKick 0.16s ease-out; }
+    @keyframes ldKick { 35% { transform: rotate(-16deg); } }
     .ld-hub {
-      position: absolute; left: 50%; top: 50%; width: 27%; height: 27%; margin: -13.5% 0 0 -13.5%; z-index: 2;
-      border-radius: 50%; border: 4px solid #FFE6A0; cursor: pointer; font-family: var(--font); color: #2A1A00; padding: 0;
-      background: radial-gradient(circle at 35% 30%, #FFF4CC, #F5C451 45%, #C98A12 100%);
-      box-shadow: 0 6px 18px rgba(0,0,0,0.5), inset 0 -4px 8px rgba(120,70,0,0.35);
-      display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
-      transition: transform 0.15s ease;
+      position: absolute; left: 50%; top: 50%; width: 28%; height: 28%; margin: -14% 0 0 -14%; z-index: 2; padding: 0;
+      border-radius: 50%; border: none; cursor: pointer; font-family: var(--font); color: #fff;
+      background: radial-gradient(circle at 50% 50%, #3A1C93 0%, #241063 58%, transparent 59%), radial-gradient(circle at 35% 28%, #FFF7D6, #F5C451 38%, #A8700E 72%, #6B4300 100%);
+      box-shadow: 0 8px 22px rgba(0,0,0,0.55), 0 0 0 3px rgba(255,236,170,0.55), inset 0 -6px 10px rgba(0,0,0,0.35);
+      display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05;
+      animation: ldHubPulse 2.2s ease-in-out infinite;
     }
+    .ld-hub::before {
+      content: ''; position: absolute; top: 12%; left: 22%; width: 56%; height: 30%; border-radius: 50%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.45), rgba(255,255,255,0)); pointer-events: none;
+    }
+    @keyframes ldHubPulse { 50% { box-shadow: 0 8px 22px rgba(0,0,0,0.55), 0 0 0 3px rgba(255,236,170,0.55), 0 0 28px 6px rgba(255,214,107,0.55), inset 0 -6px 10px rgba(0,0,0,0.35); } }
     .ld-hub:active { transform: scale(0.94); }
-    .ld-hub:disabled { cursor: default; filter: saturate(0.6); }
-    .ld-hub b { font-size: 1.05rem; font-weight: 900; letter-spacing: 1px; }
-    .ld-hub small { font-size: 0.62rem; font-weight: 700; opacity: 0.8; }
+    .ld-hub:disabled { cursor: default; animation: none; }
+    .ld-hub b { font-size: 1.05rem; font-weight: 900; letter-spacing: 1.5px; color: #FFE7A0; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+    .ld-hub small { font-size: 0.6rem; font-weight: 700; color: rgba(255,255,255,0.8); margin-top: 2px; }
+    .ld-stand { display: block; width: 56%; margin: -9% auto 0; position: relative; z-index: 0; filter: drop-shadow(0 10px 14px rgba(0,0,0,0.5)); }
 
     .ld-points {
-      display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 16px auto 0; max-width: 380px;
-      padding: 10px 10px 10px 16px; border-radius: 16px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1);
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 14px auto 0; max-width: 380px;
+      padding: 10px 10px 10px 16px; border-radius: 16px; background: rgba(0,0,0,0.32); border: 1px solid rgba(255,255,255,0.1);
     }
     .ld-points-label { font-size: 0.76rem; color: rgba(255,255,255,0.65); }
     .ld-points-val { display: flex; align-items: center; gap: 7px; font-size: 1.35rem; font-weight: 900; color: #FFD66B; }
@@ -1887,7 +1899,7 @@
     .ld-chip.done { background: rgba(20,184,166,0.14); color: var(--positive); }
     .ld-chip.next { background: rgba(79,70,229,0.14); color: var(--primary); font-weight: 700; }
     .ld-buy-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-    .ld-stepper { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .ld-stepper { display: flex; align-items: center; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; flex-shrink: 0; }
     .ld-stepper button { width: 34px; height: 34px; border: none; background: var(--surface-hover); color: var(--text); font-size: 1.1rem; cursor: pointer; }
     .ld-stepper input { width: 46px; height: 34px; border: none; text-align: center; background: var(--surface); color: var(--text); font-family: var(--font); font-weight: 700; font-size: 0.9rem; }
     .ld-buy-total { flex: 1; font-size: 0.8rem; color: var(--text-secondary); min-width: 0; }
@@ -1897,41 +1909,84 @@
     .ld-row-sub { font-size: 0.74rem; color: var(--text-muted); }
     .ld-plus { color: var(--positive); font-weight: 700; white-space: nowrap; }
     .ld-minus { color: var(--negative); font-weight: 700; white-space: nowrap; }
+    .ld-zero { color: var(--text-muted); font-weight: 700; white-space: nowrap; }
     .ld-empty { text-align: center; padding: 26px 10px; color: var(--text-muted); font-size: 0.85rem; }
-    .ld-odds { width: 100%; border-collapse: collapse; font-size: 0.84rem; margin-top: 8px; }
-    .ld-odds td { padding: 7px 4px; border-bottom: 1px solid var(--border); }
-    .ld-odds td:last-child { text-align: right; color: var(--text-secondary); }
     .ld-rules { font-size: 0.84rem; color: var(--text-secondary); line-height: 1.65; padding-left: 18px; margin: 0; }
     .ld-section-title { font-weight: 700; font-size: 0.92rem; margin-bottom: 4px; }
 
-    .ld-result {
-      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 300; display: flex; align-items: center; justify-content: center;
-      padding: 16px; background: rgba(6,4,20,0.72);
+    /* Win celebration */
+    .ldw {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 400; display: flex; align-items: center; justify-content: center;
+      padding: 16px; overflow: hidden; background: radial-gradient(circle at 50% 42%, rgba(70,30,170,0.85), rgba(5,3,18,0.94) 70%);
+      animation: ldwFade 0.3s ease both;
     }
-    .ld-result-card {
-      position: relative; width: 100%; max-width: 360px; border-radius: 24px; padding: 26px 18px 18px; text-align: center; color: #fff;
-      background: radial-gradient(circle at 50% 0%, #6A45E8, #2A1777 60%, #170E45); border: 1px solid rgba(255,214,107,0.4);
-      box-shadow: 0 0 60px rgba(245,196,81,0.3); animation: ldPop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1);
+    .ldw.out { animation: ldwFadeOut 0.3s ease both; }
+    @keyframes ldwFade { from { opacity: 0; } }
+    @keyframes ldwFadeOut { to { opacity: 0; } }
+    .ldw-confetti { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+    .ldw-rays { position: absolute; left: 50%; top: 38%; width: 900px; height: 900px; margin: -450px 0 0 -450px; pointer-events: none; animation: ldwRays 0.9s cubic-bezier(0.2, 1, 0.3, 1) both, ldIdle 40s linear 0.9s infinite; }
+    @keyframes ldwRays { from { transform: scale(0.2) rotate(-40deg); opacity: 0; } }
+    .ldw-frame {
+      position: relative; z-index: 2; width: 100%; max-width: 370px; padding: 2px; border-radius: 30px;
+      background: linear-gradient(150deg, #FFF1C2, #E0A21C 30%, #7A4D00 50%, #F5C451 70%, #FFF1C2);
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.08), 0 0 80px rgba(245,183,49,0.35), 0 30px 80px rgba(0,0,0,0.6);
+      animation: ldwPop 0.75s cubic-bezier(0.2, 1.5, 0.35, 1) 0.1s both;
     }
-    @keyframes ldPop { from { transform: scale(0.6); opacity: 0; } }
-    .ld-result-kicker { font-size: 0.75rem; letter-spacing: 2px; text-transform: uppercase; color: #F5C451; font-weight: 700; }
-    .ld-result-coin { width: 64px; height: 64px; margin: 10px auto 0; }
-    .ld-result-amount { font-size: 2.5rem; font-weight: 900; margin: 4px 0 2px; color: #FFD66B; text-shadow: 0 2px 14px rgba(245,183,49,0.5); }
-    .ld-result-note { font-size: 0.8rem; color: rgba(255,255,255,0.7); }
-    .ld-result-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 16px 0 4px; }
-    .ld-result-grid div { padding: 8px 2px; border-radius: 10px; background: rgba(255,255,255,0.08); font-size: 0.78rem; font-weight: 800; color: #FFD66B; animation: ldPop 0.4s both; }
-    .ld-result-grid div small { display: block; font-size: 0.58rem; font-weight: 600; color: rgba(255,255,255,0.6); }
-    .ld-result-grid div.big { background: linear-gradient(180deg, rgba(245,196,81,0.35), rgba(245,196,81,0.12)); }
-    .ld-result-btn {
-      width: 100%; margin-top: 16px; border: none; border-radius: 14px; padding: 13px; cursor: pointer; font-family: var(--font);
-      font-weight: 800; font-size: 0.95rem; color: #2A1A00; background: linear-gradient(180deg, #FFE08A, #F5B731);
+    @keyframes ldwPop { from { transform: scale(0.4) translateY(40px); opacity: 0; } }
+    .ldw-card {
+      position: relative; overflow: hidden; border-radius: 28px; padding: 64px 20px 20px; text-align: center; color: #fff;
+      background: radial-gradient(circle at 50% 0%, rgba(157,92,255,0.65), transparent 60%), linear-gradient(180deg, #24105F, #120836 70%, #0C0626);
     }
-    .ld-confetti { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: none; border-radius: 24px; }
-    .ld-confetti i { position: absolute; top: -12px; width: 7px; height: 12px; border-radius: 2px; animation: ldFall 1.8s ease-in forwards; }
-    @keyframes ldFall { to { transform: translateY(460px) rotate(540deg); opacity: 0; } }
+    .ldw-card::after {
+      content: ''; position: absolute; top: 0; bottom: 0; width: 45%; left: -70%; pointer-events: none;
+      background: linear-gradient(100deg, transparent, rgba(255,255,255,0.12), transparent);
+      animation: ldwSheen 3.2s ease-in-out 1.4s infinite;
+    }
+    @keyframes ldwSheen { 0% { left: -70%; } 45%, 100% { left: 140%; } }
+    .ldw-ribbon {
+      position: absolute; top: 16px; left: 50%; transform: translateX(-50%); padding: 6px 26px; border-radius: 8px;
+      font-size: 0.82rem; font-weight: 900; letter-spacing: 3px; color: #3A2200; white-space: nowrap;
+      background: linear-gradient(180deg, #FFF0B3, #F5B731 60%, #D18F0F); box-shadow: 0 6px 16px rgba(0,0,0,0.35);
+      animation: ldwRibbon 0.6s cubic-bezier(0.2, 1.6, 0.4, 1) 0.55s both;
+    }
+    .ldw-ribbon.jackpot { color: #fff; background: linear-gradient(180deg, #FF7AA8, #E5487C 60%, #A8195A); }
+    @keyframes ldwRibbon { from { transform: translateX(-50%) scale(0); } }
+    .ldw-coin-stage { position: relative; width: 132px; height: 132px; margin: 0 auto 4px; perspective: 600px; }
+    .ldw-halo { position: absolute; top: -30px; left: -30px; right: -30px; bottom: -30px; border-radius: 50%; background: radial-gradient(circle, rgba(255,214,107,0.55), rgba(255,214,107,0) 65%); animation: ldwHalo 2s ease-in-out infinite; }
+    @keyframes ldwHalo { 50% { transform: scale(1.12); opacity: 0.75; } }
+    .ldw-coin { position: relative; width: 100%; height: 100%; animation: ldwCoinIn 1.5s cubic-bezier(0.2, 0.9, 0.3, 1) 0.3s both, ldwFloat 3s ease-in-out 1.8s infinite; }
+    .ldw-coin svg { width: 100%; height: 100%; display: block; }
+    @keyframes ldwCoinIn { 0% { transform: translateY(-160px) rotateY(0deg) scale(0.5); opacity: 0; } 15% { opacity: 1; } 100% { transform: translateY(0) rotateY(1080deg) scale(1); } }
+    @keyframes ldwFloat { 50% { transform: translateY(-8px); } }
+    .ldw-star { position: absolute; width: 18px; height: 18px; animation: ldTwinkle 1.8s ease-in-out infinite; }
+    .ldw-title { font-size: 1.05rem; font-weight: 900; letter-spacing: 4px; color: #FFD66B; margin-top: 6px; white-space: nowrap; }
+    .ldw-title span { display: inline-block; animation: ldwLetter 0.5s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+    @keyframes ldwLetter { from { transform: translateY(-24px) scale(0.3); opacity: 0; } }
+    .ldw-amount { margin-top: 4px; font-size: 3rem; font-weight: 900; line-height: 1.05; letter-spacing: -1px; color: #FFE7A0; text-shadow: 0 0 24px rgba(245,183,49,0.7), 0 3px 0 #A8700E; }
+    .ldw-amount small { font-size: 1.1rem; letter-spacing: 1px; color: #fff; text-shadow: none; margin-left: 4px; }
+    .ldw-amount.done { animation: ldwBeat 0.5s ease; }
+    @keyframes ldwBeat { 40% { transform: scale(1.12); } }
+    .ldw-sub { font-size: 0.82rem; color: rgba(255,255,255,0.72); margin-top: 6px; }
+    .ldw-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 14px 0 2px; }
+    .ldw-grid div { padding: 7px 2px; border-radius: 10px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.06); font-size: 0.8rem; font-weight: 800; color: #FFD66B; animation: ldwLetter 0.45s both; }
+    .ldw-grid div small { display: block; font-size: 0.56rem; font-weight: 600; color: rgba(255,255,255,0.55); }
+    .ldw-grid div.top { background: linear-gradient(180deg, rgba(245,196,81,0.45), rgba(245,196,81,0.12)); border-color: rgba(255,214,107,0.6); }
+    .ldw-grid div.zero { color: rgba(255,255,255,0.4); }
+    .ldw-actions { display: flex; gap: 8px; margin-top: 18px; }
+    .ldw-btn {
+      flex: 1; display: flex; align-items: center; justify-content: center; gap: 7px; border: none; border-radius: 14px; padding: 12px 8px;
+      cursor: pointer; font-family: var(--font); font-weight: 800; font-size: 0.86rem; color: #fff;
+    }
+    .ldw-tg { background: linear-gradient(180deg, #37AEE2, #1E96C8); box-shadow: 0 6px 18px rgba(34,158,217,0.45); }
+    .ldw-save { flex: 0 0 auto; padding: 12px 14px; background: rgba(255,255,255,0.12); }
+    .ldw-collect { width: 100%; margin-top: 10px; color: #2A1A00; background: linear-gradient(180deg, #FFE08A, #F5B731); box-shadow: 0 6px 18px rgba(245,183,49,0.4); }
+    .ldw-group { display: inline-block; margin-top: 12px; font-size: 0.76rem; color: rgba(255,255,255,0.6); background: none; border: none; cursor: pointer; font-family: var(--font); text-decoration: underline; }
+    .ldw.lose .ldw-card { background: radial-gradient(circle at 50% 0%, rgba(110,110,160,0.45), transparent 60%), linear-gradient(180deg, #1E1A3A, #110E26); }
+    .ldw.lose .ldw-frame { background: linear-gradient(150deg, #C9C6E8, #6B6890 50%, #C9C6E8); box-shadow: 0 30px 80px rgba(0,0,0,0.6); }
+    .ldw.lose .ldw-amount { color: #D8D6F0; text-shadow: none; }
+    .ldw.lose .ldw-title { color: #C9C6E8; }
     @media (prefers-reduced-motion: reduce) {
-      .ld-banner::after, .ld-banner-wheel, .ld-rays, .ld-light, .ld-ticker-track { animation: none; }
-      .ld-wheel { transition-duration: 1.2s; }
+      .ld-banner::after, .ld-banner-wheel, .ld-rays, .ld-spark, .ld-ticker-track, .ld-hub, .ldw-rays, .ldw-coin, .ldw-halo, .ldw-card::after { animation: none; }
     }
   </style>
 </head>
@@ -2600,6 +2655,7 @@
         </button>
         <div class="ld-stage" id="ldStage">
           <svg class="ld-rays" viewBox="0 0 200 200" aria-hidden="true" id="ldRays"></svg>
+          <div class="ld-sparks" id="ldSparks"></div>
           <div class="ld-head">
             <div>
               <div class="ld-kicker">MetaLink NFT</div>
@@ -2612,15 +2668,32 @@
             <span class="ld-ticker-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.9 7.1.6-5.4 4.7 1.7 7-6.3-3.9-6.3 3.9 1.7-7L2 9.5l7.1-.6z"/></svg></span>
             <div class="ld-ticker-viewport"><div class="ld-ticker-track" id="ldTicker"></div></div>
           </div>
-          <div class="ld-wheel-wrap">
-            <div class="ld-rim"><div class="ld-rim-inner"></div><div id="ldLights"></div></div>
-            <svg class="ld-wheel" id="ldWheel" viewBox="0 0 200 200" aria-label="Prize wheel"></svg>
-            <svg class="ld-pointer" viewBox="0 0 40 52" aria-hidden="true">
-              <defs><linearGradient id="ldPtrGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFF3C4"/><stop offset="1" stop-color="#E0A11B"/></linearGradient></defs>
-              <path d="M20 50 L4 14 A16 16 0 1 1 36 14 Z" fill="url(#ldPtrGrad)" stroke="#8A5A00" stroke-width="2"/>
-              <circle cx="20" cy="15" r="6" fill="#7C3AED" stroke="#FFF3C4" stroke-width="2"/>
+          <div class="ld-machine">
+            <div class="ld-wheel-wrap">
+              <svg class="ld-layer ld-frame" id="ldFrame" viewBox="0 0 300 300" aria-hidden="true"></svg>
+              <svg class="ld-layer ld-wheel" id="ldWheel" viewBox="0 0 300 300" aria-label="Prize wheel"></svg>
+              <svg class="ld-layer ld-gloss" id="ldGloss" viewBox="0 0 300 300" aria-hidden="true"></svg>
+              <svg class="ld-pointer" id="ldPointer" viewBox="0 0 60 80" aria-hidden="true">
+                <defs>
+                  <linearGradient id="ldPtrGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF6D2"/><stop offset="0.45" stop-color="#F5C451"/><stop offset="1" stop-color="#8A5A00"/></linearGradient>
+                  <radialGradient id="ldPtrGem" cx="0.38" cy="0.32" r="0.7"><stop offset="0" stop-color="#FFD1E4"/><stop offset="0.35" stop-color="#FF4F93"/><stop offset="1" stop-color="#8A0F45"/></radialGradient>
+                </defs>
+                <path d="M30 78 L9 30 A22 22 0 1 1 51 30 Z" fill="url(#ldPtrGold)" stroke="#6B4300" stroke-width="2"/>
+                <path d="M30 70 L14 31 A17 17 0 1 1 46 31 Z" fill="none" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/>
+                <circle cx="30" cy="22" r="11" fill="url(#ldPtrGem)" stroke="#FFF1C2" stroke-width="2.5"/>
+                <ellipse cx="26" cy="18" rx="4" ry="2.6" fill="rgba(255,255,255,0.75)"/>
+              </svg>
+              <button class="ld-hub" id="ldHub" onclick="ldSpin(1)" aria-label="Spin once"><b>SPIN</b><small id="ldHubCost">10 pts</small></button>
+            </div>
+            <svg class="ld-stand" viewBox="0 0 200 70" aria-hidden="true">
+              <defs>
+                <linearGradient id="ldStandGold" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#8A5A00"/><stop offset="0.3" stop-color="#F5C451"/><stop offset="0.5" stop-color="#FFF1C2"/><stop offset="0.7" stop-color="#E0A21C"/><stop offset="1" stop-color="#7A4D00"/></linearGradient>
+                <linearGradient id="ldStandBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3B1C99"/><stop offset="1" stop-color="#1A0B4D"/></linearGradient>
+              </defs>
+              <path d="M62 0 L138 0 L170 52 L30 52 Z" fill="url(#ldStandBody)" stroke="url(#ldStandGold)" stroke-width="3"/>
+              <rect x="14" y="50" width="172" height="16" rx="8" fill="url(#ldStandGold)"/>
+              <rect x="70" y="18" width="60" height="4" rx="2" fill="rgba(255,214,107,0.55)"/>
             </svg>
-            <button class="ld-hub" id="ldHub" onclick="ldSpin(1)" aria-label="Spin once"><b>SPIN</b><small id="ldHubCost">10 pts</small></button>
           </div>
           <div class="ld-points">
             <div>
@@ -4278,6 +4351,7 @@
       document.getElementById('invitePageView').classList.remove('active');
       document.getElementById('drawPageView').classList.remove('active');
       clearInterval(ldDailyTimer);
+      ldBulbs('off');
       document.getElementById('myMainView').style.display = '';
     }
 
@@ -5883,66 +5957,125 @@
 
     // ---- Lucky Draw ----
     // The server picks every prize (POST /api/lucky-draw/spin); the wheel only animates to the slot it returns.
+    // Users see the prizes on the wheel but never the chances.
     let ldData = null, ldTabName = 'earn', ldSpinning = false, ldRotation = 0, ldPacks = 1, ldDailyTimer = null;
+    let ldBulbTimer = null, ldBulbPhase = 0, ldShareFile = null, ldLastWin = null;
 
-    function ldPoint(r, deg) {
-      const a = deg * Math.PI / 180;
-      return (100 + r * Math.sin(a)).toFixed(2) + ' ' + (100 - r * Math.cos(a)).toFixed(2);
+    const LD_SEGMENTS = [['#A066FF', '#5A1FC2'], ['#4F82FF', '#1D3BB3'], ['#FF63A1', '#AD1A58'], ['#33D6C9', '#0A7A82']];
+    const LD_ZERO = ['#55527A', '#24223A'], LD_GOLD = ['#FFF1BA', '#DD9C17'];
+
+    function ldPoint(r, deg, c) {
+      const a = deg * Math.PI / 180, o = c || 150;
+      return (o + r * Math.sin(a)).toFixed(2) + ' ' + (o - r * Math.cos(a)).toFixed(2);
     }
     function ldAmt(n) { n = Number(n || 0); return n % 1 ? n.toFixed(2) : String(n); }
     function ldPts(n) { return String(parseFloat(Number(n || 0).toFixed(2))); }
     function ldDate(iso) { return new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+    function ldGrad(id, pair) {
+      return '<radialGradient id="' + id + '" cx="150" cy="150" r="124" gradientUnits="userSpaceOnUse"><stop offset="0.25" stop-color="' + pair[0] + '"/><stop offset="1" stop-color="' + pair[1] + '"/></radialGradient>';
+    }
+    // The two largest prizes are drawn in gold.
+    function ldBigFrom(prizes) {
+      const a = prizes.map(p => p.amount).sort((x, y) => y - x);
+      return a[Math.min(1, a.length - 1)];
+    }
 
-    // The wheel as SVG. Slot 0 is at the top and slots go clockwise, as on the server.
+    // The turning part. Slot 0 is at the top and slots go clockwise, as on the server.
     // `id` prefixes the gradient ids, since the My page banner draws a second, smaller wheel.
     function ldWheelSvg(prizes, id, compact) {
-      const n = prizes.length, step = 360 / n, r = 100;
-      const amounts = prizes.map(p => p.amount).sort((a, b) => b - a);
-      const bigFrom = amounts[Math.min(1, n - 1)]; // the two largest prizes are drawn in gold
-      let s = '<defs>' +
-        '<radialGradient id="' + id + 'A" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#6247DA"/><stop offset="1" stop-color="#3A2496"/></radialGradient>' +
-        '<radialGradient id="' + id + 'B" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#33228A"/><stop offset="1" stop-color="#1C1252"/></radialGradient>' +
-        '<radialGradient id="' + id + 'G" cx="100" cy="100" r="100" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#FFE7A0"/><stop offset="1" stop-color="#E3A21E"/></radialGradient>' +
-        '</defs>';
+      const n = prizes.length, step = 360 / n, R = 124, bigFrom = ldBigFrom(prizes);
+      let defs = LD_SEGMENTS.map((p, i) => ldGrad(id + 'S' + i, p)).join('') + ldGrad(id + 'Z', LD_ZERO) + ldGrad(id + 'G', LD_GOLD) +
+        '<radialGradient id="' + id + 'Sh" cx="150" cy="150" r="124" gradientUnits="userSpaceOnUse"><stop offset="0.6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.38"/></radialGradient>' +
+        '<linearGradient id="' + id + 'L" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF6D2"/><stop offset="0.5" stop-color="#E0A21C"/><stop offset="1" stop-color="#FFF1C2"/></linearGradient>';
+      let segs = '', lines = '', pegs = '', labels = '';
       prizes.forEach((p, i) => {
-        const a = i * step, big = p.amount >= bigFrom && p.amount > 0;
-        const fill = big ? id + 'G' : (i % 2 ? id + 'B' : id + 'A');
-        s += '<path d="M100 100 L' + ldPoint(r, a - step / 2) + ' A' + r + ' ' + r + ' 0 0 1 ' + ldPoint(r, a + step / 2) + ' Z" fill="url(#' + fill + ')" stroke="#F5C451" stroke-width="1.2"/>';
+        const a = i * step, zero = !(p.amount > 0), big = !zero && p.amount >= bigFrom;
+        const fill = zero ? id + 'Z' : big ? id + 'G' : id + 'S' + (i % LD_SEGMENTS.length);
+        segs += '<path d="M150 150 L' + ldPoint(R, a - step / 2) + ' A' + R + ' ' + R + ' 0 0 1 ' + ldPoint(R, a + step / 2) + ' Z" fill="url(#' + fill + ')"/>';
+        lines += '<path d="M' + ldPoint(compact ? 30 : 40, a + step / 2) + ' L' + ldPoint(R, a + step / 2) + '" stroke="url(#' + id + 'L)" stroke-width="' + (compact ? 4 : 2.2) + '"/>';
         if (compact) return;
-        const ink = big ? '#3A2200' : '#FFFFFF';
-        s += '<g transform="rotate(' + a + ' 100 100)">' +
-          '<circle cx="100" cy="24" r="9" fill="#26A17B" stroke="' + (big ? '#7A4D00' : '#FFFFFF') + '" stroke-width="1.2"/>' +
-          '<path d="M95.2 19.6h9.6v2.3h-3.6v8.3h-2.4v-8.3h-3.6z" fill="#FFFFFF"/>' +
-          '<path d="M96.4 24.6c2.2.5 5 .5 7.2 0" stroke="#FFFFFF" stroke-width="1.1" fill="none"/>' +
-          '<text x="100" y="48" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="' + (String(ldAmt(p.amount)).length > 3 ? 11.5 : 13.5) + '" font-weight="900" fill="' + ink + '">' + ldAmt(p.amount) + '</text>' +
-          '<text x="100" y="58" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="6.5" font-weight="700" letter-spacing="0.8" fill="' + ink + '" opacity="0.8">USDT</text>' +
+        pegs += '<circle cx="' + ldPoint(117, a + step / 2).replace(' ', '" cy="') + '" r="3.3" fill="#FFE7A0" stroke="#7A4D00" stroke-width="0.9"/>';
+        const ink = big ? '#4A2C00' : zero ? '#D6D3F0' : '#FFFFFF';
+        const label = ldAmt(p.amount), fs = (n > 10 ? 15 : 18) - (label.length > 3 ? 3 : 0);
+        labels += '<g transform="rotate(' + a + ' 150 150)">' +
+          '<circle cx="150" cy="47" r="11.5" fill="' + (zero ? '#6E6B92' : '#26A17B') + '" stroke="' + (big ? '#7A4D00' : 'rgba(255,255,255,0.9)') + '" stroke-width="1.6"/>' +
+          '<path d="M144.6 42h10.8v2.6h-4.1v9.2h-2.6v-9.2h-4.1z" fill="#FFFFFF"/>' +
+          '<path d="M145.8 47.6c2.5.6 5.9.6 8.4 0" stroke="#FFFFFF" stroke-width="1.2" fill="none"/>' +
+          '<text x="150" y="' + (78 + (fs < 16 ? -1 : 0)) + '" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="' + fs + '" font-weight="900" fill="' + ink + '"' +
+          (big ? '' : ' stroke="rgba(0,0,0,0.35)" stroke-width="2.4" paint-order="stroke"') + '>' + label + '</text>' +
+          '<text x="150" y="90" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="7.5" font-weight="800" letter-spacing="1" fill="' + ink + '" opacity="0.85">USDT</text>' +
           '</g>';
       });
-      s += '<circle cx="100" cy="100" r="99" fill="none" stroke="#F5C451" stroke-width="2"/>';
-      if (compact) s += '<circle cx="100" cy="100" r="26" fill="#F5C451" stroke="#FFF1C2" stroke-width="6"/>';
+      let s = '<defs>' + defs + '</defs>' + segs + '<circle cx="150" cy="150" r="' + R + '" fill="url(#' + id + 'Sh)"/>' + lines + pegs + labels;
+      s += compact
+        ? '<circle cx="150" cy="150" r="122" fill="none" stroke="url(#' + id + 'L)" stroke-width="8"/><circle cx="150" cy="150" r="34" fill="url(#' + id + 'G)" stroke="#FFF1C2" stroke-width="8"/>'
+        : '<circle cx="150" cy="150" r="42" fill="#1A0B4D" stroke="url(#' + id + 'L)" stroke-width="3"/>';
       return s;
     }
 
-    function ldBuildStatic() {
-      const lights = document.getElementById('ldLights');
-      if (lights && !lights.children.length) {
-        let h = '';
-        for (let i = 0; i < 16; i++) {
-          const a = i * 22.5 * Math.PI / 180;
-          h += '<span class="ld-light' + (i % 2 ? ' alt' : '') + '" style="left:' + (50 + 47.2 * Math.sin(a)).toFixed(2) + '%;top:' + (50 - 47.2 * Math.cos(a)).toFixed(2) + '%"></span>';
-        }
-        lights.innerHTML = h;
+    // The fixed rim with its bulbs.
+    function ldFrameSvg() {
+      let s = '<defs>' +
+        '<linearGradient id="ldRimA" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF6D2"/><stop offset="0.25" stop-color="#E8B33A"/><stop offset="0.5" stop-color="#8F5E0C"/><stop offset="0.75" stop-color="#F7D57A"/><stop offset="1" stop-color="#9C6A12"/></linearGradient>' +
+        '<linearGradient id="ldRimB" x1="1" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#FFF1C2"/><stop offset="0.5" stop-color="#A8700E"/><stop offset="1" stop-color="#FFE7A0"/></linearGradient>' +
+        '<radialGradient id="ldBulbGlow"><stop offset="0" stop-color="#FFF8D8" stop-opacity="1"/><stop offset="0.45" stop-color="#FFD66B" stop-opacity="0.75"/><stop offset="1" stop-color="#FFD66B" stop-opacity="0"/></radialGradient>' +
+        '</defs>' +
+        '<circle cx="150" cy="150" r="148" fill="url(#ldRimA)"/>' +
+        '<circle cx="150" cy="150" r="141.5" fill="none" stroke="rgba(0,0,0,0.3)" stroke-width="1"/>' +
+        '<circle cx="150" cy="150" r="132" fill="url(#ldRimB)"/>' +
+        '<circle cx="150" cy="150" r="127" fill="#120836"/>';
+      for (let i = 0; i < 24; i++) {
+        const c = ldPoint(139.5, i * 15).split(' ');
+        s += '<g class="ld-bulb"><circle class="ld-bulb-glow" cx="' + c[0] + '" cy="' + c[1] + '" r="8.5" fill="url(#ldBulbGlow)"/>' +
+          '<circle class="ld-bulb-core" cx="' + c[0] + '" cy="' + c[1] + '" r="3.6" stroke="#6B4300" stroke-width="0.8"/></g>';
       }
-      const rays = document.getElementById('ldRays');
-      if (rays && !rays.children.length) {
-        let h = '';
-        for (let i = 0; i < 16; i++) h += '<path d="M100 100 L' + ldPoint(150, i * 22.5 - 4) + ' L' + ldPoint(150, i * 22.5 + 4) + ' Z" fill="#FFFFFF" opacity="0.07"/>';
-        rays.innerHTML = h;
-      }
+      return s;
     }
 
-    function ldMaxPrize(d) {
-      return d.prizes.reduce((m, p) => (p.odds > 0 && p.amount > m ? p.amount : m), 0);
+    // Fixed glass shine over the wheel, plus the glow that flashes on the winning slot.
+    function ldGlossSvg(n) {
+      const step = 360 / n;
+      return '<defs><linearGradient id="ldGlossG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.34"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient>' +
+        '<radialGradient id="ldWinG" cx="150" cy="150" r="124" gradientUnits="userSpaceOnUse"><stop offset="0.3" stop-color="#FFFFFF" stop-opacity="0"/><stop offset="1" stop-color="#FFF6D2" stop-opacity="1"/></radialGradient>' +
+        '<clipPath id="ldGlossClip"><circle cx="150" cy="150" r="124"/></clipPath></defs>' +
+        '<path id="ldWinGlow" d="M150 150 L' + ldPoint(124, -step / 2) + ' A124 124 0 0 1 ' + ldPoint(124, step / 2) + ' Z" fill="url(#ldWinG)"/>' +
+        '<g clip-path="url(#ldGlossClip)"><ellipse cx="150" cy="92" rx="122" ry="78" fill="url(#ldGlossG)"/></g>' +
+        '<circle cx="150" cy="150" r="125" fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="3"/>';
+    }
+
+    function ldBuildStatic() {
+      const frame = document.getElementById('ldFrame');
+      if (!frame.children.length) frame.innerHTML = ldFrameSvg();
+      const rays = document.getElementById('ldRays');
+      if (!rays.children.length) {
+        let h = '';
+        for (let i = 0; i < 18; i++) h += '<path d="M100 100 L' + ldPoint(150, i * 20 - 4, 100) + ' L' + ldPoint(150, i * 20 + 4, 100) + ' Z" fill="#FFFFFF" opacity="0.06"/>';
+        rays.innerHTML = h;
+      }
+      const sparks = document.getElementById('ldSparks');
+      if (!sparks.children.length) {
+        let h = '';
+        for (let i = 0; i < 14; i++) {
+          h += '<span class="ld-spark" style="left:' + Math.round(Math.random() * 96) + '%;top:' + Math.round(8 + Math.random() * 80) + '%;animation-delay:' +
+            (Math.random() * 3).toFixed(2) + 's;animation-duration:' + (2 + Math.random() * 2.5).toFixed(2) + 's"></span>';
+        }
+        sparks.innerHTML = h;
+      }
+      ldBulbs('idle');
+    }
+
+    // Bulbs chase around the rim: slowly when idle, fast while spinning, all together after a win.
+    function ldBulbs(mode) {
+      clearInterval(ldBulbTimer);
+      const bulbs = document.querySelectorAll('#ldFrame .ld-bulb');
+      if (!bulbs.length) return;
+      if (mode === 'off') return;
+      ldBulbTimer = setInterval(() => {
+        ldBulbPhase++;
+        for (let i = 0; i < bulbs.length; i++) {
+          bulbs[i].classList.toggle('on', mode === 'party' ? ldBulbPhase % 2 === 0 : (i + ldBulbPhase) % 3 === 0);
+        }
+      }, mode === 'spin' ? 70 : mode === 'party' ? 160 : 450);
     }
 
     // My page banner (hidden while the draw is switched off).
@@ -5952,7 +6085,8 @@
       banner.style.display = ldData.enabled ? '' : 'none';
       if (!ldData.enabled) return;
       document.getElementById('ldBannerWheel').innerHTML = ldWheelSvg(ldData.prizes, 'ldBw', true);
-      document.getElementById('ldBannerSub').textContent = ldPts(ldData.points) + ' points · win up to ' + ldAmt(ldMaxPrize(ldData)) + ' USDT';
+      document.getElementById('ldBannerWheel').setAttribute('viewBox', '24 24 252 252');
+      document.getElementById('ldBannerSub').textContent = ldPts(ldData.points) + ' points · spin to win USDT';
     }
 
     function openDrawPage() {
@@ -5970,13 +6104,19 @@
       ldRender();
     }
 
+    let ldWheelKey = '';
     function ldRender() {
       const d = ldData;
-      document.getElementById('ldWheel').innerHTML = ldWheelSvg(d.prizes, 'ldW', false);
+      const key = d.prizes.map(p => p.amount).join(',');
+      if (key !== ldWheelKey) {
+        ldWheelKey = key;
+        document.getElementById('ldWheel').innerHTML = ldWheelSvg(d.prizes, 'ldW', false);
+        document.getElementById('ldGloss').innerHTML = ldGlossSvg(d.prizes.length);
+      }
       document.getElementById('ldCostOne').textContent = ldPts(d.spinCost) + ' points';
       document.getElementById('ldCostTen').textContent = ldPts(d.tenSpinCost) + ' points';
       document.getElementById('ldHubCost').textContent = ldPts(d.spinCost) + ' pts';
-      document.getElementById('ldSub').textContent = d.enabled ? 'Spin to win up to ' + ldAmt(ldMaxPrize(d)) + ' USDT' : 'The Lucky Draw is closed right now';
+      document.getElementById('ldSub').textContent = d.enabled ? 'Spin the wheel and win USDT' : 'The Lucky Draw is closed right now';
       ldRenderPoints();
       const box = document.getElementById('ldTickerBox');
       if (d.recentWinners.length) {
@@ -5998,7 +6138,6 @@
 
     function ldSetSpinning(on) {
       ldSpinning = on;
-      document.getElementById('ldStage').classList.toggle('spinning', on);
       const closed = !ldData || !ldData.enabled;
       ['ldSpinOne', 'ldSpinTen', 'ldHub'].forEach(id => { document.getElementById(id).disabled = on || closed; });
     }
@@ -6023,6 +6162,7 @@
       invite: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>',
       deposit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>'
     };
+    const LD_TG_ICON = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3l-3.3 15.6c-.2 1.1-.9 1.4-1.8.9l-5-3.7-2.4 2.3c-.3.3-.5.5-1 .5l.4-5.1 9.3-8.4c.4-.4-.1-.6-.6-.2L6 13.4 1 11.9c-1.1-.3-1.1-1.1.2-1.6L20.5 2.9c.9-.3 1.7.2 1.4 1.4z"/></svg>';
 
     function ldRenderPanel() {
       const d = ldData, el = document.getElementById('ldPanel');
@@ -6070,7 +6210,7 @@
         el.innerHTML = '<div class="ld-card">' + (d.myDraws.length ? d.myDraws.map(w =>
           '<div class="ld-row"><div><div style="font-weight:700;">Draw ×' + w.times + '</div><div class="ld-row-sub">' + ldDate(w.createdAt) +
           (w.times > 1 ? ' · ' + w.prizes.map(ldAmt).join(', ') : '') + '</div></div>' +
-          '<div style="text-align:right;"><div class="ld-plus">+' + ldAmt(w.total) + ' USDT</div><div class="ld-row-sub">−' + ldPts(w.cost) + ' points</div></div></div>').join('')
+          '<div style="text-align:right;"><div class="' + (w.total > 0 ? 'ld-plus' : 'ld-zero') + '">+' + ldAmt(w.total) + ' USDT</div><div class="ld-row-sub">−' + ldPts(w.cost) + ' points</div></div></div>').join('')
           : '<div class="ld-empty">No spins yet. Your prizes will show here.</div>') + '</div>';
       } else if (ldTabName === 'history') {
         el.innerHTML = '<div class="ld-card">' + (d.history.length ? d.history.map(x =>
@@ -6078,15 +6218,12 @@
           '<div class="' + (x.points < 0 ? 'ld-minus' : 'ld-plus') + '">' + (x.points < 0 ? '−' : '+') + ldPts(Math.abs(x.points)) + ' pts</div></div>').join('')
           : '<div class="ld-empty">No points yet. Claim your daily points to start.</div>') + '</div>';
       } else {
-        const odds = d.prizes.map(p => p).sort((a, b) => a.amount - b.amount);
         el.innerHTML = '<div class="ld-card"><div class="ld-section-title">How it works</div><ol class="ld-rules">' +
           '<li>Each spin costs ' + ldPts(d.spinCost) + ' points. 10 spins cost ' + ldPts(d.tenSpinCost) + ' points.</li>' +
-          '<li>Every spin wins a prize. Prizes are paid in USDT straight to your balance, and you can withdraw them.</li>' +
-          '<li>Get points by claiming them daily (resets at 6:00 AM UK time), reaching a new level, inviting members who deposit, depositing again' + (d.buy.enabled ? ', or buying them with your balance' : '') + '.</li>' +
+          '<li>Each spin lands on one slot of the wheel. USDT you win goes straight to your balance, and you can withdraw it. A 0 slot wins nothing.</li>' +
+          '<li>Get points by checking in daily (resets at 6:00 AM UK time), reaching a new level, inviting members who deposit, depositing again' + (d.buy.enabled ? ', or buying them with your balance' : '') + '.</li>' +
           '<li>Points can only be used for spins. They can\'t be withdrawn or transferred, and bought points can\'t be refunded.</li>' +
-          '<li>The result of each spin is picked at random by the server, with the chances below.</li></ol></div>' +
-          '<div class="ld-card"><div class="ld-section-title">Prizes and chances</div><table class="ld-odds">' +
-          odds.map(p => '<tr><td><b>' + ldAmt(p.amount) + ' USDT</b></td><td>' + (p.odds > 0 && p.odds < 0.01 ? '<0.01' : ldPts(p.odds)) + '%</td></tr>').join('') + '</table></div>';
+          '<li>Every result is picked at random by the server.</li></ol></div>';
       }
     }
 
@@ -6128,15 +6265,34 @@
       } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
     }
 
-    // Turns the wheel so slot `slot` stops under the pointer. Returns how long the animation takes.
-    function ldAnimateTo(slot) {
-      const step = 360 / ldData.prizes.length;
-      const jitter = (Math.random() - 0.5) * (step - 14);
-      const base = ldRotation - (ldRotation % 360);
-      ldRotation = base + 360 * 6 + (360 - slot * step) + jitter;
-      document.getElementById('ldWheel').style.transform = 'rotate(' + ldRotation + 'deg)';
+    function ldKickPointer() {
+      const p = document.getElementById('ldPointer');
+      p.classList.remove('kick');
+      void p.getBoundingClientRect();
+      p.classList.add('kick');
+    }
+
+    // Turns the wheel so `slot` stops under the pointer, then calls done(). The pointer flicks each time
+    // a peg passes it, which a CSS transition can't do, so this runs frame by frame.
+    function ldAnimateTo(slot, done) {
+      const n = ldData.prizes.length, step = 360 / n;
       const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      return reduced ? 1300 : 5600;
+      const start = ldRotation, base = start - (start % 360);
+      const target = base + 360 * (reduced ? 2 : 7) + (360 - slot * step) + (Math.random() - 0.5) * step * 0.6;
+      const dur = reduced ? 1500 : 6400;
+      const wheel = document.getElementById('ldWheel');
+      let t0 = null, lastPeg = Math.floor((start + step / 2) / step);
+      function frame(now) {
+        if (t0 === null) t0 = now;
+        const t = Math.min(1, (now - t0) / dur);
+        const rot = start + (target - start) * (1 - Math.pow(1 - t, 4));
+        wheel.style.transform = 'rotate(' + rot.toFixed(3) + 'deg)';
+        const peg = Math.floor((rot + step / 2) / step);
+        if (peg !== lastPeg) { lastPeg = peg; ldKickPointer(); }
+        if (t < 1) requestAnimationFrame(frame);
+        else { ldRotation = target; done(); }
+      }
+      requestAnimationFrame(frame);
     }
 
     async function ldSpin(times) {
@@ -6154,39 +6310,176 @@
       catch (e) { ldSetSpinning(false); toast(e.message, 'error'); return; }
       ldData.points = r.points;
       ldRenderPoints();
-      const wait = ldAnimateTo(r.slots[r.slots.length - 1]);
-      setTimeout(() => {
-        ldSetSpinning(false);
-        ldShowResult(r);
-        updateHeaderBalance();
-        loadDrawData();
-      }, wait);
+      ldBulbs('spin');
+      document.getElementById('ldWinGlow').classList.remove('flash');
+      ldAnimateTo(r.slots[r.slots.length - 1], () => {
+        const glow = document.getElementById('ldWinGlow');
+        void glow.getBoundingClientRect();
+        glow.classList.add('flash');
+        ldBulbs(r.total > 0 ? 'party' : 'idle');
+        try { if (r.total > 0 && navigator.vibrate) navigator.vibrate([40, 60, 80]); } catch (e) {}
+        setTimeout(() => {
+          ldSetSpinning(false);
+          ldShowWin(r);
+          updateHeaderBalance();
+          loadDrawData();
+        }, 900);
+      });
     }
 
-    function ldShowResult(r) {
+    // ---- Win celebration ----
+    REWARD_KINDS.lucky = { icon: '🎉', title: 'I won on the Lucky Draw!' };
+
+    function ldCoinSvg(lose) {
+      const a = lose ? ['#E9E7FA', '#8E8BB0', '#4D4A6E'] : ['#FFF6D2', '#F5C451', '#8A5A00'];
+      return '<svg viewBox="0 0 120 120" aria-hidden="true"><defs>' +
+        '<linearGradient id="ldwCoinG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + a[0] + '"/><stop offset="0.5" stop-color="' + a[1] + '"/><stop offset="1" stop-color="' + a[2] + '"/></linearGradient>' +
+        '<radialGradient id="ldwCoinIn" cx="0.4" cy="0.35" r="0.8"><stop offset="0" stop-color="' + (lose ? '#8E8BB0' : '#3BD3A0') + '"/><stop offset="1" stop-color="' + (lose ? '#4D4A6E' : '#137A5C') + '"/></radialGradient></defs>' +
+        '<circle cx="60" cy="60" r="57" fill="url(#ldwCoinG)"/><circle cx="60" cy="60" r="48" fill="none" stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-dasharray="3 4"/>' +
+        '<circle cx="60" cy="60" r="42" fill="url(#ldwCoinIn)" stroke="' + a[2] + '" stroke-width="2"/>' +
+        '<path d="M41 37h38v9H64.5v33h-9V46H41z" fill="#FFFFFF"/><ellipse cx="60" cy="56" rx="21" ry="5.5" fill="none" stroke="#FFFFFF" stroke-width="3.5"/>' +
+        '<ellipse cx="44" cy="30" rx="14" ry="6" fill="rgba(255,255,255,0.45)" transform="rotate(-30 44 30)"/></svg>';
+    }
+
+    function ldShowWin(r) {
       const won = r.total > 0;
-      const coin = '<svg class="ld-result-coin" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="30" fill="#26A17B" stroke="#FFE08A" stroke-width="3"/><path d="M20 19h24v6h-9v22h-6V25h-9z" fill="#fff"/><ellipse cx="32" cy="30" rx="13" ry="3.2" fill="none" stroke="#fff" stroke-width="2.4"/></svg>';
+      const max = Math.max.apply(null, ldData.prizes.map(p => p.amount));
+      const jackpot = won && r.prizes.indexOf(max) >= 0;
+      const ribbon = !won ? 'SO CLOSE' : jackpot ? 'JACKPOT' : r.total >= 30 ? 'BIG WIN' : 'YOU WON';
+      const title = won ? 'CONGRATULATIONS' : 'TRY AGAIN';
+      const letters = title.split('').map((ch, i) => '<span style="animation-delay:' + (0.85 + i * 0.045).toFixed(3) + 's">' + (ch === ' ' ? '&nbsp;' : ch) + '</span>').join('');
+      const stars = won ? [[-6, 18, 0], [112, 8, 0.4], [118, 92, 0.8], [-12, 96, 1.2], [56, -16, 0.6]].map(s =>
+        '<svg class="ldw-star" viewBox="0 0 24 24" style="left:' + s[0] + 'px;top:' + s[1] + 'px;animation-delay:' + s[2] + 's"><path d="M12 0l2.6 9.4L24 12l-9.4 2.6L12 24l-2.6-9.4L0 12l9.4-2.6z" fill="#FFE7A0"/></svg>').join('') : '';
       let grid = '';
       if (r.times > 1) {
         const top = Math.max.apply(null, r.prizes);
-        grid = '<div class="ld-result-grid">' + r.prizes.map((p, i) => '<div class="' + (p === top && p > 0 ? 'big' : '') + '" style="animation-delay:' + (0.08 * i) + 's">' + ldAmt(p) + '<small>USDT</small></div>').join('') + '</div>';
+        grid = '<div class="ldw-grid">' + r.prizes.map((p, i) => '<div class="' + (p === top && p > 0 ? 'top' : p > 0 ? '' : 'zero') + '" style="animation-delay:' + (1.3 + 0.07 * i).toFixed(2) + 's">' + ldAmt(p) + '<small>USDT</small></div>').join('') + '</div>';
       }
-      let confetti = '';
-      if (won) {
-        const colors = ['#FFD66B', '#FF7AA8', '#6D5BFF', '#14B8A6', '#FFFFFF'];
-        for (let i = 0; i < 28; i++) {
-          confetti += '<i style="left:' + Math.round(Math.random() * 100) + '%;background:' + colors[i % colors.length] + ';animation-delay:' + (Math.random() * 0.5).toFixed(2) + 's;animation-duration:' + (1.4 + Math.random()).toFixed(2) + 's"></i>';
-        }
-      }
+      const canSpin = ldData.points >= ldData.spinCost;
       const ov = document.createElement('div');
-      ov.className = 'ld-result';
-      ov.innerHTML = '<div class="ld-result-card"><div class="ld-confetti">' + confetti + '</div>' +
-        '<div class="ld-result-kicker">' + (won ? 'Congratulations' : 'So close') + '</div>' + coin +
-        '<div class="ld-result-amount">+' + ldAmt(r.total) + ' USDT</div>' +
-        '<div class="ld-result-note">' + (won ? 'Added to your balance' : 'Better luck on the next spin') + ' · ' + ldPts(r.points) + ' points left</div>' + grid +
-        '<button class="ld-result-btn">' + (won ? 'Collect' : 'OK') + '</button></div>';
-      ov.addEventListener('click', e => { if (e.target === ov || e.target.classList.contains('ld-result-btn')) ov.remove(); });
+      ov.className = 'ldw' + (won ? '' : ' lose');
+      ov.innerHTML =
+        (won ? '<svg class="ldw-rays" viewBox="0 0 200 200" aria-hidden="true">' + Array.from({ length: 16 }, (_, i) =>
+          '<path d="M100 100 L' + ldPoint(150, i * 22.5 - 5, 100) + ' L' + ldPoint(150, i * 22.5 + 5, 100) + ' Z" fill="' + (i % 2 ? '#FFD66B' : '#FFFFFF') + '" opacity="0.08"/>').join('') + '</svg>' : '') +
+        '<canvas class="ldw-confetti"></canvas>' +
+        '<div class="ldw-frame"><div class="ldw-card">' +
+          '<div class="ldw-ribbon' + (jackpot ? ' jackpot' : '') + '">' + ribbon + '</div>' +
+          '<div class="ldw-coin-stage">' + (won ? '<div class="ldw-halo"></div>' : '') + '<div class="ldw-coin">' + ldCoinSvg(!won) + '</div>' + stars + '</div>' +
+          '<div class="ldw-title">' + letters + '</div>' +
+          '<div class="ldw-amount"><span class="ldw-num">' + (won ? '+0.00' : '0') + '</span><small>USDT</small></div>' +
+          '<div class="ldw-sub">' + (won ? 'Added to your balance' : 'Better luck on the next spin') + ' · ' + ldPts(r.points) + ' points left</div>' + grid +
+          (won
+            ? '<div class="ldw-actions"><button class="ldw-btn ldw-tg" data-act="tg">' + LD_TG_ICON + 'Share to Telegram</button>' +
+              '<button class="ldw-btn ldw-save" data-act="save" aria-label="Save image"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button></div>' +
+              '<button class="ldw-btn ldw-collect" data-act="close">Collect</button>' +
+              '<button class="ldw-group" data-act="group">Open the MetaLink Telegram group</button>'
+            : '<button class="ldw-btn ldw-collect" data-act="' + (canSpin ? 'again' : 'close') + '">' + (canSpin ? 'Spin again' : 'OK') + '</button>' +
+              (canSpin ? '<button class="ldw-group" data-act="close">Close</button>' : '')) +
+        '</div></div>';
+      const close = () => { ov.classList.add('out'); setTimeout(() => ov.remove(), 300); ldBulbs('idle'); };
+      ov.addEventListener('click', e => {
+        const b = e.target.closest ? e.target.closest('[data-act]') : null;
+        const act = b ? b.getAttribute('data-act') : (e.target === ov ? 'close' : '');
+        if (act === 'close') close();
+        else if (act === 'again') { close(); setTimeout(() => ldSpin(1), 350); }
+        else if (act === 'tg') ldShareTelegram();
+        else if (act === 'save') ldSaveWin();
+        else if (act === 'group') openCommunityLink('group');
+      });
       document.body.appendChild(ov);
+      if (won) {
+        ldCountUp(ov.querySelector('.ldw-num'), r.total, 900, 1300, () => ov.querySelector('.ldw-amount').classList.add('done'));
+        ldConfetti(ov.querySelector('.ldw-confetti'), jackpot || r.total >= 30);
+        ldPrepareShare(r);
+      }
+    }
+
+    function ldCountUp(el, total, delay, dur, done) {
+      const dec = total % 1 ? 2 : 0;
+      let t0 = null;
+      setTimeout(() => {
+        function frame(now) {
+          if (t0 === null) t0 = now;
+          const t = Math.min(1, (now - t0) / dur);
+          el.textContent = '+' + (total * (1 - Math.pow(1 - t, 3))).toFixed(dec);
+          if (t < 1) requestAnimationFrame(frame); else { el.textContent = '+' + ldAmt(total); if (done) done(); }
+        }
+        requestAnimationFrame(frame);
+      }, delay);
+    }
+
+    // Confetti shot from both bottom corners (and from the top for big wins), with gravity and drag.
+    function ldConfetti(canvas, big) {
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const W = canvas.clientWidth, H = canvas.clientHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      const ctx = canvas.getContext('2d');
+      ctx.scale(dpr, dpr);
+      const colors = ['#FFD66B', '#FF63A1', '#A066FF', '#33D6C9', '#4F82FF', '#FFFFFF', '#F5B731'];
+      const parts = [];
+      const burst = (x, y, count, angle, spread, speed) => {
+        for (let i = 0; i < count; i++) {
+          const a = (angle + (Math.random() - 0.5) * spread) * Math.PI / 180, v = speed * (0.55 + Math.random() * 0.6);
+          parts.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.35,
+            w: 6 + Math.random() * 6, h: 9 + Math.random() * 8, c: colors[i % colors.length], round: Math.random() < 0.3, wob: Math.random() * 10 });
+        }
+      };
+      burst(0, H, 80, -60, 40, 19);
+      burst(W, H, 80, -120, 40, 19);
+      if (big) setTimeout(() => burst(W / 2, -10, 90, 90, 140, 9), 650);
+      let t0 = null;
+      function frame(now) {
+        if (t0 === null) t0 = now;
+        if (!canvas.isConnected) return;
+        ctx.clearRect(0, 0, W, H);
+        let alive = 0;
+        parts.forEach(p => {
+          p.vy += 0.32; p.vx *= 0.985; p.vy *= 0.985; p.x += p.vx + Math.sin((now / 160) + p.wob) * 0.6; p.y += p.vy; p.r += p.vr;
+          if (p.y > H + 30) return;
+          alive++;
+          ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c;
+          if (p.round) { ctx.beginPath(); ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2); ctx.fill(); }
+          else ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h * Math.abs(Math.cos(p.r * 2)) + 2);
+          ctx.restore();
+        });
+        if ((alive || now - t0 < 1000) && now - t0 < 7000) requestAnimationFrame(frame);
+        else ctx.clearRect(0, 0, W, H);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    // The shareable image is drawn as soon as the card opens, so the Share button can open the
+    // share sheet straight from the tap (phones block it after a delay).
+    async function ldPrepareShare(r) {
+      ldShareFile = null; ldLastWin = r;
+      try {
+        const canvas = await drawRewardCard({ kind: 'lucky', amount: r.total, detail: r.times > 1 ? 'MetaLink Lucky Draw · 10 spins' : 'MetaLink Lucky Draw' });
+        rewardCanvas = canvas;
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+        if (blob && ldLastWin === r) ldShareFile = new File([blob], 'metalink-lucky-draw.png', { type: 'image/png' });
+      } catch (e) {}
+    }
+
+    function ldShareText() {
+      return 'I just won ' + ldAmt(ldLastWin ? ldLastWin.total : 0) + ' USDT on the MetaLink NFT Lucky Draw! 🎉 Join me:';
+    }
+
+    // Phones that can share files open the share sheet, where the user picks Telegram and the group.
+    // Otherwise Telegram's own share page opens (text and link only) and the image is saved to attach.
+    function ldShareTelegram() {
+      const link = getInviteLink();
+      if (ldShareFile && navigator.canShare && navigator.canShare({ files: [ldShareFile] })) {
+        navigator.share({ files: [ldShareFile], text: ldShareText() + ' ' + link }).catch(() => {});
+        return;
+      }
+      window.open('https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(ldShareText()), '_blank');
+      if (rewardCanvas) { saveRewardCard(); toast('Image saved. Attach it to your post in the Telegram group.'); }
+    }
+
+    function ldSaveWin() {
+      if (!rewardCanvas) { toast('The image is still being made. Try again in a moment.', 'error'); return; }
+      saveRewardCard();
+      toast('Image saved');
     }
 
     // ---- Init ----

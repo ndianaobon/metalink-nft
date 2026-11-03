@@ -6,7 +6,8 @@ test('settings fall back to the defaults', () => {
   const s = ld.settingsOf({});
   assert.strictEqual(s.enabled, true);
   assert.strictEqual(s.spinCost, 10);
-  assert.strictEqual(s.prizes.length, 8);
+  assert.strictEqual(s.prizes.length, 10);
+  assert.ok(s.prizes.some(p => p.amount === 0), 'the default wheel has a 0 slot');
   assert.strictEqual(ld.settingsOf({ luckyDraw: { spinCost: 20, enabled: false } }).spinCost, 20);
   assert.strictEqual(ld.settingsOf({ luckyDraw: { enabled: false } }).enabled, false);
 });
@@ -73,7 +74,9 @@ test('admin settings are checked', () => {
   const ok = ld.validateSettings(body);
   assert.ok(ok.settings, ok.error);
   assert.deepStrictEqual(ok.settings.inviteTiers.map(t => t.minDeposit), [50, 100]);
-  assert.match(ld.validateSettings({ ...body, prizes: body.prizes.slice(0, 7) }).error, /exactly 8/);
+  assert.match(ld.validateSettings({ ...body, prizes: body.prizes.slice(0, 5) }).error, /6 to 12/);
+  assert.ok(ld.validateSettings({ ...body, prizes: body.prizes.slice(0, 8) }).settings, '8 slots are fine');
+  assert.match(ld.validateSettings({ ...body, prizes: body.prizes.concat(body.prizes) }).error, /6 to 12/);
   assert.match(ld.validateSettings({ ...body, buyPrice: 0 }).error, /Pack price/);
   assert.match(ld.validateSettings({ ...body, buyPoints: 2.5 }).error, /whole number/);
   assert.match(ld.validateSettings({ ...body, spinCost: 0 }).error, /Points per spin/);
