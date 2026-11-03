@@ -5795,7 +5795,7 @@
     function updateGiftDot() {
       const btn = document.querySelector('.my-gift-btn');
       if (!btn) return;
-      const any = (checkinState && checkinState.enabled && checkinState.canClaim) || giftRewards.some(r => !r.claimed && !r.locked);
+      const any = (checkinState && checkinState.canClaim) || giftRewards.some(r => !r.claimed && !r.locked);
       btn.classList.toggle('has-dot', !!any);
       document.getElementById('giftDot').hidden = !any;
     }
@@ -5804,28 +5804,31 @@
       try { checkinState = await api('/api/checkin'); renderCheckin(); } catch (e) {}
     }
 
+    // The daily check-in gives Lucky Draw points (once a day, reset at 6:00 AM UK time).
     function renderCheckin() {
       clearInterval(checkinTimer);
       updateGiftDot();
       const s = checkinState;
+      const on = !!s && (s.canClaim || !!s.nextAt);
       document.querySelectorAll('.checkin-slot').forEach(slot => {
-        if (!s || !s.enabled || (slot.dataset.onlyClaimable && !s.canClaim)) { slot.innerHTML = ''; return; }
+        if (!on || (slot.dataset.onlyClaimable && !s.canClaim)) { slot.innerHTML = ''; return; }
+        const pts = ldPts(s.dailyPoints) + ' Lucky Draw point' + (s.dailyPoints === 1 ? '' : 's');
         const sub = s.canClaim
-          ? `Claim <strong>+${fmt(s.reward)} USDT</strong> now${s.streak ? ' &middot; ' + s.streak + '-day streak' : ''}`
-          : `Next reward: +${fmt(s.reward)} USDT${s.streak ? ' &middot; ' + s.streak + '-day streak' : ''}`;
+          ? 'Claim <strong>+' + pts + '</strong> now'
+          : 'You have <strong>' + ldPts(s.points) + ' points</strong> &middot; <a href="#" onclick="goToLuckyDraw(); return false;" style="color:var(--primary);font-weight:700;">Spin now</a>';
         slot.innerHTML = `
           <div class="checkin-card">
-            <div class="checkin-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>
+            <div class="checkin-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg></div>
             <div class="checkin-info">
-              <div class="checkin-title">Daily Check-in Reward</div>
+              <div class="checkin-title">Daily Check-in</div>
               <div class="checkin-sub">${sub}</div>
             </div>
             <button class="checkin-btn" data-checkin-btn ${s.canClaim ? '' : 'disabled'} onclick="claimCheckin(this)">${s.canClaim ? 'Claim' : 'Claimed'}</button>
           </div>`;
       });
-      if (s && s.enabled && !s.canClaim && s.nextCheckinAt) {
+      if (s && !s.canClaim && s.nextAt) {
         const tick = () => {
-          const remaining = new Date(s.nextCheckinAt).getTime() - Date.now();
+          const remaining = new Date(s.nextAt).getTime() - Date.now();
           if (remaining <= 0) { clearInterval(checkinTimer); loadCheckin(); return; }
           document.querySelectorAll('[data-checkin-btn]').forEach(b => { b.textContent = fmtCountdown(remaining); });
         };
@@ -5834,16 +5837,20 @@
       }
     }
 
+    function goToLuckyDraw() {
+      switchTab('my');
+      openDrawPage();
+    }
+
     async function claimCheckin(btn) {
       btn.disabled = true; btn.textContent = 'Claiming...';
       try {
         const r = await api('/api/checkin', { method: 'POST' });
         checkinState = r;
-        showRewardCard({ kind: 'checkin', amount: r.claimed, detail: `Daily Check-in · Day ${r.streak} streak` });
+        toast('+' + ldPts(r.claimed) + ' Lucky Draw point' + (r.claimed === 1 ? '' : 's') + ' · you have ' + ldPts(r.points));
         renderCheckin();
-        updateHeaderBalance();
-        refreshLevel();
-        if (document.getElementById('page-my').classList.contains('active')) loadProfile();
+        if (ldData) { ldData.points = r.points; ldData.daily = r.daily; }
+        if (document.getElementById('page-my').classList.contains('active')) loadDrawBanner();
       } catch (e) {
         toast(e.message, 'error');
         loadCheckin();
@@ -6116,6 +6123,7 @@
         toast('+' + ldPts(r.claimed) + ' point' + (r.claimed === 1 ? '' : 's'));
         ldData.points = r.points;
         ldRenderPoints(true);
+        loadCheckin();
         await loadDrawData();
       } catch (e) { toast(e.message, 'error'); btn.disabled = false; }
     }

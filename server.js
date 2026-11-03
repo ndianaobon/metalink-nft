@@ -2077,59 +2077,17 @@ app.post('/api/deposits/claim-txid', txidClaimLimiter, authMiddleware, async (re
 });
 
 // ===================== DAILY CHECK-IN =====================
-
-const CHECKIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
-
-function checkinStatus(user, config) {
-  const reward = parseFloat(config.dailyCheckinReward) || 0;
-  const last = user.lastCheckinAt ? new Date(user.lastCheckinAt).getTime() : 0;
-  const nextAt = last ? last + CHECKIN_COOLDOWN_MS : 0;
-  return {
-    enabled: reward > 0,
-    reward,
-    lastCheckinAt: user.lastCheckinAt || null,
-    nextCheckinAt: nextAt > Date.now() ? new Date(nextAt).toISOString() : null,
-    canClaim: reward > 0 && nextAt <= Date.now(),
-    totalClaimed: user.checkinTotal || 0,
-    streak: user.checkinStreak || 0
-  };
-}
+// The daily check-in gives the Lucky Draw's daily points (it used to pay USDT). The check-in card on
+// the Stake and Rewards pages and the Lucky Draw page claim the same points, once a day.
 
 app.get('/api/checkin', authMiddleware, async (req, res) => {
   const user = await db.getUser(pool, req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
-  res.json(checkinStatus(user, await getConfig()));
+  const status = dailyPointsStatus(user, luckyDraw.settingsOf(await getConfig()));
+  res.json({ ...status, dailyPoints: status.points, points: user.drawPoints || 0 });
 });
 
-app.post('/api/checkin', authMiddleware, async (req, res) => {
-  const emails = [];
-  const result = await tx(async c => {
-    const user = await db.getUser(c, req.userId, { lock: true });
-    if (!user) return { status: 404, body: { error: 'User not found' } };
-    const config = await getConfig(c);
-    const status = checkinStatus(user, config);
-    if (!status.enabled) return { status: 400, body: { error: 'Daily check-in rewards are not available right now' } };
-    if (!status.canClaim) return { status: 400, body: { error: 'You have already claimed today\'s reward', nextCheckinAt: status.nextCheckinAt } };
-
-    const now = Date.now();
-    const last = user.lastCheckinAt ? new Date(user.lastCheckinAt).getTime() : 0;
-    // A streak continues if the previous claim was within 48h (i.e. the user didn't skip a whole day).
-    user.checkinStreak = last && now - last < 2 * CHECKIN_COOLDOWN_MS ? (user.checkinStreak || 0) + 1 : 1;
-    user.lastCheckinAt = new Date(now).toISOString();
-    user.checkinTotal = parseFloat(((user.checkinTotal || 0) + status.reward).toFixed(2));
-    user.walletBalance += status.reward;
-    await recordTx(c, user, 'checkin', status.reward, `Day ${user.checkinStreak} of your check-in streak`);
-    user.totalIncome += status.reward;
-    user.dailyIncome = user.dailyIncome || {};
-    user.dailyIncome.activity = (user.dailyIncome.activity || 0) + status.reward;
-    checkAndApplyLevelUpgrade(user, config, emails);
-    await db.saveUser(c, user);
-    return { status: 200, body: { ...checkinStatus(user, config), claimed: status.reward, walletBalance: user.walletBalance } };
-  });
-
-  sendQueuedEmails(emails);
-  res.status(result.status).json(result.body);
-});
+app.post('/api/checkin', authMiddleware, claimDailyPoints);
 
 // ===================== GIFT REWARDS =====================
 // Admin-created rewards shown behind the gift icon on the My page. Each one can be claimed
@@ -2232,7 +2190,9 @@ app.get('/api/lucky-draw', authMiddleware, async (req, res) => {
   });
 });
 
-app.post('/api/lucky-draw/daily', authMiddleware, async (req, res) => {
+app.post('/api/lucky-draw/daily', authMiddleware, claimDailyPoints);
+
+async function claimDailyPoints(req, res) {
   const result = await tx(async c => {
     const user = await db.getUser(c, req.userId, { lock: true });
     if (!user) return { status: 404, body: { error: 'User not found' } };
@@ -2244,10 +2204,11 @@ app.post('/api/lucky-draw/daily', authMiddleware, async (req, res) => {
     user.lastDrawDailyAt = new Date().toISOString();
     luckyDraw.addPoints(user, s.dailyPoints, 'daily', 'Daily points');
     await db.saveUser(c, user);
-    return { status: 200, body: { claimed: s.dailyPoints, points: user.drawPoints, daily: dailyPointsStatus(user, s) } };
+    const daily = dailyPointsStatus(user, s);
+    return { status: 200, body: { ...daily, dailyPoints: s.dailyPoints, claimed: s.dailyPoints, points: user.drawPoints, daily } };
   });
   res.status(result.status).json(result.body);
-});
+}
 
 app.post('/api/lucky-draw/buy', authMiddleware, async (req, res) => {
   const packs = Number(req.body.packs);
